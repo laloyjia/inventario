@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Pañoleros - PanolERP</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary: #2563eb; --secondary: #64748b; --success: #10b981;
+            --danger: #ef4444; --warning: #f59e0b; --dark: #0f172a;
+            --light: #f8fafc; --info: #6366f1;
+        }
+        * { box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; margin: 0; padding: 16px;
+               background: linear-gradient(180deg,#e2e8f0 0%,#f8fafc 100%); color: var(--dark); }
+        .wrap { max-width: 1300px; margin: 0 auto; }
+
+        .topbar {
+            background: var(--dark); color: white;
+            padding: 16px 24px; border-radius: 12px;
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 18px;
+        }
+        .topbar h1 { margin: 0; font-size: 1.3rem; }
+        .topbar a { color: white; text-decoration: none; padding: 8px 14px;
+                    border-radius: 6px; background: var(--primary); }
+        .topbar a:hover { background: #1d4ed8; }
+
+        .card {
+            background: white; padding: 18px; border-radius: 10px;
+            margin-bottom: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        }
+        .card h2 { margin: 0 0 14px 0; font-size: 1.1rem;
+                   display: flex; align-items: center; gap: 8px; }
+
+        /* Form */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+        }
+        .form-grid label { display: block; font-size: 0.78rem;
+                           color: var(--secondary); font-weight: 600;
+                           margin-bottom: 4px; }
+        input, select {
+            padding: 9px; border: 1px solid #cbd5e1; border-radius: 6px;
+            font-family: inherit; font-size: 0.9rem; width: 100%;
+        }
+        input:focus, select:focus { outline: none; border-color: var(--primary); }
+
+        .btn {
+            padding: 9px 16px; border: none; border-radius: 6px; cursor: pointer;
+            font-weight: 600; font-size: 0.85rem; color: white;
+            display: inline-flex; align-items: center; gap: 6px;
+            text-decoration: none;
+        }
+        .btn-primary { background: var(--primary); }
+        .btn-success { background: var(--success); }
+        .btn-warning { background: var(--warning); }
+        .btn-danger  { background: var(--danger); }
+        .btn-info    { background: var(--info); }
+        .btn-dark    { background: var(--dark); }
+        .btn-secondary { background: var(--secondary); }
+        .btn:hover { filter: brightness(1.1); }
+        .btn-sm { padding: 6px 10px; font-size: 0.78rem; }
+
+        /* Tabla */
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        th, td { padding: 11px 10px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+        th { background: #f8fafc; font-weight: 600; color: var(--secondary);
+             font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.4px; }
+        tr:hover td { background: #fafbfc; }
+
+        .badge { padding: 3px 9px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; }
+        .b-activo { background: #d1fae5; color: #065f46; }
+        .b-inactivo { background: #fee2e2; color: #991b1b; }
+        .b-area { background: #e0e7ff; color: #3730a3; }
+
+        .actions { display: flex; gap: 4px; flex-wrap: wrap; }
+
+        .flash {
+            padding: 12px 14px; border-radius: 8px; margin-bottom: 14px;
+            font-weight: 500; display: flex; align-items: center; gap: 8px;
+        }
+        .flash-ok { background: #d1fae5; color: #065f46; border-left: 4px solid var(--success); }
+        .flash-err { background: #fee2e2; color: #991b1b; border-left: 4px solid var(--danger); }
+        .flash-warn { background: #fef3c7; color: #78350f; border-left: 4px solid var(--warning); }
+
+        /* Modal */
+        .modal {
+            display: none; position: fixed; z-index: 1000; left: 0; top: 0;
+            width: 100%; height: 100%; background: rgba(0,0,0,0.5);
+            justify-content: center; align-items: flex-start;
+            overflow-y: auto;
+        }
+        .modal.show { display: flex; }
+        .modal-box {
+            background: white; padding: 24px; border-radius: 12px;
+            width: 90%; max-width: 540px; margin: 50px 0;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+        }
+        .modal-box h3 {
+            margin: 0 0 16px 0; padding-bottom: 12px;
+            border-bottom: 2px solid #e2e8f0; font-size: 1.1rem;
+        }
+        .modal-close {
+            float: right; font-size: 28px; line-height: 1;
+            background: none; border: none; cursor: pointer; color: var(--secondary);
+        }
+        .modal-actions {
+            display: flex; gap: 10px; justify-content: flex-end;
+            margin-top: 20px; padding-top: 16px; border-top: 1px solid #e2e8f0;
+        }
+        .checkbox-row {
+            display: flex; align-items: center; gap: 8px;
+            padding: 10px; background: #f8fafc; border-radius: 6px;
+        }
+        .checkbox-row input { width: auto; }
+
+        .info-text {
+            font-size: 0.78rem; color: var(--secondary);
+            margin-top: 4px;
+        }
+
+        .sin-datos {
+            text-align: center; padding: 30px;
+            color: var(--secondary); font-style: italic;
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+
+    <div class="topbar">
+        <h1><i class="fas fa-users-cog"></i> Gestión de Pañoleros</h1>
+        <a href="/dashboard_admin"><i class="fas fa-arrow-left"></i> Volver al panel</a>
+    </div>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for m in messages %}
+          {% if m.startswith('✅') %}<div class="flash flash-ok"><i class="fas fa-check-circle"></i> {{ m[1:] }}</div>
+          {% elif m.startswith('⚠️') %}<div class="flash flash-warn"><i class="fas fa-exclamation-triangle"></i> {{ m[2:] }}</div>
+          {% else %}<div class="flash flash-err"><i class="fas fa-exclamation-circle"></i> {{ m[1:] if m[0]=='❌' else m }}</div>
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- Crear nuevo pañolero -->
+    <div class="card">
+        <h2><i class="fas fa-user-plus" style="color: var(--success);"></i> Crear nuevo pañolero</h2>
+        <form method="POST" action="/admin/panolero/crear">
+            <div class="form-grid">
+                <div>
+                    <label>Nombre completo *</label>
+                    <input type="text" name="nombre" required placeholder="Ej: Juan Pérez">
+                </div>
+                <div>
+                    <label>Especialidad / Área *</label>
+                    <select name="especialidad_id" required>
+                        <option value="">-- Seleccionar --</option>
+                        {% for esp in especialidades %}
+                            <option value="{{ esp.id }}">{{ esp.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label>Usuario (login) <span style="color: var(--secondary); font-weight: normal;">opcional</span></label>
+                    <input type="text" name="username" placeholder="Auto si vacío">
+                    <div class="info-text">Si lo dejas vacío se genera automático.</div>
+                </div>
+                <div>
+                    <label>Email <span style="color: var(--secondary); font-weight: normal;">opcional</span></label>
+                    <input type="email" name="email" placeholder="auto@colegio.local">
+                </div>
+                <div>
+                    <label>Contraseña inicial *</label>
+                    <input type="password" name="password" required placeholder="••••••••">
+                </div>
+                <div style="display: flex; align-items: flex-end;">
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-user-plus"></i> Crear pañolero
+                    </button>
+                </div>
+            </div>
+        </form>
+        <div class="info-text" style="margin-top: 12px;">
+            💡 Puedes crear varios pañoleros en la misma especialidad.
+            Si no especificas un usuario, el sistema generará uno único como
+            <code>pañolero_electronica</code>, <code>pañolero_electronica_2</code>, etc.
+        </div>
+    </div>
+
+    <!-- Lista de pañoleros -->
+    <div class="card">
+        <h2>
+            <i class="fas fa-list" style="color: var(--primary);"></i>
+            Pañoleros registrados ({{ pañoleros|length }})
+        </h2>
+        {% if pañoleros %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Usuario</th>
+                        <th>Email</th>
+                        <th>Área</th>
+                        <th>Estado</th>
+                        <th>Último acceso</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for p in pañoleros %}
+                <tr>
+                    <td><strong>{{ p.nombre }}</strong></td>
+                    <td><code style="font-size: 0.85rem;">{{ p.username }}</code></td>
+                    <td><span style="font-size: 0.78rem; color: var(--secondary);">{{ p.email or '—' }}</span></td>
+                    <td>
+                        {% if p.especialidad_asignada %}
+                            <span class="badge b-area">{{ p.especialidad_asignada.nombre }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>
+                        {% if p.activo %}
+                            <span class="badge b-activo"><i class="fas fa-check-circle"></i> Activo</span>
+                        {% else %}
+                            <span class="badge b-inactivo"><i class="fas fa-times-circle"></i> Inactivo</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span style="font-size: 0.78rem; color: var(--secondary);">
+                        {% if p.ultimo_login %}{{ p.ultimo_login.strftime('%d/%m/%Y %H:%M') }}{% else %}Nunca{% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="actions">
+                            <button type="button" class="btn btn-info btn-sm" title="Editar"
+                                onclick="editarPanolero({{ p.id }}, {{ p.nombre|tojson }}, {{ p.username|tojson }}, {{ (p.email or '')|tojson }}, {{ p.especialidad_id or 0 }}, {{ p.activo|tojson }})">
+                                <i class="fas fa-pencil-alt"></i>
+                            </button>
+                            <form method="POST" action="/admin/panolero/{{ p.id }}/toggle" style="display: inline;">
+                                <button type="submit" class="btn btn-sm {% if p.activo %}btn-warning{% else %}btn-success{% endif %}"
+                                        title="{% if p.activo %}Desactivar{% else %}Activar{% endif %}"
+                                        onclick="return confirm('¿{% if p.activo %}Desactivar{% else %}Activar{% endif %} a {{ p.nombre }}?')">
+                                    <i class="fas {% if p.activo %}fa-pause{% else %}fa-play{% endif %}"></i>
+                                </button>
+                            </form>
+                            <form method="POST" action="/admin/panolero/{{ p.id }}/resetear-contrasena" style="display: inline;">
+                                <button type="submit" class="btn btn-secondary btn-sm" title="Resetear contraseña a pañol123"
+                                        onclick="return confirm('¿Resetear la contraseña a pañol123?')">
+                                    <i class="fas fa-key"></i>
+                                </button>
+                            </form>
+                            <form method="POST" action="/admin/panolero/{{ p.id }}/eliminar" style="display: inline;">
+                                <button type="submit" class="btn btn-danger btn-sm" title="Eliminar definitivamente"
+                                        onclick="return confirm('⚠️ ¿ELIMINAR a {{ p.nombre }} definitivamente?\n\nEsta acción no se puede deshacer. Si solo quieres bloquear su acceso, usa el botón Desactivar.')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="sin-datos">
+            <i class="fas fa-inbox" style="font-size: 2.5rem; opacity: 0.3;"></i><br>
+            No hay pañoleros registrados aún. Crea el primero con el formulario de arriba.
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+
+<!-- Modal de edición -->
+<div class="modal" id="modalEditar">
+    <div class="modal-box">
+        <button class="modal-close" onclick="cerrarModal()">&times;</button>
+        <h3><i class="fas fa-pencil-alt"></i> Editar pañolero</h3>
+        <form method="POST" id="formEditar">
+            <div style="display: grid; gap: 12px;">
+                <div>
+                    <label><strong>Nombre completo</strong></label>
+                    <input type="text" name="nombre" id="ed_nombre" required>
+                </div>
+                <div>
+                    <label><strong>Usuario (login)</strong></label>
+                    <input type="text" name="username" id="ed_username" required>
+                    <div class="info-text">Cambia con cuidado: el pañolero deberá usar el nuevo usuario para entrar.</div>
+                </div>
+                <div>
+                    <label><strong>Email</strong></label>
+                    <input type="email" name="email" id="ed_email">
+                </div>
+                <div>
+                    <label><strong>Especialidad / Área</strong></label>
+                    <select name="especialidad_id" id="ed_especialidad" required>
+                        {% for esp in especialidades %}
+                            <option value="{{ esp.id }}">{{ esp.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label><strong>Nueva contraseña</strong> <span style="color: var(--secondary); font-weight: normal;">(dejar vacío para mantener)</span></label>
+                    <input type="password" name="password" id="ed_password" placeholder="Sin cambios si va vacío">
+                </div>
+                <div class="checkbox-row">
+                    <input type="checkbox" name="activo" id="ed_activo">
+                    <label for="ed_activo" style="margin: 0; cursor: pointer;">
+                        <strong>Activo</strong> — desmarcar bloquea el login del pañolero
+                    </label>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>
+                <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> Guardar cambios</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function editarPanolero(id, nombre, username, email, espId, activo) {
+    document.getElementById('formEditar').action = '/admin/panolero/' + id + '/editar';
+    document.getElementById('ed_nombre').value = nombre || '';
+    document.getElementById('ed_username').value = username || '';
+    document.getElementById('ed_email').value = email || '';
+    document.getElementById('ed_password').value = '';
+    var sel = document.getElementById('ed_especialidad');
+    if (espId) {
+        for (var i = 0; i < sel.options.length; i++) {
+            if (parseInt(sel.options[i].value) === espId) { sel.selectedIndex = i; break; }
+        }
+    }
+    document.getElementById('ed_activo').checked = !!activo;
+    document.getElementById('modalEditar').classList.add('show');
+}
+
+function cerrarModal() {
+    document.getElementById('modalEditar').classList.remove('show');
+}
+
+// Cerrar al hacer click fuera del modal-box
+document.getElementById('modalEditar').addEventListener('click', function(e) {
+    if (e.target === this) cerrarModal();
+});
+
+// Cerrar con Escape
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') cerrarModal();
+});
+</script>
+</body>
+</html>

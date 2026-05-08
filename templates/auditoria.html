@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auditoría del Sistema - Pañol ERP</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary: #2563eb; --secondary: #64748b; --success: #22c55e;
+            --danger: #ef4444; --warning: #f59e0b; --dark: #0f172a;
+            --light: #f8fafc;
+        }
+
+        body { font-family: 'Inter', sans-serif; margin: 0; padding: 10px; background: #e2e8f0; color: var(--dark); }
+        .container { max-width: 1200px; margin: auto; }
+
+        .header {
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--dark); padding: 15px; border-radius: 8px; color: white;
+            margin-bottom: 15px;
+        }
+        .header h1 { margin: 0; font-size: 1.4rem; }
+        .btn-back { background: var(--primary); color: white; padding: 8px 15px; border-radius: 4px; text-decoration: none; font-weight: bold; }
+        .btn-back:hover { background: #1d4ed8; }
+
+        .card { background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+
+        /* Filtros */
+        .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 15px; }
+        input, select { padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; box-sizing: border-box; font-family: inherit; }
+
+        /* Tabla de auditoría */
+        .table-responsive { width: 100%; overflow-x: auto; border: 1px solid #eee; border-radius: 6px; }
+        table { width: 100%; border-collapse: collapse; min-width: 700px; }
+        th, td { padding: 12px; border-bottom: 1px solid #eee; text-align: left; font-size: 0.9rem; }
+        th { background: #f8fafc; font-weight: bold; color: var(--secondary); text-transform: uppercase; }
+        tr:hover { background: #f8fafc; }
+
+        /* Badges */
+        .badge { padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; }
+        .badge-crear { background: #d1fae5; color: #065f46; }
+        .badge-actualizar { background: #dbeafe; color: #0c4a6e; }
+        .badge-eliminar { background: #fee2e2; color: #7f1d1d; }
+        .badge-prestamo { background: #fef3c7; color: #78350f; }
+
+        .action-cell { display: flex; gap: 5px; flex-wrap: wrap; }
+        .btn-small { padding: 4px 8px; border-radius: 4px; border: none; cursor: pointer; font-size: 0.75rem; }
+        .btn-info { background: var(--primary); color: white; }
+
+        /* Modal */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { background: white; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
+        .modal-close { float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .modal-close:hover { color: var(--danger); }
+
+        .diff-box { background: #f8fafc; padding: 10px; border-radius: 6px; margin: 10px 0; font-family: monospace; font-size: 0.85rem; }
+        .diff-old { background: #fee2e2; padding: 8px; border-left: 4px solid var(--danger); }
+        .diff-new { background: #d1fae5; padding: 8px; border-left: 4px solid var(--success); }
+
+        .stats-audit { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 15px; }
+        .stat-box { background: white; padding: 15px; border-radius: 8px; text-align: center; border-left: 4px solid var(--primary); }
+        .stat-box h3 { margin: 0 0 5px 0; color: var(--secondary); font-size: 0.8rem; text-transform: uppercase; }
+        .stat-box .value { font-size: 1.8rem; font-weight: bold; color: var(--primary); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1><i class="fas fa-history"></i> Auditoría del Sistema</h1>
+        <a href="/inventario" class="btn-back"><i class="fas fa-arrow-left"></i> Volver</a>
+    </div>
+
+    <!-- Filtros (server-side) -->
+    <div class="card">
+        <h3>🔍 Filtros (al servidor)</h3>
+        <form action="/auditoria" method="GET" class="filters">
+            <input type="text" name="usuario" value="{{ f_user or '' }}" placeholder="🔎 Usuario...">
+            <input type="text" name="accion" value="{{ f_accion or '' }}" placeholder="🔎 Acción (crear, actualizar, eliminar)...">
+            {% if es_admin %}
+            <select name="especialidad_id">
+                <option value="">-- Todas las áreas --</option>
+                {% for e in especialidades %}
+                <option value="{{ e.id }}" {% if f_esp == e.id %}selected{% endif %}>{{ e.nombre }}</option>
+                {% endfor %}
+            </select>
+            {% endif %}
+            <input type="datetime-local" name="desde" value="{{ f_desde or '' }}" title="Desde">
+            <input type="datetime-local" name="hasta" value="{{ f_hasta or '' }}" title="Hasta">
+            <button type="submit" style="background: #2563eb; color: white; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                <i class="fas fa-filter"></i> Aplicar
+            </button>
+            <a href="/auditoria" style="background: #64748b; color: white; padding: 8px; border-radius: 6px; text-align: center; text-decoration: none; font-weight: 600;">
+                <i class="fas fa-times"></i> Limpiar
+            </a>
+        </form>
+        <div class="filters" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0;">
+            <span style="font-size: 0.8rem; color: #64748b; align-self: center;">Refinar en pantalla:</span>
+            <input type="text" id="filtroUsuario" placeholder="🔎 Filtrar usuario..." onkeyup="filtrarTabla()">
+            <input type="text" id="filtroAccion" placeholder="🔎 Filtrar acción..." onkeyup="filtrarTabla()">
+            <select id="filtroTabla" onchange="filtrarTabla()">
+                <option value="">-- Todas las tablas --</option>
+                <option value="Item">Item</option>
+                <option value="Prestamo">Préstamo</option>
+                <option value="PrestamoExterno">Préstamo Externo</option>
+                <option value="Usuario">Usuario</option>
+                <option value="Estudiante">Estudiante</option>
+                <option value="OrdenTrabajo">Orden Trabajo</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Stats de auditoría -->
+    <div class="stats-audit">
+        <div class="stat-box">
+            <h3>📝 Registros Totales</h3>
+            <div class="value">{{ logs | length }}</div>
+        </div>
+        <div class="stat-box" style="border-left-color: var(--success);">
+            <h3>✅ Creaciones</h3>
+            <div class="value" style="color: var(--success);">
+                {{ logs | selectattr('accion', 'equalto', 'crear') | list | length }}
+            </div>
+        </div>
+        <div class="stat-box" style="border-left-color: var(--warning);">
+            <h3>📝 Actualizaciones</h3>
+            <div class="value" style="color: var(--warning);">
+                {{ logs | selectattr('accion', 'equalto', 'actualizar') | list | length }}
+            </div>
+        </div>
+        <div class="stat-box" style="border-left-color: var(--danger);">
+            <h3>🗑️ Eliminaciones</h3>
+            <div class="value" style="color: var(--danger);">
+                {{ logs | selectattr('accion', 'equalto', 'eliminar') | list | length }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de auditoría -->
+    <div class="card">
+        <h3>📋 Historial de Cambios</h3>
+        <div class="table-responsive">
+            <table id="tablaAuditoria">
+                <thead>
+                    <tr>
+                        <th>Fecha/Hora</th>
+                        <th>Usuario</th>
+                        <th>Acción</th>
+                        <th>Tabla</th>
+                        <th>ID</th>
+                        <th>IP Address</th>
+                        <th>Detalles</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr class="fila-auditoria"
+                        data-usuario="{{ log.usuario.nombre if log.usuario else 'Sistema' }}"
+                        data-accion="{{ log.accion }}"
+                        data-tabla="{{ log.tabla }}"
+                        data-fecha="{{ log.fecha.strftime('%Y-%m-%d') }}">
+                        <td>
+                            <span style="font-size: 0.8rem; color: var(--secondary);">
+                                {{ log.fecha.strftime('%d/%m/%Y %H:%M:%S') }}
+                            </span>
+                        </td>
+                        <td>
+                            <strong>{{ log.usuario.nombre if log.usuario else 'Sistema' }}</strong><br>
+                            <span style="font-size: 0.8rem; color: var(--secondary);">{{ log.usuario.rol if log.usuario else 'N/A' }}</span>
+                        </td>
+                        <td>
+                            {% if log.accion == 'crear' %}
+                                <span class="badge badge-crear"><i class="fas fa-plus"></i> Crear</span>
+                            {% elif log.accion == 'actualizar' %}
+                                <span class="badge badge-actualizar"><i class="fas fa-pencil-alt"></i> Actualizar</span>
+                            {% elif log.accion == 'eliminar' %}
+                                <span class="badge badge-eliminar"><i class="fas fa-trash"></i> Eliminar</span>
+                            {% elif log.accion == 'préstamo' %}
+                                <span class="badge badge-prestamo"><i class="fas fa-hand-holding"></i> Préstamo</span>
+                            {% else %}
+                                <span class="badge" style="background: #e5e7eb; color: #374151;">{{ log.accion }}</span>
+                            {% endif %}
+                        </td>
+                        <td><strong>{{ log.tabla }}</strong></td>
+                        <td><span style="font-family: monospace; background: #eee; padding: 2px 6px; border-radius: 3px;">#{{ log.registro_id }}</span></td>
+                        <td style="font-size: 0.8rem; color: var(--secondary);">{{ log.ip_address }}</td>
+                        <td>
+                            <button class="btn-small btn-info" onclick="abrirDetalles({{ log.id }})">
+                                <i class="fas fa-eye"></i> Ver
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal de detalles -->
+    <div id="modalDetalles" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="cerrarDetalles()">&times;</span>
+            <h2>📊 Detalles del Cambio</h2>
+
+            <div style="margin: 20px 0;">
+                <h4>Valores Anteriores:</h4>
+                <div id="valoresAnteriores" class="diff-box"></div>
+
+                <h4>Valores Nuevos:</h4>
+                <div id="valoresNuevos" class="diff-box"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function filtrarTabla() {
+        const usuario = document.getElementById('filtroUsuario').value.toLowerCase();
+        const accion = document.getElementById('filtroAccion').value.toLowerCase();
+        const tabla = document.getElementById('filtroTabla').value.toLowerCase();
+        const fecha = document.getElementById('filtroFecha').value;
+
+        document.querySelectorAll('.fila-auditoria').forEach(fila => {
+            const matchUsuario = fila.getAttribute('data-usuario').toLowerCase().includes(usuario);
+            const matchAccion = fila.getAttribute('data-accion').toLowerCase().includes(accion);
+            const matchTabla = tabla === '' || fila.getAttribute('data-tabla').toLowerCase().includes(tabla);
+            const matchFecha = fecha === '' || fila.getAttribute('data-fecha').includes(fecha);
+
+            fila.style.display = (matchUsuario && matchAccion && matchTabla && matchFecha) ? '' : 'none';
+        });
+    }
+
+    function abrirDetalles(logId) {
+        // Aquí iría una petición AJAX para obtener los detalles
+        document.getElementById('modalDetalles').style.display = 'block';
+    }
+
+    function cerrarDetalles() {
+        document.getElementById('modalDetalles').style.display = 'none';
+    }
+
+    window.onclick = function(event) {
+        const modal = document.getElementById('modalDetalles');
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    }
+</script>
+
+</body>
+</html>

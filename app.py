@@ -1,0 +1,1968 @@
+from flask import Flask, request, session, redirect, url_for, flash, render_template, send_file, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
+from datetime import datetime, timedelta
+import json
+import pandas as pd
+import io
+import os
+
+app = Flask(__name__)
+
+# ============================================================
+# CONFIGURACIÓN — soporta tres modos de despliegue:
+#   1. Local desarrollo:   SQLite en instance/inventario.db
+#   2. Nodo en red local:  SQLite local + sincronización a un admin
+#   3. Cloud (Render/Railway/etc): PostgreSQL via DATABASE_URL
+# ============================================================
+
+app.secret_key = os.getenv('PANOL_SECRET_KEY', 'llave_super_secreta_enterprise_v5_multiespecialidad')
+
+# Carpeta instance para SQLite local
+db_folder = os.path.join(os.path.dirname(__file__), 'instance')
+os.makedirs(db_folder, exist_ok=True)
+
+# Identificación del nodo
+NODO_ID = os.getenv('PANOL_NODO', 'local')
+PANOL_ADMIN_URL = os.getenv('PANOL_ADMIN_URL', '').rstrip('/')
+ES_ADMIN_CENTRAL = (PANOL_ADMIN_URL == '')
+PANOL_SYNC_TOKEN = os.getenv('PANOL_SYNC_TOKEN', 'CAMBIAR_ESTE_TOKEN_PRODUCCION')
+
+# === Conexión a la base de datos ===
+DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
+if DATABASE_URL:
+    # Render entrega URLs como "postgres://..." pero SQLAlchemy 2.x exige "postgresql://"
+    if DATABASE_URL.startswith('postgres://'):
+        DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+    USANDO_POSTGRES = DATABASE_URL.startswith('postgresql')
+    print(f"[DB] Usando {'PostgreSQL' if USANDO_POSTGRES else 'externa'}: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL}")
+else:
+    # Fallback: SQLite local
+    DB_PATH = os.getenv('PANOL_DB_PATH', os.path.join(db_folder, 'inventario.db'))
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DB_PATH}'
+    USANDO_POSTGRES = False
+    print(f"[DB] Usando SQLite local: {DB_PATH}")
+
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,        # detecta conexiones muertas (importante en cloud)
+    'pool_recycle': 280,          # recicla conexiones cada ~5 min
+}
+
+# === Seguridad de cookies (importante en cloud) ===
+EN_PRODUCCION = os.getenv('FLASK_ENV', '').lower() == 'production' or USANDO_POSTGRES
+app.config['SESSION_COOKIE_HTTPONLY'] = True       # cookies no accesibles desde JS
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'      # mitiga CSRF cross-site
+app.config['SESSION_COOKIE_SECURE'] = EN_PRODUCCION  # solo HTTPS en producción
+app.config['PERMANENT_SESSION_LIFETIME'] = 60 * 60 * 8  # 8 horas
+
+# === HTTPS forzado + headers de seguridad (Talisman, opcional) ===
+if EN_PRODUCCION and os.getenv('FORCE_HTTPS', 'true').lower() != 'false':
+    try:
+        from flask_talisman import Talisman
+        Talisman(app,
+                 force_https=True,
+                 strict_transport_security=True,
+                 session_cookie_secure=True,
+                 content_security_policy={
+                     'default-src': ["'self'"],
+                     'script-src': ["'self'", "'unsafe-inline'",
+                                    'cdn.jsdelivr.net', 'cdnjs.cloudflare.com'],
+                     'style-src': ["'self'", "'unsafe-inline'",
+                                   'cdnjs.cloudflare.com', 'fonts.googleapis.com'],
+                     'font-src': ["'self'", 'cdnjs.cloudflare.com', 'fonts.gstatic.com'],
+                     'img-src': ["'self'", 'data:', 'https:'],
+                 })
+        print("[SEC] Talisman activo: HTTPS forzado + CSP")
+    except ImportError:
+        print("[SEC] Flask-Talisman no instalado, saltando endurecimiento HTTPS")
+
+# === Rate limiting en login (anti brute-force, opcional) ===
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    limiter = Limiter(get_remote_address, app=app,
+                      default_limits=["500 per hour"],
+                      storage_uri="memory://")
+    print("[SEC] Rate limiter activo")
+except ImportError:
+    limiter = None
+    print("[SEC] Flask-Limiter no instalado, saltando rate limiting")
+
+db = SQLAlchemy(app)
+
+# ========== TABLAS DE BASE DE DATOS (PanolERP fase 2) ==========
+
+class Especialidad(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(100), unique=True, nullable=False)
+    descripcion = db.Column(db.Text)
+    color = db.Column(db.String(7), default="#2563eb")
+    activa = db.Column(db.Boolean, default=True)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    usuarios = db.relationship('Usuario', backref='especialidad_asignada', lazy=True)
+    items = db.relationship('Item', backref='especialidad', lazy=True)
+
+class Usuario(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(100), nullable=False)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    email = db.Column(db.String(100), unique=True, nullable=True)
+    password_hash = db.Column(db.String(200), nullable=False)
+    rol = db.Column(db.String(50), default='Pañolero')
+    especialidad_id = db.Column(db.Integer, db.ForeignKey('especialidad.id'), nullable=True)
+    activo = db.Column(db.Boolean, default=True)
+    ultimo_login = db.Column(db.DateTime, nullable=True)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    alertas_stock = db.relationship('AlertaStock', backref='usuario', lazy=True)
+
+class Estudiante(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    rut_matricula = db.Column(db.String(50), unique=True, nullable=False)
+    nombre = db.Column(db.String(100), nullable=False)
+    curso = db.Column(db.String(50))
+    especialidad_id = db.Column(db.Integer, db.ForeignKey('especialidad.id'), nullable=False)
+    password_hash = db.Column(db.String(200), nullable=False)
+    activo = db.Column(db.Boolean, default=True)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    especialidad = db.relationship('Especialidad', backref='estudiantes', lazy=True)
+    @property
+    def tiene_deudas(self):
+        return Prestamo.query.filter_by(estudiante_id=self.id, estado='Pendiente').count() > 0
+
+class Item(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    codigo_barras = db.Column(db.String(100), unique=True, nullable=True)
+    nombre = db.Column(db.String(100), nullable=False)
+    descripcion = db.Column(db.Text, nullable=True)
+    especialidad_id = db.Column(db.Integer, db.ForeignKey('especialidad.id'), nullable=False)
+    categoria = db.Column(db.String(50))
+    cantidad_total = db.Column(db.Integer, default=0)
+    cantidad_disponible = db.Column(db.Integer, default=0)
+    cantidad_mermada = db.Column(db.Integer, default=0)
+    cantidad_minima = db.Column(db.Integer, default=5)
+    imagen_url = db.Column(db.String(500), default="")
+    ubicacion = db.Column(db.String(200), default="Sin especificar")
+    precio_unitario = db.Column(db.Float, default=0.0)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha_ultima_modificacion = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # Campos específicos Biblioteca (nullable, solo se llenan en items bibliográficos)
+    autor = db.Column(db.String(200), nullable=True)
+    isbn = db.Column(db.String(50), nullable=True, index=True)
+    editorial = db.Column(db.String(200), nullable=True)
+    anio_publicacion = db.Column(db.Integer, nullable=True)
+
+class Prestamo(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
+    estudiante_id = db.Column(db.Integer, db.ForeignKey('estudiante.id'), nullable=False)
+    profesor_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=True)
+    encargado = db.Column(db.String(100))
+    cantidad = db.Column(db.Integer)
+    cantidad_solicitada = db.Column(db.Integer, default=0)
+    cantidad_mermada = db.Column(db.Integer, default=0)
+    nombre_practica = db.Column(db.String(200), nullable=True)
+    fecha_prestamo = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha_devolucion = db.Column(db.DateTime, nullable=True)
+    estado = db.Column(db.String(20), default='Pendiente')
+    item = db.relationship('Item', backref='prestamos_historial', lazy=True)
+    estudiante = db.relationship('Estudiante', backref='historial_solicitudes', lazy=True)
+    profesor = db.relationship('Usuario', backref='prestamos_supervisados', lazy=True)
+    # Campos específicos Biblioteca / préstamos con plazo
+    fecha_devolucion_esperada = db.Column(db.DateTime, nullable=True)
+    multa = db.Column(db.Float, default=0.0)
+
+    @property
+    def dias_atraso(self):
+        if not self.fecha_devolucion_esperada or self.estado == 'Devuelto':
+            return 0
+        diff = (datetime.utcnow() - self.fecha_devolucion_esperada).days
+        return max(0, diff)
+
+class Auditoria(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=True)
+    especialidad_id = db.Column(db.Integer, db.ForeignKey('especialidad.id'), nullable=False)
+    accion = db.Column(db.String(100))
+    tabla = db.Column(db.String(50))
+    registro_id = db.Column(db.Integer)
+    valores_anteriores = db.Column(db.Text)
+    valores_nuevos = db.Column(db.Text)
+    fecha = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    ip_address = db.Column(db.String(50))
+    usuario = db.relationship('Usuario', backref='auditorias', lazy=True)
+    especialidad = db.relationship('Especialidad', backref='auditorias', lazy=True)
+
+class AlertaStock(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
+    cantidad_minima = db.Column(db.Integer, default=5)
+    cantidad_actual = db.Column(db.Integer)
+    activa = db.Column(db.Boolean, default=True)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha_ultima_alerta = db.Column(db.DateTime, nullable=True)
+    item = db.relationship('Item', backref='alertas', lazy=True)
+
+class OrdenTrabajo(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    titulo = db.Column(db.String(200), nullable=False)
+    descripcion = db.Column(db.Text, nullable=True)
+    especialidad_id = db.Column(db.Integer, db.ForeignKey('especialidad.id'), nullable=False)
+    profesional_cargo = db.Column(db.String(100), nullable=False)
+    alumnos_cargo = db.Column(db.String(200), nullable=True)
+    herramientas_utilizadas = db.Column(db.Text, nullable=True)
+    repuestos_utilizados = db.Column(db.Text, nullable=True)
+    profesor_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    estado = db.Column(db.String(50), default='Pendiente')
+    especialidad = db.relationship('Especialidad', backref='ordenes_trabajo', lazy=True)
+    profesor = db.relationship('Usuario', backref='ordenes_trabajo', lazy=True)
+
+class ConfiguracionSistema(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    clave = db.Column(db.String(100), unique=True, nullable=False)
+    valor = db.Column(db.Text)
+    tipo = db.Column(db.String(20))
+    descripcion = db.Column(db.Text)
+    fecha_actualizacion = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class PrestamoExterno(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
+    especialidad_id = db.Column(db.Integer, db.ForeignKey('especialidad.id'), nullable=False)
+    cantidad = db.Column(db.Integer, nullable=False, default=1)
+    es_alumno = db.Column(db.Boolean, default=False)
+    persona_retira = db.Column(db.String(200), nullable=False)
+    profesor_cargo = db.Column(db.String(200), nullable=True)
+    especialidad_destino = db.Column(db.String(100), nullable=True)
+    encargado = db.Column(db.String(100))
+    fecha_prestamo = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha_devolucion = db.Column(db.DateTime, nullable=True)
+    estado = db.Column(db.String(20), default='Activo')
+    # 'prestamo' (se devuelve) o 'consumo' (descuenta del total, sin devolución; oficina)
+    tipo_movimiento = db.Column(db.String(20), default='prestamo')
+    item = db.relationship('Item', backref='prestamos_externos', lazy=True)
+    especialidad = db.relationship('Especialidad', backref='prestamos_externos', lazy=True)
+
+# 11. SYNC LOG (registro de cambios para sincronización entre nodos y admin central)
+class SyncLog(db.Model):
+    __tablename__ = 'sync_log'
+    id = db.Column(db.Integer, primary_key=True)
+    nodo_origen = db.Column(db.String(80), nullable=False, index=True)   # quién originó el cambio
+    tabla = db.Column(db.String(50), nullable=False)                      # ej. 'item', 'prestamo'
+    registro_id_local = db.Column(db.Integer, nullable=False)             # id en la BD local del nodo
+    accion = db.Column(db.String(20), nullable=False)                     # 'crear', 'actualizar', 'eliminar'
+    payload = db.Column(db.Text)                                          # JSON con el snapshot del registro
+    fecha = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    push_status = db.Column(db.String(20), default='pendiente')           # 'pendiente', 'enviado', 'error'
+    push_intentos = db.Column(db.Integer, default=0)
+    push_error = db.Column(db.Text, nullable=True)
+    sync_uuid = db.Column(db.String(64), unique=True, index=True)         # idempotencia
+
+# ========== INICIALIZACIÓN DE BD ==========
+
+def crear_especialidades_por_defecto():
+    especialidades = [
+        {'nombre': 'Electrónica', 'color': '#FF6B6B'},
+        {'nombre': 'Mecánica Automotriz', 'color': '#4ECDC4'},
+        {'nombre': 'Mecánica Industrial', 'color': '#45B7D1'},
+        {'nombre': 'Electricidad', 'color': '#FFA07A'},
+        {'nombre': 'Gráfica', 'color': '#98D8C8'},
+        {'nombre': 'ACLE', 'color': '#A78BFA',
+         'descripcion': 'Actividades Curriculares de Libre Elección'},
+        {'nombre': 'Oficina', 'color': '#F59E0B',
+         'descripcion': 'Implementos y consumibles de oficina administrativa'},
+        {'nombre': 'Biblioteca', 'color': '#10B981',
+         'descripcion': 'Libros, recursos pedagógicos y material bibliográfico'},
+    ]
+    for esp_data in especialidades:
+        if not Especialidad.query.filter_by(nombre=esp_data['nombre']).first():
+            db.session.add(Especialidad(
+                nombre=esp_data['nombre'],
+                color=esp_data['color'],
+                descripcion=esp_data.get('descripcion', '')
+            ))
+    db.session.commit()
+
+def crear_admin_central():
+    if not Usuario.query.filter_by(username='admin_central').first():
+        db.session.add(Usuario(
+            nombre="Administrador Central", username="admin_central",
+            password_hash=generate_password_hash("admin123"),
+            rol="Admin", email="admin@colegio.local", especialidad_id=None
+        ))
+        db.session.commit()
+
+def crear_pañoleros_por_especialidad():
+    import unicodedata
+    for esp in Especialidad.query.all():
+        nombre_norm = ''.join(c for c in unicodedata.normalize('NFD', esp.nombre)
+                              if unicodedata.category(c) != 'Mn').lower().replace(' ', '_')
+        username = f"pañolero_{nombre_norm}"
+        email = f"pañolero.{nombre_norm}@colegio.local"
+        existe = Usuario.query.filter(
+            (Usuario.username == username) | (Usuario.email == email) |
+            ((Usuario.rol == 'Pañolero') & (Usuario.especialidad_id == esp.id))
+        ).first()
+        if not existe:
+            db.session.add(Usuario(
+                nombre=f"Pañolero {esp.nombre}", username=username,
+                password_hash=generate_password_hash("pañol123"),
+                rol="Pañolero", email=email, especialidad_id=esp.id
+            ))
+    db.session.commit()
+
+with app.app_context():
+    db.create_all()
+    crear_especialidades_por_defecto()
+    crear_admin_central()
+    crear_pañoleros_por_especialidad()
+    print("✅ BD inicializada correctamente")
+    print(f"✅ {Especialidad.query.count()} especialidades disponibles")
+    print("✅ Admin central creado")
+    print(f"✅ {Usuario.query.filter_by(rol='Pañolero').count()} pañoleros creados")
+
+
+# ========================================================================
+# SYNC: helpers para registrar cambios locales y consultarlos
+# ========================================================================
+
+import uuid as _uuid_mod
+
+# Tablas que se sincronizan al admin central (la auditoría se conserva en cada nodo + admin)
+TABLAS_SYNC = ('item', 'estudiante', 'prestamo', 'prestamo_externo',
+               'orden_trabajo', 'usuario')
+
+
+def _serializar_registro(obj):
+    """Convierte un modelo SQLAlchemy a dict JSON-friendly. Solo columnas básicas."""
+    if obj is None:
+        return None
+    out = {}
+    for col in obj.__table__.columns:
+        val = getattr(obj, col.name, None)
+        if isinstance(val, datetime):
+            out[col.name] = val.isoformat()
+        else:
+            out[col.name] = val
+    return out
+
+
+def registrar_cambio_sync(tabla, registro_id_local, accion, obj=None):
+    """Registra un cambio local en SyncLog, listo para ser empujado al admin central.
+
+    - Si este PC ES el admin central, no se registra (no necesita empujarse a sí mismo).
+    - Si es un nodo cliente, se persiste un SyncLog con payload=snapshot del objeto.
+    """
+    if ES_ADMIN_CENTRAL:
+        return  # el admin no se sincroniza consigo mismo
+    if tabla not in TABLAS_SYNC:
+        return
+    payload = json.dumps(_serializar_registro(obj)) if obj else None
+    entry = SyncLog(
+        nodo_origen=NODO_ID,
+        tabla=tabla,
+        registro_id_local=registro_id_local,
+        accion=accion,
+        payload=payload,
+        push_status='pendiente',
+        sync_uuid=_uuid_mod.uuid4().hex,
+    )
+    db.session.add(entry)
+    db.session.commit()
+
+
+def _ack_sync_uuids(uuids_ok, uuids_error_map):
+    """Marca SyncLogs como enviados/error después de un push. Solo en el nodo cliente."""
+    if not uuids_ok and not uuids_error_map:
+        return
+    for uid in uuids_ok:
+        log = SyncLog.query.filter_by(sync_uuid=uid).first()
+        if log:
+            log.push_status = 'enviado'
+            log.push_intentos = (log.push_intentos or 0) + 1
+            log.push_error = None
+    for uid, err in uuids_error_map.items():
+        log = SyncLog.query.filter_by(sync_uuid=uid).first()
+        if log:
+            log.push_status = 'error'
+            log.push_intentos = (log.push_intentos or 0) + 1
+            log.push_error = (err or '')[:500]
+    db.session.commit()
+
+# ========== DECORADORES ==========
+
+def registrar_auditoria(accion, tabla, registro_id, valores_anteriores=None, valores_nuevos=None, especialidad_id=None):
+    usuario_id = session.get('usuario_id')
+    if especialidad_id is None and 'usuario_especialidad_id' in session:
+        especialidad_id = session['usuario_especialidad_id']
+    db.session.add(Auditoria(
+        usuario_id=usuario_id, especialidad_id=especialidad_id,
+        accion=accion, tabla=tabla, registro_id=registro_id,
+        valores_anteriores=json.dumps(valores_anteriores) if valores_anteriores else None,
+        valores_nuevos=json.dumps(valores_nuevos) if valores_nuevos else None,
+        ip_address=request.remote_addr
+    ))
+    db.session.commit()
+
+def login_requerido(f):
+    @wraps(f)
+    def w(*a, **kw):
+        if 'usuario_id' not in session:
+            flash("Debes iniciar sesión.")
+            return redirect(url_for('login'))
+        return f(*a, **kw)
+    return w
+
+def admin_requerido(f):
+    @wraps(f)
+    def w(*a, **kw):
+        if session.get('usuario_rol') != 'Admin':
+            flash("❌ Acceso denegado. Requiere Administrador.")
+            return redirect(url_for('ver_inventario'))
+        return f(*a, **kw)
+    return w
+
+def pañolero_o_admin(f):
+    @wraps(f)
+    def w(*a, **kw):
+        if session.get('usuario_rol') not in ['Admin', 'Pañolero', 'Profesor']:
+            flash("❌ Acceso denegado.")
+            return redirect(url_for('ver_inventario'))
+        return f(*a, **kw)
+    return w
+
+# ========== RUTAS BASICAS ==========
+
+@app.route('/')
+def index():
+    if 'usuario_id' in session:
+        if session.get('usuario_rol') == 'Admin':
+            return redirect(url_for('dashboard_admin'))
+        return redirect(url_for('ver_inventario'))
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        usuario = Usuario.query.filter_by(username=username).first()
+        if usuario and usuario.activo and check_password_hash(usuario.password_hash, password):
+            session['usuario_id'] = usuario.id
+            session['usuario_nombre'] = usuario.nombre
+            session['usuario_rol'] = usuario.rol
+            session['usuario_email'] = usuario.email
+            if usuario.especialidad_id:
+                session['usuario_especialidad_id'] = usuario.especialidad_id
+                session['usuario_especialidad'] = usuario.especialidad_asignada.nombre
+            usuario.ultimo_login = datetime.utcnow()
+            db.session.commit()
+            flash(f"✅ Bienvenido {usuario.nombre}")
+            return redirect(url_for('index'))
+        estudiante = Estudiante.query.filter_by(rut_matricula=username).first()
+        if estudiante and estudiante.activo and check_password_hash(estudiante.password_hash, password):
+            session['usuario_id'] = estudiante.id
+            session['usuario_nombre'] = estudiante.nombre
+            session['usuario_rol'] = 'Estudiante'
+            session['usuario_especialidad_id'] = estudiante.especialidad_id
+            session['usuario_especialidad'] = estudiante.especialidad.nombre
+            flash(f"✅ Bienvenido {estudiante.nombre}")
+            return redirect(url_for('ver_inventario'))
+        flash("❌ Credenciales incorrectas.")
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash("✅ Sesión cerrada.")
+    return redirect(url_for('login'))
+
+@app.route('/dashboard_admin')
+@login_requerido
+@admin_requerido
+def dashboard_admin():
+    # Al volver al panel, limpiamos cualquier área temporal que quedó del último ingreso
+    session.pop('usuario_especialidad_id', None)
+    session.pop('usuario_especialidad', None)
+    session.pop('admin_viendo_especialidad', None)
+
+    especialidades = Especialidad.query.filter_by(activa=True).all()
+    total_items = Item.query.count()
+    total_stock = sum(i.cantidad_total for i in Item.query.all())
+    total_estudiantes = Estudiante.query.count()
+    prestamos_activos = Prestamo.query.filter_by(estado='Pendiente').count()
+    stats_por_especialidad = []
+    for esp in especialidades:
+        items_esp = Item.query.filter_by(especialidad_id=esp.id).all()
+        prest_esp = Prestamo.query.join(Item).filter(
+            Item.especialidad_id == esp.id, Prestamo.estado == 'Pendiente'
+        ).count()
+        stats_por_especialidad.append({
+            'id': esp.id,
+            'especialidad': esp.nombre,
+            'color': esp.color or '#2563eb',
+            'items_totales': len(items_esp),
+            'stock_total': sum(i.cantidad_total for i in items_esp),
+            'estudiantes': Estudiante.query.filter_by(especialidad_id=esp.id, activo=True).count(),
+            'prestamos_activos': prest_esp,
+        })
+    return render_template('dashboard_admin.html',
+                           especialidades=especialidades,
+                           total_items=total_items, total_stock=total_stock,
+                           total_estudiantes=total_estudiantes,
+                           prestamos_activos=prestamos_activos,
+                           stats_por_especialidad=stats_por_especialidad)
+
+def _calcular_practicas_resumen(especialidad_id):
+    practicas = {}
+    qs = Prestamo.query.join(Item).filter(
+        Item.especialidad_id == especialidad_id,
+        Prestamo.nombre_practica.isnot(None),
+        Prestamo.nombre_practica != ''
+    ).all()
+    for p in qs:
+        n = p.nombre_practica
+        if n not in practicas:
+            practicas[n] = {'nombre_practica': n, 'fecha': p.fecha_prestamo,
+                            'herr_detalles': [], 'mat_detalles': [],
+                            'comp_detalles': [], 'fung_detalles': []}
+        cat = (p.item.categoria or '').lower()
+        linea = f"{p.item.nombre} x{p.cantidad}"
+        if 'herr' in cat: practicas[n]['herr_detalles'].append(linea)
+        elif 'mat' in cat: practicas[n]['mat_detalles'].append(linea)
+        elif 'comp' in cat: practicas[n]['comp_detalles'].append(linea)
+        else: practicas[n]['fung_detalles'].append(linea)
+    return sorted(practicas.values(), key=lambda x: x['fecha'], reverse=True)
+
+@app.route('/inventario')
+@login_requerido
+def ver_inventario():
+    rol = session.get('usuario_rol')
+    if rol == 'Admin':
+        # Admin puede pasar ?especialidad_id=X para ver inventario de un área
+        esp_query = request.args.get('especialidad_id', type=int)
+        if not esp_query:
+            return redirect(url_for('dashboard_admin'))
+        esp_obj = Especialidad.query.get(esp_query)
+        if not esp_obj:
+            flash("❌ Especialidad no encontrada.")
+            return redirect(url_for('dashboard_admin'))
+        especialidad_id = esp_query
+        # Setear sesión temporal para que los POSTs (agregar, prestar, etc.) sepan el área
+        session['admin_viendo_especialidad'] = esp_obj.nombre
+        session['usuario_especialidad_id'] = esp_query
+        session['usuario_especialidad'] = esp_obj.nombre
+    else:
+        especialidad_id = session.get('usuario_especialidad_id')
+    items = Item.query.filter_by(especialidad_id=especialidad_id) \
+        .order_by(Item.categoria.asc(), Item.nombre.asc()).all()
+    estudiantes = Estudiante.query.filter_by(especialidad_id=especialidad_id, activo=True).all()
+    prestamos = Prestamo.query.join(Item).filter(
+        Item.especialidad_id == especialidad_id
+    ).order_by(Prestamo.fecha_prestamo.desc()).limit(50).all()
+    prestamos_externos = PrestamoExterno.query.filter_by(
+        especialidad_id=especialidad_id
+    ).order_by(PrestamoExterno.fecha_prestamo.desc()).limit(50).all()
+    ordenes_trabajo = OrdenTrabajo.query.filter_by(
+        especialidad_id=especialidad_id
+    ).order_by(OrdenTrabajo.fecha_creacion.desc()).limit(50).all()
+    profesores = Usuario.query.filter(
+        Usuario.rol.in_(['Profesor', 'Pañolero', 'Admin']),
+        Usuario.activo == True
+    ).all()
+    usuarios_sistema = Usuario.query.filter(
+        (Usuario.especialidad_id == especialidad_id) | (Usuario.rol == 'Admin')
+    ).all()
+    practicas_resumen = _calcular_practicas_resumen(especialidad_id)
+    alertas = AlertaStock.query.filter_by(usuario_id=session.get('usuario_id'), activa=True).all()
+    total_stock = sum(i.cantidad_total for i in items)
+    prestamos_activos = Prestamo.query.join(Item).filter(
+        Item.especialidad_id == especialidad_id, Prestamo.estado == 'Pendiente'
+    ).count()
+    return render_template('inventario.html',
+                           items=items, estudiantes=estudiantes, prestamos=prestamos,
+                           prestamos_externos=prestamos_externos,
+                           ordenes_trabajo=ordenes_trabajo, profesores=profesores,
+                           usuarios_sistema=usuarios_sistema,
+                           practicas_resumen=practicas_resumen,
+                           total_stock=total_stock,
+                           prestamos_activos=prestamos_activos,
+                           alertas=alertas,
+                           especialidad=(session.get('admin_viendo_especialidad')
+                                          if session.get('usuario_rol') == 'Admin'
+                                          else session.get('usuario_especialidad')))
+
+@app.route('/auditoria')
+@login_requerido
+def ver_auditoria():
+    rol = session.get('usuario_rol')
+    # Filtros opcionales por query string
+    f_esp = request.args.get('especialidad_id', type=int)
+    f_user = (request.args.get('usuario') or '').strip()
+    f_accion = (request.args.get('accion') or '').strip()
+    f_desde = request.args.get('desde')
+    f_hasta = request.args.get('hasta')
+
+    q = Auditoria.query
+    if rol != 'Admin':
+        q = q.filter_by(especialidad_id=session.get('usuario_especialidad_id'))
+    if f_esp:
+        q = q.filter_by(especialidad_id=f_esp)
+    if f_accion:
+        q = q.filter(Auditoria.accion.ilike(f"%{f_accion}%"))
+    if f_user:
+        q = q.join(Usuario).filter(
+            db.or_(Usuario.username.ilike(f"%{f_user}%"),
+                   Usuario.nombre.ilike(f"%{f_user}%"))
+        )
+    if f_desde:
+        try:
+            q = q.filter(Auditoria.fecha >= datetime.fromisoformat(f_desde))
+        except Exception: pass
+    if f_hasta:
+        try:
+            q = q.filter(Auditoria.fecha <= datetime.fromisoformat(f_hasta))
+        except Exception: pass
+
+    logs = q.order_by(Auditoria.fecha.desc()).limit(500).all()
+    especialidades = Especialidad.query.filter_by(activa=True).all()
+    return render_template('auditoria.html', logs=logs,
+                           especialidades=especialidades,
+                           f_esp=f_esp, f_user=f_user, f_accion=f_accion,
+                           f_desde=f_desde, f_hasta=f_hasta,
+                           es_admin=(rol == 'Admin'))
+
+# ========== ITEMS ==========
+
+@app.route('/agregar', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def agregar_item():
+    especialidad_id = session.get('usuario_especialidad_id')
+    codigo = request.form.get('codigo_barras', '').strip() or datetime.now().strftime('%y%m%d%H%M%S') + "0"
+    cantidad = int(request.form.get('cantidad', 1))
+    imagen = request.form.get('imagen_url', '').strip()
+    ubicacion = request.form.get('ubicacion', 'Sin especificar').strip()
+    nombre = request.form.get('nombre', '').strip()
+    categoria = request.form.get('categoria', '').strip()
+
+    item_existente = Item.query.filter_by(codigo_barras=codigo, especialidad_id=especialidad_id).first()
+    nuevo_item = None
+    if item_existente:
+        item_existente.cantidad_total += cantidad
+        item_existente.cantidad_disponible += cantidad
+        if imagen: item_existente.imagen_url = imagen
+        if ubicacion: item_existente.ubicacion = ubicacion
+    else:
+        nuevo_item = Item(codigo_barras=codigo, nombre=nombre, categoria=categoria,
+                          especialidad_id=especialidad_id,
+                          cantidad_total=cantidad, cantidad_disponible=cantidad,
+                          imagen_url=imagen, ubicacion=ubicacion)
+        db.session.add(nuevo_item)
+    db.session.commit()
+    rid = item_existente.id if item_existente else nuevo_item.id
+    registrar_auditoria('crear', 'Item', rid, valores_nuevos={'nombre': nombre, 'cantidad': cantidad})
+    registrar_cambio_sync('item', rid, 'crear' if not item_existente else 'actualizar', item_existente or nuevo_item)
+    flash(f"✅ Ítem '{nombre}' agregado.")
+    return redirect(url_for('ver_inventario'))
+
+@app.route('/eliminar/<int:item_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def eliminar_item(item_id):
+    item = Item.query.get_or_404(item_id)
+    if session.get('usuario_rol') != 'Admin' and item.especialidad_id != session.get('usuario_especialidad_id'):
+        flash("❌ Sin permiso.")
+        return redirect(url_for('ver_inventario'))
+    if Prestamo.query.filter_by(item_id=item.id, estado='Pendiente').first() or \
+       PrestamoExterno.query.filter_by(item_id=item.id, estado='Activo').first():
+        flash(f"⚠️ '{item.nombre}' tiene préstamos pendientes.")
+        return redirect(url_for('ver_inventario'))
+    registrar_auditoria('eliminar', 'Item', item.id,
+                        valores_anteriores={'nombre': item.nombre, 'codigo': item.codigo_barras})
+    registrar_cambio_sync('item', item.id, 'eliminar', item)
+    db.session.delete(item)
+    db.session.commit()
+    flash(f"✅ Ítem '{item.nombre}' eliminado.")
+    return redirect(url_for('ver_inventario'))
+
+@app.route('/editar_item/<int:item_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def editar_item(item_id):
+    item = Item.query.get_or_404(item_id)
+    if session.get('usuario_rol') != 'Admin' and item.especialidad_id != session.get('usuario_especialidad_id'):
+        flash("❌ Sin permiso.")
+        return redirect(url_for('ver_inventario'))
+    item.nombre = request.form.get('nombre', item.nombre).strip()
+    item.categoria = request.form.get('categoria', item.categoria)
+    item.ubicacion = request.form.get('ubicacion', item.ubicacion)
+    item.cantidad_minima = int(request.form.get('cantidad_minima') or item.cantidad_minima)
+    nueva = request.form.get('cantidad_total')
+    if nueva is not None and nueva != '':
+        diff = int(nueva) - item.cantidad_total
+        item.cantidad_total = int(nueva)
+        item.cantidad_disponible = max(0, item.cantidad_disponible + diff)
+    db.session.commit()
+    registrar_auditoria('actualizar', 'Item', item.id, valores_nuevos={'nombre': item.nombre})
+    registrar_cambio_sync('item', item.id, 'actualizar', item)
+    flash(f"✅ Ítem actualizado.")
+    return redirect(url_for('ver_inventario'))
+
+# ========== ESTUDIANTES ==========
+
+@app.route('/agregar_estudiante', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def agregar_estudiante():
+    rut = request.form.get('rut_matricula', '').strip()
+    nombre = request.form.get('nombre', '').strip()
+    curso = request.form.get('curso', '').strip()
+    especialidad_id = session.get('usuario_especialidad_id') or request.form.get('especialidad_id', type=int)
+    if not rut or not nombre:
+        flash("❌ RUT y nombre obligatorios.")
+        return redirect(url_for('ver_inventario'))
+    if Estudiante.query.filter_by(rut_matricula=rut).first():
+        flash(f"⚠️ RUT {rut} ya existe.")
+        return redirect(url_for('ver_inventario'))
+    nuevo = Estudiante(rut_matricula=rut, nombre=nombre, curso=curso,
+                       especialidad_id=especialidad_id,
+                       password_hash=generate_password_hash(rut), activo=True)
+    db.session.add(nuevo); db.session.commit()
+    registrar_auditoria('crear', 'Estudiante', nuevo.id,
+                        valores_nuevos={'rut': rut, 'nombre': nombre, 'curso': curso})
+    registrar_cambio_sync('estudiante', nuevo.id, 'crear', nuevo)
+    flash(f"✅ Estudiante {nombre} agregado.")
+    return redirect(url_for('ver_inventario'))
+
+@app.route('/eliminar_estudiante/<int:est_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def eliminar_estudiante(est_id):
+    est = Estudiante.query.get_or_404(est_id)
+    if Prestamo.query.filter_by(estudiante_id=est.id, estado='Pendiente').first():
+        flash(f"⚠️ {est.nombre} tiene préstamos pendientes.")
+        return redirect(url_for('ver_inventario'))
+    est.activo = False
+    db.session.commit()
+    registrar_auditoria('eliminar', 'Estudiante', est.id,
+                        valores_anteriores={'nombre': est.nombre, 'rut': est.rut_matricula})
+    registrar_cambio_sync('estudiante', est.id, 'actualizar', est)
+    flash(f"✅ {est.nombre} dado de baja.")
+    return redirect(url_for('ver_inventario'))
+
+# ========== PRESTAMOS ESTUDIANTES ==========
+
+@app.route('/registrar_salida', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def registrar_salida():
+    estudiante_id = request.form.get('estudiante_id', type=int)
+    profesor_id = request.form.get('profesor_id', type=int)
+    nombre_practica = (request.form.get('nombre_practica') or '').strip()
+    try:
+        carrito = json.loads(request.form.get('carrito_data', '[]'))
+    except Exception:
+        carrito = []
+    estudiante = Estudiante.query.get(estudiante_id)
+    if not estudiante:
+        flash("❌ Estudiante no encontrado.")
+        return redirect(url_for('ver_inventario'))
+    if not carrito:
+        flash("⚠️ No hay items en el carrito.")
+        return redirect(url_for('ver_inventario'))
+
+    # Plazo opcional para biblioteca (días). Si viene, se calcula fecha límite.
+    plazo_dias = request.form.get('plazo_dias', type=int)
+    fecha_limite = None
+    if plazo_dias and plazo_dias > 0:
+        fecha_limite = datetime.utcnow() + timedelta(days=plazo_dias)
+
+    creados = 0
+    for entry in carrito:
+        item = Item.query.get(entry.get('item_id'))
+        cantidad = int(entry.get('cantidad') or 1)
+        if not item or item.cantidad_disponible < cantidad: continue
+        item.cantidad_disponible -= cantidad
+        db.session.add(Prestamo(item_id=item.id, estudiante_id=estudiante.id,
+                                profesor_id=profesor_id,
+                                encargado=session.get('usuario_nombre'),
+                                cantidad=cantidad, cantidad_solicitada=cantidad,
+                                nombre_practica=nombre_practica, estado='Pendiente',
+                                fecha_devolucion_esperada=fecha_limite))
+        creados += 1
+    db.session.commit()
+    registrar_auditoria('crear', 'Prestamo', estudiante.id,
+                        valores_nuevos={'practica': nombre_practica, 'items': creados})
+    flash(f"✅ {creados} préstamo(s) registrado(s) a {estudiante.nombre}.")
+    return redirect(url_for('ver_inventario'))
+
+@app.route('/devolver_prestamo/<int:prestamo_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def devolver_prestamo(prestamo_id):
+    prest = Prestamo.query.get_or_404(prestamo_id)
+    cd = int(request.form.get('cantidad_devuelta') or prest.cantidad)
+    cm = int(request.form.get('cantidad_mermada') or 0)
+    if cd + cm > prest.cantidad:
+        flash("❌ Devuelto + mermado supera lo prestado.")
+        return redirect(url_for('ver_inventario'))
+    prest.item.cantidad_disponible += cd
+    if cm > 0:
+        prest.item.cantidad_mermada += cm
+        prest.item.cantidad_total -= cm
+        prest.cantidad_mermada = cm
+    prest.estado = 'Devuelto'
+    prest.fecha_devolucion = datetime.utcnow()
+    db.session.commit()
+    registrar_auditoria('actualizar', 'Prestamo', prest.id,
+                        valores_nuevos={'devuelto': cd, 'mermado': cm})
+    registrar_cambio_sync('prestamo', prest.id, 'actualizar', prest)
+    registrar_cambio_sync('item', prest.item.id, 'actualizar', prest.item)
+    flash(f"✅ Préstamo #{prest.id} cerrado.")
+    return redirect(url_for('ver_inventario'))
+
+# ========== PRESTAMOS EXTERNOS ==========
+
+@app.route('/agregar_prestamo_externo', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def agregar_prestamo_externo():
+    codigo = (request.form.get('codigo_item') or '').strip()
+    cantidad = int(request.form.get('cantidad') or 1)
+    esp_dest = (request.form.get('especialidad_destino') or '').strip()
+    tipo_p = request.form.get('tipo_persona') or 'externo'
+    persona = (request.form.get('persona_retira') or '').strip()
+    profesor = (request.form.get('profesor_cargo') or '').strip()
+    especialidad_id = session.get('usuario_especialidad_id')
+    item = Item.query.filter_by(codigo_barras=codigo, especialidad_id=especialidad_id).first()
+    if not item:
+        flash(f"❌ Ítem '{codigo}' no existe.")
+        return redirect(url_for('ver_inventario'))
+    if item.cantidad_disponible < cantidad:
+        flash(f"❌ Stock insuficiente: {item.cantidad_disponible}.")
+        return redirect(url_for('ver_inventario'))
+    # tipo_movimiento: 'prestamo' (se devuelve) o 'consumo' (oficina, no se devuelve)
+    tipo_mov = (request.form.get('tipo_movimiento') or 'prestamo').lower().strip()
+    if tipo_mov not in ('prestamo', 'consumo'):
+        tipo_mov = 'prestamo'
+
+    item.cantidad_disponible -= cantidad
+    if tipo_mov == 'consumo':
+        # Consumo: descontar también del total (no vuelve nunca)
+        item.cantidad_total -= cantidad
+
+    p = PrestamoExterno(item_id=item.id, especialidad_id=especialidad_id,
+                        cantidad=cantidad, es_alumno=(tipo_p == 'alumno'),
+                        persona_retira=persona, profesor_cargo=profesor,
+                        especialidad_destino=esp_dest,
+                        encargado=session.get('usuario_nombre'),
+                        estado=('Consumido' if tipo_mov == 'consumo' else 'Activo'),
+                        tipo_movimiento=tipo_mov,
+                        fecha_devolucion=(datetime.utcnow() if tipo_mov == 'consumo' else None))
+    db.session.add(p); db.session.commit()
+    registrar_auditoria('crear', 'PrestamoExterno', p.id,
+                        valores_nuevos={'item': item.nombre, 'persona': persona, 'tipo': tipo_mov})
+    accion = 'Consumo registrado' if tipo_mov == 'consumo' else 'Préstamo externo'
+    flash(f"✅ {accion}: {item.nombre} → {persona}.")
+    return redirect(url_for('ver_inventario'))
+
+@app.route('/devolver_externo/<int:ext_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def devolver_externo(ext_id):
+    ext = PrestamoExterno.query.get_or_404(ext_id)
+    if ext.tipo_movimiento == 'consumo':
+        flash("⚠️ Este movimiento es un consumo (oficina), no se puede devolver.")
+        return redirect(url_for('ver_inventario'))
+    ext.item.cantidad_disponible += ext.cantidad
+    ext.estado = 'Devuelto'
+    ext.fecha_devolucion = datetime.utcnow()
+    db.session.commit()
+    registrar_auditoria('actualizar', 'PrestamoExterno', ext.id,
+                        valores_nuevos={'estado': 'Devuelto'})
+    registrar_cambio_sync('prestamo_externo', ext.id, 'actualizar', ext)
+    registrar_cambio_sync('item', ext.item.id, 'actualizar', ext.item)
+    flash(f"✅ Préstamo externo #{ext.id} devuelto.")
+    return redirect(url_for('ver_inventario'))
+
+# ========== ORDENES DE TRABAJO ==========
+
+@app.route('/agregar_ot', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def agregar_ot():
+    titulo = (request.form.get('titulo') or '').strip()
+    profesional = (request.form.get('profesional_cargo') or '').strip()
+    alumnos = (request.form.get('alumnos_cargo') or '').strip()
+    descripcion = (request.form.get('descripcion') or '').strip()
+    herr = request.form.get('herramientas_utilizadas') or ''
+    rep = request.form.get('repuestos_utilizados') or ''
+    if not titulo or not profesional:
+        flash("❌ Título y profesional obligatorios.")
+        return redirect(url_for('ver_inventario'))
+    ot = OrdenTrabajo(titulo=titulo, descripcion=descripcion,
+                      especialidad_id=session.get('usuario_especialidad_id'),
+                      profesional_cargo=profesional, alumnos_cargo=alumnos,
+                      herramientas_utilizadas=herr, repuestos_utilizados=rep,
+                      profesor_id=session.get('usuario_id'), estado='Pendiente')
+    db.session.add(ot); db.session.commit()
+    registrar_auditoria('crear', 'OrdenTrabajo', ot.id, valores_nuevos={'titulo': titulo})
+    registrar_cambio_sync('orden_trabajo', ot.id, 'crear', ot)
+    flash(f"✅ OT #{ot.id} creada.")
+    return redirect(url_for('imprimir_ot', ot_id=ot.id))
+
+@app.route('/completar_ot/<int:ot_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def completar_ot(ot_id):
+    ot = OrdenTrabajo.query.get_or_404(ot_id)
+    ot.estado = 'Completada'
+    db.session.commit()
+    registrar_auditoria('actualizar', 'OrdenTrabajo', ot.id, valores_nuevos={'estado': 'Completada'})
+    registrar_cambio_sync('orden_trabajo', ot.id, 'actualizar', ot)
+    flash(f"✅ OT #{ot.id} completada.")
+    return redirect(url_for('ver_inventario'))
+
+@app.route('/imprimir_ot/<int:ot_id>')
+@login_requerido
+def imprimir_ot(ot_id):
+    ot = OrdenTrabajo.query.get_or_404(ot_id)
+    def parse(t):
+        if not t: return []
+        try:
+            d = json.loads(t)
+            if isinstance(d, list): return d
+        except Exception: pass
+        return [{'nombre': l.strip(), 'cantidad': '', 'codigo': ''}
+                for l in t.splitlines() if l.strip()]
+    return render_template('imprimir_ot.html', ot=ot,
+                           herramientas=parse(ot.herramientas_utilizadas),
+                           repuestos=parse(ot.repuestos_utilizados))
+
+@app.route('/imprimir_externo/<int:ext_id>')
+@login_requerido
+def imprimir_externo(ext_id):
+    return render_template('imprimir_externo.html',
+                           prestamo=PrestamoExterno.query.get_or_404(ext_id))
+
+# ========== HOJA DE VIDA ==========
+
+@app.route('/buscar_hoja_vida', methods=['POST'])
+@login_requerido
+def buscar_hoja_vida():
+    rut = (request.form.get('scan_estudiante') or '').strip()
+    est = Estudiante.query.filter_by(rut_matricula=rut).first()
+    if not est:
+        flash(f"❌ RUT {rut} no encontrado.")
+        return redirect(url_for('ver_inventario'))
+    return redirect(url_for('hoja_vida', est_id=est.id))
+
+@app.route('/hoja_vida/<int:est_id>')
+@login_requerido
+def hoja_vida(est_id):
+    est = Estudiante.query.get_or_404(est_id)
+    prestamos = Prestamo.query.filter_by(estudiante_id=est.id, estado='Pendiente') \
+                              .order_by(Prestamo.fecha_prestamo.desc()).all()
+    return render_template('hoja_vida.html', estudiante=est, prestamos=prestamos)
+
+@app.route('/procesar_hoja_vida', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def procesar_hoja_vida():
+    ids = request.form.getlist('prestamo_id[]')
+    buenas = request.form.getlist('cant_buena[]')
+    malas = request.form.getlist('cant_mala[]')
+    procesados = 0
+    for pid, cb, cm in zip(ids, buenas, malas):
+        try: prest = Prestamo.query.get(int(pid))
+        except: continue
+        if not prest or prest.estado != 'Pendiente': continue
+        cb = int(cb or 0); cm = int(cm or 0)
+        if cb + cm == 0: continue
+        prest.item.cantidad_disponible += cb
+        if cm > 0:
+            prest.item.cantidad_mermada += cm
+            prest.item.cantidad_total -= cm
+            prest.cantidad_mermada = cm
+        if cb + cm >= prest.cantidad:
+            prest.estado = 'Devuelto'
+            prest.fecha_devolucion = datetime.utcnow()
+        procesados += 1
+    db.session.commit()
+    registrar_auditoria('actualizar', 'Prestamo', 0, valores_nuevos={'procesados': procesados})
+    flash(f"✅ {procesados} préstamo(s) procesado(s).")
+    return redirect(url_for('ver_inventario'))
+
+@app.route('/credenciales')
+@login_requerido
+def credenciales():
+    if session.get('usuario_rol') == 'Admin':
+        qs = Estudiante.query.filter_by(activo=True).all()
+    else:
+        qs = Estudiante.query.filter_by(
+            especialidad_id=session.get('usuario_especialidad_id'), activo=True
+        ).all()
+    estudiantes = [{'rut_matricula': e.rut_matricula, 'nombre': e.nombre,
+                    'carrera': e.especialidad.nombre if e.especialidad else '',
+                    'curso': e.curso or ''} for e in qs]
+    return render_template('credenciales.html', estudiantes=estudiantes)
+
+# ========== EXCEL ==========
+
+@app.route('/cargar_excel', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def cargar_excel():
+    """Carga masiva desde Excel.
+
+    Formato esperado (6 columnas, en orden FIJO):
+      Col 1 → código de barras (si está vacía, se autogenera)
+      Col 2 → nombre del ítem (obligatorio)
+      Col 3 → categoría (si está vacía → 'General')
+      Col 4 → cantidad (numérico)
+      Col 5 → ubicación (puede ir vacía y se completa después)
+      Col 6 → URL de imagen (puede ir vacía y se completa después)
+
+    Si el código ya existe en esta especialidad, SUMA al stock existente.
+    Si es nuevo, lo crea. La primera fila se detecta como cabecera si la
+    columna de cantidad no es numérica.
+    """
+    archivo = request.files.get('archivo_excel')
+    if not archivo or archivo.filename == '':
+        flash("❌ No subiste ningún archivo.")
+        return redirect(url_for('ver_inventario'))
+
+    try:
+        df = pd.read_excel(archivo, header=None, dtype=object)
+    except Exception as e:
+        flash(f"❌ No pude leer el Excel: {e}")
+        return redirect(url_for('ver_inventario'))
+
+    if len(df) == 0:
+        flash("⚠️ El Excel está vacío.")
+        return redirect(url_for('ver_inventario'))
+
+    # Detectar si la primera fila es cabecera (columna 4 no numérica)
+    inicio = 0
+    primera = df.iloc[0]
+    try:
+        int(float(str(primera[3]).strip()))
+    except (ValueError, TypeError, IndexError):
+        inicio = 1  # primera fila es cabecera, saltarla
+
+    especialidad_id = session.get('usuario_especialidad_id')
+    if not especialidad_id and session.get('usuario_rol') != 'Admin':
+        flash("❌ No tienes especialidad asignada.")
+        return redirect(url_for('ver_inventario'))
+
+    def col(fila, i, default=''):
+        """Saca el valor de la columna i (0-indexed). Devuelve default si está vacío."""
+        try:
+            v = fila[i]
+        except (IndexError, KeyError):
+            return default
+        if v is None:
+            return default
+        if isinstance(v, float) and pd.isna(v):
+            return default
+        s = str(v).strip()
+        if not s or s.lower() == 'nan':
+            return default
+        return s
+
+    creados = actualizados = 0
+    errores = []
+
+    for idx in range(inicio, len(df)):
+        fila = df.iloc[idx]
+        nombre = col(fila, 1)
+        if not nombre:
+            continue  # filas vacías al final del Excel
+
+        codigo = col(fila, 0)
+        if not codigo:
+            # Autogenerar único: timestamp + idx para evitar colisiones
+            codigo = datetime.now().strftime('%y%m%d%H%M%S') + f"{idx:04d}"
+
+        categoria = col(fila, 2, 'General')
+
+        try:
+            cantidad = int(float(col(fila, 3, '0')))
+        except Exception:
+            errores.append(f"Fila {idx + 1}: cantidad inválida")
+            continue
+        if cantidad < 0:
+            errores.append(f"Fila {idx + 1}: cantidad negativa")
+            continue
+
+        # Columnas 5 y 6: en blanco si vienen vacías
+        ubicacion = col(fila, 4, '')
+        imagen = col(fila, 5, '')
+
+        existente = Item.query.filter_by(
+            codigo_barras=codigo, especialidad_id=especialidad_id
+        ).first()
+        if existente:
+            existente.cantidad_total += cantidad
+            existente.cantidad_disponible += cantidad
+            # Solo sobrescribir categoría/ubicación/imagen si el Excel las trae
+            if categoria and categoria != 'General':
+                existente.categoria = categoria
+            if ubicacion:
+                existente.ubicacion = ubicacion
+            if imagen:
+                existente.imagen_url = imagen
+            registrar_cambio_sync('item', existente.id, 'actualizar', existente)
+            actualizados += 1
+        else:
+            nuevo = Item(
+                codigo_barras=codigo, nombre=nombre, categoria=categoria,
+                especialidad_id=especialidad_id,
+                cantidad_total=cantidad, cantidad_disponible=cantidad,
+                ubicacion=ubicacion, imagen_url=imagen
+            )
+            db.session.add(nuevo)
+            db.session.flush()
+            registrar_cambio_sync('item', nuevo.id, 'crear', nuevo)
+            creados += 1
+
+    db.session.commit()
+    registrar_auditoria('importar', 'Item', 0,
+                        valores_nuevos={'creados': creados,
+                                        'actualizados': actualizados,
+                                        'errores': len(errores)})
+
+    msg = f"✅ Excel cargado: {creados} ítem(s) nuevo(s), {actualizados} actualizado(s)."
+    if errores:
+        msg += f" ⚠️ {len(errores)} fila(s) con errores: " + " | ".join(errores[:3])
+    flash(msg)
+    return redirect(url_for('ver_inventario'))
+
+@app.route('/exportar_excel')
+@login_requerido
+def exportar_excel():
+    if session.get('usuario_rol') == 'Admin':
+        items = Item.query.order_by(Item.especialidad_id.asc(),
+                                    Item.categoria.asc(),
+                                    Item.nombre.asc()).all()
+    else:
+        items = Item.query.filter_by(
+            especialidad_id=session.get('usuario_especialidad_id')
+        ).order_by(Item.categoria.asc(), Item.nombre.asc()).all()
+    df = pd.DataFrame([{
+        'codigo_barras': i.codigo_barras, 'nombre': i.nombre, 'categoria': i.categoria,
+        'especialidad': i.especialidad.nombre if i.especialidad else '',
+        'cantidad_total': i.cantidad_total, 'cantidad_disponible': i.cantidad_disponible,
+        'cantidad_mermada': i.cantidad_mermada, 'ubicacion': i.ubicacion,
+        'precio_unitario': i.precio_unitario,
+    } for i in items])
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Inventario', index=False)
+    buf.seek(0)
+    fname = f"inventario_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+# ========== USUARIOS ==========
+
+@app.route('/agregar_usuario', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def agregar_usuario():
+    nombre = (request.form.get('nombre') or '').strip()
+    username = (request.form.get('username') or '').strip()
+    password = request.form.get('password') or ''
+    rol = request.form.get('rol') or 'Profesor'
+    if not (nombre and username and password):
+        flash("❌ Faltan datos.")
+        return redirect(url_for('ver_inventario'))
+    if Usuario.query.filter_by(username=username).first():
+        flash(f"⚠️ '{username}' ya existe.")
+        return redirect(url_for('ver_inventario'))
+    u = Usuario(nombre=nombre, username=username,
+                password_hash=generate_password_hash(password),
+                rol=rol, especialidad_id=session.get('usuario_especialidad_id'), activo=True)
+    db.session.add(u); db.session.commit()
+    registrar_auditoria('crear', 'Usuario', u.id, valores_nuevos={'username': username, 'rol': rol})
+    flash(f"✅ Usuario '{username}' creado.")
+    return redirect(url_for('ver_inventario'))
+
+@app.route('/eliminar_usuario/<int:usuario_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def eliminar_usuario(usuario_id):
+    if usuario_id == session.get('usuario_id'):
+        flash("❌ No puedes eliminarte.")
+        return redirect(url_for('ver_inventario'))
+    u = Usuario.query.get_or_404(usuario_id)
+    if u.rol == 'Admin':
+        flash("❌ Admin Central no se elimina aquí.")
+        return redirect(url_for('ver_inventario'))
+    u.activo = False
+    db.session.commit()
+    registrar_auditoria('eliminar', 'Usuario', u.id, valores_anteriores={'username': u.username})
+    flash(f"✅ '{u.username}' desactivado.")
+    return redirect(url_for('ver_inventario'))
+
+# ========== GESTION PAÑOLEROS ==========
+
+@app.route('/admin/panoleros')
+@login_requerido
+@admin_requerido
+def gestionar_panoleros():
+    """Lista todos los pañoleros (activos e inactivos)."""
+    especialidades = Especialidad.query.filter_by(activa=True).order_by(Especialidad.nombre).all()
+    panoleros = Usuario.query.filter_by(rol='Pañolero') \
+        .order_by(Usuario.activo.desc(), Usuario.nombre.asc()).all()
+    return render_template('gestionar_pañoleros.html',
+                           especialidades=especialidades,
+                           pañoleros=panoleros)
+
+@app.route('/admin/panolero/crear', methods=['POST'])
+@login_requerido
+@admin_requerido
+def crear_panolero():
+    """Crea un pañolero. Permite múltiples por especialidad (genera usernames únicos)."""
+    import unicodedata
+    nombre = (request.form.get('nombre') or '').strip()
+    username_custom = (request.form.get('username') or '').strip()
+    especialidad_id = request.form.get('especialidad_id', type=int)
+    password = (request.form.get('password') or '').strip()
+    email_custom = (request.form.get('email') or '').strip()
+
+    if not nombre or not especialidad_id or not password:
+        flash("❌ Faltan datos: nombre, especialidad y contraseña son obligatorios.")
+        return redirect(url_for('gestionar_panoleros'))
+
+    esp = Especialidad.query.get(especialidad_id)
+    if not esp:
+        flash("❌ Especialidad no encontrada.")
+        return redirect(url_for('gestionar_panoleros'))
+
+    def slugify(s):
+        s = ''.join(c for c in unicodedata.normalize('NFD', s)
+                    if unicodedata.category(c) != 'Mn')
+        return s.lower().replace(' ', '_').replace('.', '_')
+
+    # Usar username custom si viene; si no, generar uno único basado en especialidad
+    if username_custom:
+        username = slugify(username_custom)
+    else:
+        base = f"pañolero_{slugify(esp.nombre)}"
+        username = base
+        n = 2
+        while Usuario.query.filter_by(username=username).first():
+            username = f"{base}_{n}"
+            n += 1
+
+    if Usuario.query.filter_by(username=username).first():
+        flash(f"❌ El usuario '{username}' ya existe. Elige otro.")
+        return redirect(url_for('gestionar_panoleros'))
+
+    email = email_custom or f"{username}@colegio.local"
+    if Usuario.query.filter_by(email=email).first():
+        # Email ya en uso, generar único
+        email = f"{username}_{datetime.now().strftime('%H%M%S')}@colegio.local"
+
+    nuevo = Usuario(nombre=nombre, username=username, email=email,
+                    password_hash=generate_password_hash(password),
+                    rol='Pañolero', especialidad_id=especialidad_id, activo=True)
+    db.session.add(nuevo); db.session.commit()
+    registrar_auditoria('crear', 'Usuario', nuevo.id,
+                        valores_nuevos={'nombre': nombre, 'username': username,
+                                        'rol': 'Pañolero', 'especialidad': esp.nombre})
+    flash(f"✅ Pañolero '{nombre}' creado con usuario '{username}'.")
+    return redirect(url_for('gestionar_panoleros'))
+
+
+@app.route('/admin/panolero/<int:panolero_id>/editar', methods=['POST'])
+@login_requerido
+@admin_requerido
+def editar_panolero(panolero_id):
+    """Edita datos de un pañolero existente."""
+    p = Usuario.query.get(panolero_id)
+    if not p or p.rol != 'Pañolero':
+        flash("❌ Pañolero no encontrado.")
+        return redirect(url_for('gestionar_panoleros'))
+
+    nuevo_nombre = (request.form.get('nombre') or '').strip()
+    nuevo_username = (request.form.get('username') or '').strip()
+    nueva_esp = request.form.get('especialidad_id', type=int)
+    nuevo_email = (request.form.get('email') or '').strip()
+    nuevo_password = (request.form.get('password') or '').strip()
+    activo = request.form.get('activo') == 'on'
+
+    cambios = {}
+
+    if nuevo_nombre and nuevo_nombre != p.nombre:
+        cambios['nombre'] = (p.nombre, nuevo_nombre)
+        p.nombre = nuevo_nombre
+
+    if nuevo_username and nuevo_username != p.username:
+        # Verificar que no choque con otro
+        otro = Usuario.query.filter(Usuario.username == nuevo_username, Usuario.id != p.id).first()
+        if otro:
+            flash(f"❌ Ya existe un usuario con username '{nuevo_username}'.")
+            return redirect(url_for('gestionar_panoleros'))
+        cambios['username'] = (p.username, nuevo_username)
+        p.username = nuevo_username
+
+    if nueva_esp and nueva_esp != p.especialidad_id:
+        esp = Especialidad.query.get(nueva_esp)
+        if esp:
+            cambios['especialidad'] = (
+                (p.especialidad_asignada.nombre if p.especialidad_asignada else None),
+                esp.nombre
+            )
+            p.especialidad_id = nueva_esp
+
+    if nuevo_email and nuevo_email != p.email:
+        otro = Usuario.query.filter(Usuario.email == nuevo_email, Usuario.id != p.id).first()
+        if otro:
+            flash(f"❌ Ya existe un usuario con email '{nuevo_email}'.")
+            return redirect(url_for('gestionar_panoleros'))
+        cambios['email'] = (p.email, nuevo_email)
+        p.email = nuevo_email
+
+    if activo != p.activo:
+        cambios['activo'] = (p.activo, activo)
+        p.activo = activo
+
+    if nuevo_password:
+        p.password_hash = generate_password_hash(nuevo_password)
+        cambios['password'] = ('***', '***cambiada***')
+
+    if not cambios:
+        flash("⚠️ No se detectaron cambios.")
+        return redirect(url_for('gestionar_panoleros'))
+
+    db.session.commit()
+    registrar_auditoria('actualizar', 'Usuario', p.id, valores_nuevos=cambios)
+    flash(f"✅ Pañolero '{p.nombre}' actualizado ({len(cambios)} cambio(s)).")
+    return redirect(url_for('gestionar_panoleros'))
+
+
+@app.route('/admin/panolero/<int:panolero_id>/toggle', methods=['POST'])
+@login_requerido
+@admin_requerido
+def toggle_panolero(panolero_id):
+    """Activar / desactivar pañolero (sin eliminar)."""
+    p = Usuario.query.get(panolero_id)
+    if not p or p.rol != 'Pañolero':
+        flash("❌ Pañolero no encontrado.")
+        return redirect(url_for('gestionar_panoleros'))
+    p.activo = not p.activo
+    db.session.commit()
+    estado = 'activado' if p.activo else 'desactivado'
+    registrar_auditoria('actualizar', 'Usuario', p.id,
+                        valores_nuevos={'estado': estado})
+    flash(f"✅ Pañolero '{p.nombre}' {estado}.")
+    return redirect(url_for('gestionar_panoleros'))
+
+@app.route('/admin/panolero/<int:panolero_id>/eliminar', methods=['POST'])
+@login_requerido
+@admin_requerido
+def eliminar_panolero(panolero_id):
+    p = Usuario.query.get(panolero_id)
+    if not p or p.rol != 'Pañolero':
+        flash("❌ Pañolero no encontrado.")
+        return redirect(url_for('gestionar_panoleros'))
+    registrar_auditoria('eliminar', 'Usuario', panolero_id,
+                        valores_anteriores={'nombre': p.nombre, 'username': p.username})
+    db.session.delete(p); db.session.commit()
+    flash(f"✅ Pañolero eliminado.")
+    return redirect(url_for('gestionar_panoleros'))
+
+@app.route('/admin/panolero/<int:panolero_id>/resetear-contrasena', methods=['POST'])
+@login_requerido
+@admin_requerido
+def resetear_contrasena_panolero(panolero_id):
+    p = Usuario.query.get(panolero_id)
+    if not p or p.rol != 'Pañolero':
+        flash("❌ Pañolero no encontrado.")
+        return redirect(url_for('gestionar_panoleros'))
+    p.password_hash = generate_password_hash("pañol123")
+    db.session.commit()
+    registrar_auditoria('actualizar', 'Usuario', panolero_id,
+                        valores_nuevos={'accion': 'resetear_contraseña'})
+    flash(f"✅ Contraseña de '{p.nombre}' reseteada a: pañol123")
+    return redirect(url_for('gestionar_panoleros'))
+
+
+# ========================================================================
+# BIBLIOTECA: catálogo, libros atrasados, alta de libros
+# ========================================================================
+
+def _es_biblioteca():
+    """True si el usuario actual está en la especialidad Biblioteca o es Admin."""
+    rol = session.get('usuario_rol')
+    nombre_esp = (session.get('usuario_especialidad') or '').lower()
+    return rol == 'Admin' or 'biblioteca' in nombre_esp
+
+
+@app.route('/biblioteca')
+@login_requerido
+def biblioteca_catalogo():
+    """Catálogo bibliográfico: lista todos los items con datos de libro y permite buscar."""
+    q = (request.args.get('q') or '').strip()
+    rol = session.get('usuario_rol')
+
+    # Determinar el id de la especialidad Biblioteca
+    bib = Especialidad.query.filter_by(nombre='Biblioteca').first()
+    if not bib:
+        flash("⚠️ La especialidad 'Biblioteca' no existe en la BD.")
+        return redirect(url_for('ver_inventario'))
+
+    base_query = Item.query.filter_by(especialidad_id=bib.id)
+    if q:
+        like = f"%{q}%"
+        base_query = base_query.filter(
+            db.or_(
+                Item.nombre.ilike(like),
+                Item.autor.ilike(like),
+                Item.isbn.ilike(like),
+                Item.editorial.ilike(like),
+                Item.codigo_barras.ilike(like),
+            )
+        )
+
+    libros = base_query.order_by(Item.categoria.asc(), Item.nombre.asc()).limit(500).all()
+
+    # Si la plantilla específica de biblioteca no existe aún, reutilizamos inventario.html
+    # con un set de variables compatible.
+    return render_template('inventario.html',
+                           items=libros,
+                           estudiantes=Estudiante.query.filter_by(activo=True).all(),
+                           prestamos=Prestamo.query.join(Item).filter(
+                               Item.especialidad_id == bib.id
+                           ).order_by(Prestamo.fecha_prestamo.desc()).limit(100).all(),
+                           prestamos_externos=[],
+                           ordenes_trabajo=[],
+                           profesores=Usuario.query.filter(Usuario.rol == 'Profesor').all(),
+                           usuarios_sistema=[],
+                           practicas_resumen=[],
+                           total_stock=sum(l.cantidad_total for l in libros),
+                           prestamos_activos=Prestamo.query.join(Item).filter(
+                               Item.especialidad_id == bib.id,
+                               Prestamo.estado == 'Pendiente'
+                           ).count(),
+                           alertas=[],
+                           especialidad='Biblioteca')
+
+
+@app.route('/biblioteca/atrasados')
+@login_requerido
+def biblioteca_atrasados():
+    """Devuelve JSON con los préstamos atrasados (días > 0)."""
+    bib = Especialidad.query.filter_by(nombre='Biblioteca').first()
+    if not bib:
+        return jsonify({'atrasados': [], 'total': 0})
+
+    pendientes = Prestamo.query.join(Item).filter(
+        Item.especialidad_id == bib.id,
+        Prestamo.estado == 'Pendiente',
+        Prestamo.fecha_devolucion_esperada.isnot(None)
+    ).all()
+
+    atrasados = []
+    for p in pendientes:
+        if p.dias_atraso > 0:
+            atrasados.append({
+                'prestamo_id': p.id,
+                'libro': p.item.nombre,
+                'autor': p.item.autor or '',
+                'isbn': p.item.isbn or '',
+                'estudiante': p.estudiante.nombre if p.estudiante else '',
+                'curso': p.estudiante.curso if p.estudiante else '',
+                'fecha_prestamo': p.fecha_prestamo.strftime('%Y-%m-%d'),
+                'fecha_limite': p.fecha_devolucion_esperada.strftime('%Y-%m-%d'),
+                'dias_atraso': p.dias_atraso,
+            })
+    return jsonify({'atrasados': atrasados, 'total': len(atrasados)})
+
+
+@app.route('/agregar_libro', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def agregar_libro():
+    """Alta de libro con campos bibliográficos completos."""
+    bib = Especialidad.query.filter_by(nombre='Biblioteca').first()
+    if not bib:
+        flash("❌ La especialidad Biblioteca no existe.")
+        return redirect(url_for('ver_inventario'))
+
+    titulo = (request.form.get('nombre') or '').strip()
+    if not titulo:
+        flash("❌ Falta el título del libro.")
+        return redirect(url_for('biblioteca_catalogo'))
+
+    isbn = (request.form.get('isbn') or '').strip() or None
+    autor = (request.form.get('autor') or '').strip() or None
+    editorial = (request.form.get('editorial') or '').strip() or None
+    try:
+        anio = int(request.form.get('anio_publicacion') or 0) or None
+    except Exception:
+        anio = None
+    cantidad = int(request.form.get('cantidad') or 1)
+    ubicacion = (request.form.get('ubicacion') or 'Sin especificar').strip()
+
+    # Si el ISBN existe en biblioteca, sumar stock
+    existente = None
+    if isbn:
+        existente = Item.query.filter_by(especialidad_id=bib.id, isbn=isbn).first()
+    if existente:
+        existente.cantidad_total += cantidad
+        existente.cantidad_disponible += cantidad
+        item_id = existente.id
+        accion = 'actualizar'
+    else:
+        codigo = isbn or datetime.now().strftime('%y%m%d%H%M%S') + "L"
+        nuevo = Item(
+            codigo_barras=codigo, nombre=titulo, categoria='Biblioteca',
+            especialidad_id=bib.id,
+            cantidad_total=cantidad, cantidad_disponible=cantidad,
+            ubicacion=ubicacion,
+            autor=autor, isbn=isbn, editorial=editorial, anio_publicacion=anio,
+        )
+        db.session.add(nuevo)
+        db.session.flush()
+        item_id = nuevo.id
+        accion = 'crear'
+    db.session.commit()
+    registrar_auditoria(accion, 'Item', item_id,
+                        valores_nuevos={'titulo': titulo, 'autor': autor, 'isbn': isbn})
+    flash(f"✅ Libro '{titulo}' registrado.")
+    return redirect(url_for('biblioteca_catalogo'))
+
+
+# ========================================================================
+# OFICINA: registro de consumos (sin devolución)
+# ========================================================================
+
+@app.route('/registrar_consumo', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def registrar_consumo():
+    """Registra un consumo de oficina. Descuenta del stock TOTAL (no vuelve)."""
+    codigo = (request.form.get('codigo_item') or '').strip()
+    cantidad = int(request.form.get('cantidad') or 1)
+    persona = (request.form.get('persona_retira') or '').strip()
+    motivo = (request.form.get('motivo') or '').strip()
+
+    especialidad_id = session.get('usuario_especialidad_id')
+    item = Item.query.filter_by(codigo_barras=codigo, especialidad_id=especialidad_id).first()
+    if not item:
+        flash(f"❌ Ítem '{codigo}' no existe en este pañol/área.")
+        return redirect(url_for('ver_inventario'))
+    if item.cantidad_disponible < cantidad:
+        flash(f"❌ Stock insuficiente: {item.cantidad_disponible}.")
+        return redirect(url_for('ver_inventario'))
+    if not persona:
+        flash("❌ Indica quién retira el consumible.")
+        return redirect(url_for('ver_inventario'))
+
+    item.cantidad_disponible -= cantidad
+    item.cantidad_total -= cantidad
+
+    consumo = PrestamoExterno(
+        item_id=item.id, especialidad_id=especialidad_id,
+        cantidad=cantidad, es_alumno=False,
+        persona_retira=persona, profesor_cargo='',
+        especialidad_destino=motivo or 'Consumo interno',
+        encargado=session.get('usuario_nombre'),
+        estado='Consumido', tipo_movimiento='consumo',
+        fecha_devolucion=datetime.utcnow()
+    )
+    db.session.add(consumo)
+    db.session.commit()
+    registrar_auditoria('consumir', 'Item', item.id,
+                        valores_nuevos={'item': item.nombre, 'cantidad': cantidad, 'persona': persona})
+    flash(f"✅ Consumo registrado: {cantidad} × {item.nombre} → {persona}.")
+    return redirect(url_for('ver_inventario'))
+
+
+# ========================================================================
+# API DE SINCRONIZACIÓN (solo cuando ES_ADMIN_CENTRAL)
+# ========================================================================
+
+def _verificar_token_sync():
+    """Lee el header Authorization y valida contra PANOL_SYNC_TOKEN."""
+    auth = request.headers.get('Authorization', '')
+    if not auth.startswith('Bearer '):
+        return False
+    return auth[7:].strip() == PANOL_SYNC_TOKEN
+
+
+@app.route('/api/sync/push', methods=['POST'])
+def api_sync_push():
+    """Recibe un lote de cambios desde un nodo. Solo el admin central acepta esto.
+
+    Body JSON: {
+      "nodo": "panol_electronica",
+      "cambios": [
+        {"sync_uuid": "...", "tabla": "item", "registro_id_local": 12,
+         "accion": "crear", "payload": {...}},
+        ...
+      ]
+    }
+    Respuesta: {"ok": [uuid,...], "error": {uuid: msg, ...}}
+    """
+    if not ES_ADMIN_CENTRAL:
+        return jsonify({'error': 'Este nodo no es admin central'}), 403
+    if not _verificar_token_sync():
+        return jsonify({'error': 'Token inválido'}), 401
+
+    try:
+        data = request.get_json(force=True)
+    except Exception:
+        return jsonify({'error': 'JSON inválido'}), 400
+
+    nodo = (data or {}).get('nodo', 'desconocido')
+    cambios = (data or {}).get('cambios', [])
+
+    ok_uuids = []
+    err_map = {}
+
+    for ch in cambios:
+        uid = ch.get('sync_uuid')
+        try:
+            _aplicar_cambio_remoto(nodo, ch)
+            ok_uuids.append(uid)
+        except Exception as e:
+            err_map[uid] = f"{type(e).__name__}: {e}"
+            db.session.rollback()
+
+    db.session.commit()
+    return jsonify({'ok': ok_uuids, 'error': err_map,
+                    'recibidos': len(cambios), 'aplicados': len(ok_uuids)})
+
+
+def _aplicar_cambio_remoto(nodo, ch):
+    """Aplica un cambio recibido desde un nodo en la BD del admin central.
+
+    Estrategia: localiza el registro por (nodo + registro_id_local) usando código de barras
+    o RUT como clave natural cuando aplica. Si no existe, lo crea. Si existe, actualiza.
+    """
+    tabla = ch['tabla']
+    accion = ch['accion']
+    payload = ch.get('payload') or {}
+
+    # Idempotencia: si ya recibimos este sync_uuid, ignorar
+    uid = ch.get('sync_uuid')
+    if uid:
+        existente_uuid = SyncLog.query.filter_by(sync_uuid=uid).first()
+        if existente_uuid and existente_uuid.push_status == 'aplicado':
+            return  # ya lo aplicamos antes
+        if not existente_uuid:
+            db.session.add(SyncLog(
+                nodo_origen=nodo, tabla=tabla,
+                registro_id_local=ch.get('registro_id_local', 0),
+                accion=accion,
+                payload=json.dumps(payload),
+                sync_uuid=uid,
+                push_status='aplicado',
+            ))
+
+    if tabla == 'item':
+        _upsert_item(nodo, payload, accion)
+    elif tabla == 'estudiante':
+        _upsert_estudiante(nodo, payload, accion)
+    elif tabla == 'prestamo':
+        _upsert_prestamo(nodo, payload, accion)
+    elif tabla == 'prestamo_externo':
+        _upsert_prestamo_externo(nodo, payload, accion)
+    elif tabla == 'orden_trabajo':
+        _upsert_orden_trabajo(nodo, payload, accion)
+    else:
+        raise ValueError(f"Tabla {tabla} no soportada")
+
+
+def _to_dt(s):
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s)
+    except Exception:
+        return None
+
+
+def _upsert_item(nodo, p, accion):
+    """Localiza item por código de barras + especialidad_id, o crea."""
+    codigo = p.get('codigo_barras')
+    esp_id = p.get('especialidad_id')
+    item = None
+    if codigo and esp_id:
+        item = Item.query.filter_by(codigo_barras=codigo, especialidad_id=esp_id).first()
+    if accion == 'eliminar':
+        if item:
+            db.session.delete(item)
+        return
+    if not item:
+        item = Item(codigo_barras=codigo, especialidad_id=esp_id, nombre=p.get('nombre', ''))
+        db.session.add(item)
+    # Copiar campos seguros (no id)
+    for k in ('nombre', 'descripcion', 'categoria', 'cantidad_total',
+              'cantidad_disponible', 'cantidad_mermada', 'cantidad_minima',
+              'imagen_url', 'ubicacion', 'precio_unitario',
+              'autor', 'isbn', 'editorial', 'anio_publicacion'):
+        if k in p:
+            setattr(item, k, p[k])
+
+
+def _upsert_estudiante(nodo, p, accion):
+    rut = p.get('rut_matricula')
+    if not rut:
+        raise ValueError("Estudiante sin RUT")
+    est = Estudiante.query.filter_by(rut_matricula=rut).first()
+    if not est:
+        est = Estudiante(rut_matricula=rut, nombre=p.get('nombre', ''),
+                         especialidad_id=p.get('especialidad_id'),
+                         password_hash=p.get('password_hash', generate_password_hash(rut)))
+        db.session.add(est)
+    for k in ('nombre', 'curso', 'especialidad_id', 'activo', 'password_hash'):
+        if k in p:
+            setattr(est, k, p[k])
+
+
+def _upsert_prestamo(nodo, p, accion):
+    """Para préstamos: usamos clave compuesta (nodo, registro_id_local) almacenada como prefijo."""
+    # Mapeamos local id a un registro en el admin con descripción única
+    encargado_marker = f"[{nodo}#{p.get('id')}] " + (p.get('encargado') or '')
+    pres = Prestamo.query.filter(Prestamo.encargado.like(f"[{nodo}#{p.get('id')}]%")).first()
+
+    item = None
+    if p.get('item_id'):
+        # En el admin no podemos usar el item_id local; tenemos que resolver por código.
+        # Asumimos que el item ya fue sincronizado antes. Si no existe, fallamos suave.
+        # (Una mejora futura: incluir codigo_barras en el payload del préstamo.)
+        item = Item.query.get(p.get('item_id'))
+    if not item:
+        # Sin item válido no podemos persistir un préstamo nuevo
+        if not pres:
+            raise ValueError(f"Item local {p.get('item_id')} no encontrado en admin")
+
+    if not pres:
+        pres = Prestamo(item_id=item.id if item else 0,
+                        estudiante_id=p.get('estudiante_id') or 0,
+                        cantidad=p.get('cantidad') or 1,
+                        encargado=encargado_marker)
+        db.session.add(pres)
+    for k in ('cantidad', 'cantidad_solicitada', 'cantidad_mermada',
+              'nombre_practica', 'estado', 'multa'):
+        if k in p:
+            setattr(pres, k, p[k])
+    pres.fecha_prestamo = _to_dt(p.get('fecha_prestamo')) or pres.fecha_prestamo
+    pres.fecha_devolucion = _to_dt(p.get('fecha_devolucion'))
+    pres.fecha_devolucion_esperada = _to_dt(p.get('fecha_devolucion_esperada'))
+
+
+def _upsert_prestamo_externo(nodo, p, accion):
+    marker = f"[{nodo}#{p.get('id')}]"
+    pe = PrestamoExterno.query.filter(PrestamoExterno.encargado.like(f"{marker}%")).first()
+    if not pe:
+        pe = PrestamoExterno(item_id=p.get('item_id') or 0,
+                             especialidad_id=p.get('especialidad_id') or 0,
+                             cantidad=p.get('cantidad') or 1,
+                             persona_retira=p.get('persona_retira') or '',
+                             encargado=f"{marker} {p.get('encargado') or ''}")
+        db.session.add(pe)
+    for k in ('cantidad', 'es_alumno', 'persona_retira', 'profesor_cargo',
+              'especialidad_destino', 'estado', 'tipo_movimiento'):
+        if k in p:
+            setattr(pe, k, p[k])
+    pe.fecha_prestamo = _to_dt(p.get('fecha_prestamo')) or pe.fecha_prestamo
+    pe.fecha_devolucion = _to_dt(p.get('fecha_devolucion'))
+
+
+def _upsert_orden_trabajo(nodo, p, accion):
+    marker = f"[{nodo}#{p.get('id')}]"
+    ot = OrdenTrabajo.query.filter(OrdenTrabajo.titulo.like(f"{marker}%")).first()
+    if not ot:
+        ot = OrdenTrabajo(titulo=f"{marker} {p.get('titulo') or ''}",
+                          especialidad_id=p.get('especialidad_id') or 0,
+                          profesional_cargo=p.get('profesional_cargo') or '',
+                          profesor_id=p.get('profesor_id') or 0)
+        db.session.add(ot)
+    for k in ('descripcion', 'alumnos_cargo', 'herramientas_utilizadas',
+              'repuestos_utilizados', 'estado'):
+        if k in p:
+            setattr(ot, k, p[k])
+
+
+@app.route('/api/sync/status')
+def api_sync_status():
+    """Estado del sistema de sync. Útil para que un nodo sepa si el admin está vivo."""
+    if not _verificar_token_sync():
+        return jsonify({'error': 'Token inválido'}), 401
+    info = {
+        'es_admin_central': ES_ADMIN_CENTRAL,
+        'nodo_id': NODO_ID,
+        'fecha_servidor': datetime.utcnow().isoformat(),
+    }
+    if ES_ADMIN_CENTRAL:
+        info['cambios_recibidos'] = SyncLog.query.filter_by(push_status='aplicado').count()
+    else:
+        info['cambios_pendientes'] = SyncLog.query.filter_by(push_status='pendiente').count()
+        info['cambios_enviados'] = SyncLog.query.filter_by(push_status='enviado').count()
+        info['cambios_error'] = SyncLog.query.filter_by(push_status='error').count()
+    return jsonify(info)
+
+
+# Alias para mantener compatibilidad con la plantilla
+@app.route('/exportar_inventario')
+@login_requerido
+def exportar_inventario():
+    return exportar_excel()
+
+
+@app.route('/descargar_plantilla')
+@login_requerido
+def descargar_plantilla():
+    """Descarga el archivo inventario_muestra.xlsx como plantilla."""
+    aqui = os.path.dirname(os.path.abspath(__file__))
+    plantilla = os.path.join(aqui, 'inventario_muestra.xlsx')
+    if not os.path.exists(plantilla):
+        # Si no está, generamos una plantilla mínima al vuelo
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Inventario'
+        for c, h in enumerate(['Codigo', 'Nombre', 'Categoria', 'Cantidad',
+                                'Ubicacion', 'URL Imagen'], 1):
+            ws.cell(row=1, column=c, value=h)
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return send_file(buf, as_attachment=True,
+                         download_name='plantilla_inventario.xlsx',
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    return send_file(plantilla, as_attachment=True,
+                     download_name='plantilla_inventario.xlsx')
+
+
+
+@app.route('/etiqueta/<int:item_id>')
+@login_requerido
+def etiqueta_item(item_id):
+    """Vista imprimible con código de barras Code128 del ítem (4 copias por defecto)."""
+    item = Item.query.get_or_404(item_id)
+    if session.get('usuario_rol') != 'Admin' and item.especialidad_id != session.get('usuario_especialidad_id'):
+        flash("❌ No tienes acceso a este ítem.")
+        return redirect(url_for('ver_inventario'))
+    return render_template('etiqueta.html', item=item,
+                           especialidad=item.especialidad.nombre if item.especialidad else '',
+                           now=datetime.now().strftime('%d/%m/%Y'))
+
+
+# ========================================================================
+# RUTAS DE ADMINISTRADOR CENTRAL (vistas globales y reportes)
+# ========================================================================
+
+@app.route('/admin/buscar')
+@login_requerido
+@admin_requerido
+def admin_buscar_items():
+    """Buscador global de ítems (en las 8 áreas)."""
+    q = (request.args.get('q') or '').strip()
+    if not q:
+        return render_template('admin_buscar.html', items=[], q='')
+    like = f"%{q}%"
+    items = Item.query.filter(
+        db.or_(
+            Item.nombre.ilike(like),
+            Item.codigo_barras.ilike(like),
+            Item.autor.ilike(like) if hasattr(Item, 'autor') else False,
+            Item.isbn.ilike(like) if hasattr(Item, 'isbn') else False,
+        )
+    ).order_by(Item.especialidad_id.asc(), Item.nombre.asc()).limit(200).all()
+    return render_template('admin_buscar.html', items=items, q=q)
+
+
+@app.route('/admin/exportar_completo')
+@login_requerido
+@admin_requerido
+def admin_exportar_completo():
+    """Exporta TODO el inventario consolidado (8 áreas) a un Excel con una hoja por área."""
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        for esp in Especialidad.query.filter_by(activa=True).order_by(Especialidad.id).all():
+            items = Item.query.filter_by(especialidad_id=esp.id) \
+                .order_by(Item.categoria.asc(), Item.nombre.asc()).all()
+            df = pd.DataFrame([{
+                'Código': i.codigo_barras, 'Nombre': i.nombre,
+                'Categoría': i.categoria, 'Cantidad total': i.cantidad_total,
+                'Disponible': i.cantidad_disponible, 'En uso': i.cantidad_total - i.cantidad_disponible,
+                'Mermada': i.cantidad_mermada, 'Mínima': i.cantidad_minima,
+                'Ubicación': i.ubicacion, 'Precio': i.precio_unitario,
+                'Autor': getattr(i, 'autor', None), 'ISBN': getattr(i, 'isbn', None),
+                'Editorial': getattr(i, 'editorial', None),
+            } for i in items])
+            # Excel limita nombres de hoja a 31 chars
+            sheet = (esp.nombre[:28] + '...') if len(esp.nombre) > 31 else esp.nombre
+            if df.empty:
+                df = pd.DataFrame([{'Nombre': '(sin items)'}])
+            df.to_excel(writer, sheet_name=sheet, index=False)
+    buf.seek(0)
+    fname = f"inventario_completo_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/admin/reporte_mermas')
+@login_requerido
+@admin_requerido
+def admin_reporte_mermas():
+    """Excel con todos los ítems con merma + préstamos cerrados con merma."""
+    items_merma = Item.query.filter(Item.cantidad_mermada > 0) \
+        .order_by(Item.especialidad_id.asc(), Item.cantidad_mermada.desc()).all()
+    df_items = pd.DataFrame([{
+        'Especialidad': i.especialidad.nombre if i.especialidad else '',
+        'Código': i.codigo_barras, 'Nombre': i.nombre, 'Categoría': i.categoria,
+        'Cantidad mermada': i.cantidad_mermada,
+        'Cantidad total restante': i.cantidad_total,
+        'Valor estimado merma': (i.cantidad_mermada or 0) * (i.precio_unitario or 0),
+    } for i in items_merma])
+
+    prest_merma = Prestamo.query.filter(Prestamo.cantidad_mermada > 0) \
+        .order_by(Prestamo.fecha_devolucion.desc()).all()
+    df_prest = pd.DataFrame([{
+        'Fecha devolución': p.fecha_devolucion.strftime('%Y-%m-%d %H:%M') if p.fecha_devolucion else '',
+        'Especialidad': p.item.especialidad.nombre if (p.item and p.item.especialidad) else '',
+        'Ítem': p.item.nombre if p.item else '',
+        'Código': p.item.codigo_barras if p.item else '',
+        'Estudiante': p.estudiante.nombre if p.estudiante else '',
+        'RUT': p.estudiante.rut_matricula if p.estudiante else '',
+        'Cantidad mermada': p.cantidad_mermada,
+        'Práctica': p.nombre_practica or '',
+    } for p in prest_merma])
+
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        if df_items.empty: df_items = pd.DataFrame([{'_': 'Sin mermas'}])
+        df_items.to_excel(writer, sheet_name='Items con merma', index=False)
+        if df_prest.empty: df_prest = pd.DataFrame([{'_': 'Sin préstamos con merma'}])
+        df_prest.to_excel(writer, sheet_name='Préstamos con merma', index=False)
+    buf.seek(0)
+    fname = f"reporte_mermas_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+if __name__ == '__main__':
+    import threading, webbrowser, sys
+    es_exe = getattr(sys, 'frozen', False)
+    def abrir_navegador():
+        import time; time.sleep(1.5)
+        webbrowser.open('http://127.0.0.1:8080')
+    PORT = 8080
+    if es_exe:
+        threading.Thread(target=abrir_navegador, daemon=True).start()
+        app.run(host='127.0.0.1', port=PORT, debug=False, use_reloader=False)
+    else:
+        app.run(host='127.0.0.1', port=PORT, debug=True)

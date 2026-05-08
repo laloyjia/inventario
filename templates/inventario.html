@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventario Pañol Enterprise</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary: #2563eb; --secondary: #64748b; --success: #22c55e;
+            --danger: #ef4444; --warning: #f59e0b; --dark: #0f172a;
+            --light: #f8fafc; --info: #0ea5e9; --purple: #8b5cf6;
+        }
+
+        body { font-family: 'Inter', sans-serif; margin: 0; padding: 10px; background-color: #e2e8f0; color: var(--dark); font-size: 14px;}
+        .container { max-width: 1200px; margin: auto; }
+
+        .header {
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--dark); padding: 15px; border-radius: 8px; color: white;
+            margin-bottom: 15px; flex-wrap: wrap; gap: 10px;
+        }
+        .header h1 { margin: 0; font-size: 1.2rem; }
+        .user-profile { text-align: right; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;}
+        .btn-logout { background: #ef4444; color: white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight: bold;}
+
+        .action-btn { flex:1; padding: 20px; font-size: 1.2rem; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 10px;}
+        .action-btn-success { background: var(--success); color: white; box-shadow: 0 4px 6px rgba(34,197,94,0.3); }
+        .action-btn-warning { background: var(--warning); color: var(--dark); box-shadow: 0 4px 6px rgba(245,158,11,0.3); }
+
+        .tab-menu { display: flex; gap: 10px; margin-bottom: 20px; overflow-x: auto; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);}
+        .tab-link { flex:1; padding: 15px; border:none; background:#e2e8f0; color:var(--dark); border-radius:6px; cursor:pointer; font-weight:bold; font-size:1rem; white-space: nowrap;}
+        .tab-link.active { background: var(--primary); color: white; }
+        .modulo-content { display: none; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .card { background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .card h2 { margin-top: 0; font-size: 1.1rem; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;}
+
+        .grid-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: end; }
+        input, select, textarea { padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; box-sizing: border-box; font-family: inherit;}
+        label { font-size: 0.8rem; font-weight: bold; color: var(--secondary); margin-bottom: 3px; display: block; }
+        button { border: none; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-weight: bold;}
+
+        .btn-add { background: var(--success); color: white; padding: 8px 15px;}
+        .btn-delete { background: var(--danger); color: white; padding: 5px 8px;}
+
+        .table-responsive { width: 100%; overflow-x: auto; border: 1px solid #eee; border-radius: 6px;}
+        table { width: 100%; border-collapse: collapse; min-width: 500px; }
+        th, td { padding: 10px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background: #f8fafc; font-size: 0.75rem; text-transform: uppercase; color: var(--secondary); }
+        .badge { padding: 3px 8px; border-radius: 20px; font-size: 0.7rem; font-weight: bold; }
+
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
+        .modal-content { background: white; margin: 2% auto; padding: 20px; border-radius: 12px; width: 95%; max-width: 500px; max-height: 90vh; overflow-y: auto; box-sizing: border-box;}
+
+        /* Estilos para la imagen miniatura */
+        .thumb-img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid #cbd5e1; transition: transform 0.2s; }
+        .thumb-img:hover { transform: scale(1.1); border-color: var(--primary); }
+        .thumb-placeholder { width: 40px; height: 40px; background: #e2e8f0; color: #94a3b8; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
+
+        /* Modal Visor de Imágenes a Pantalla Completa */
+        #modalVisorImagen { display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(5px); align-items: center; justify-content: center; flex-direction: column;}
+        #modalVisorImagen img { max-width: 90%; max-height: 85vh; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); object-fit: contain; }
+        .btn-cerrar-visor { position: absolute; top: 20px; right: 30px; color: white; font-size: 40px; cursor: pointer; font-weight: bold; border: none; background: transparent; transition: color 0.2s;}
+        .btn-cerrar-visor:hover { color: var(--danger); }
+
+        /* Estadísticas rápidas */
+        .stats-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 15px; }
+        .stat-card { background: white; border-radius: 8px; padding: 12px 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.06); display: flex; align-items: center; gap: 12px; }
+        .stat-icon { width: 38px; height: 38px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
+        .stat-info { min-width: 0; }
+        .stat-num { font-size: 1.4rem; font-weight: 700; line-height: 1; }
+        .stat-label { font-size: 0.68rem; color: var(--secondary); text-transform: uppercase; font-weight: 600; margin-top: 2px; }
+
+        /* Flash messages */
+        .flash-success { padding: 10px 14px; background: #f0fdf4; color: #166534; border-radius: 6px; margin-bottom: 10px; border-left: 4px solid #22c55e; font-size: 0.85rem; }
+        .flash-error   { padding: 10px 14px; background: #fef2f2; color: #991b1b; border-radius: 6px; margin-bottom: 10px; border-left: 4px solid #ef4444; font-size: 0.85rem; }
+        .flash-warning { padding: 10px 14px; background: #fffbeb; color: #92400e; border-radius: 6px; margin-bottom: 10px; border-left: 4px solid #f59e0b; font-size: 0.85rem; }
+        .flash-info    { padding: 10px 14px; background: #0f172a; color: white;   border-radius: 6px; margin-bottom: 10px; border-left: 4px solid #0ea5e9; font-size: 0.85rem; }
+
+        /* Filtros de categoría */
+        .cat-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+        .cat-btn { padding: 5px 12px; border-radius: 20px; border: 1px solid #cbd5e1; background: white; color: var(--secondary); cursor: pointer; font-size: 0.78rem; font-weight: 600; transition: all 0.15s; }
+        .cat-btn.active, .cat-btn:hover { background: var(--primary); color: white; border-color: var(--primary); }
+
+        /* Botón editar */
+        .btn-edit { background: #0ea5e9; color: white; padding: 5px 8px; }
+
+        @media (max-width: 600px) {
+            .header { justify-content: center; text-align: center; }
+            .user-profile { justify-content: center; width: 100%; }
+            .tab-menu { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1><i class="fas fa-microchip"></i> ERP Pañol Institucional</h1>
+        <div class="user-profile">
+            <span><i class="fas fa-user-circle"></i> {{ session['usuario_nombre'] }} ({{ session['usuario_rol'] }})</span>
+            <a href="/logout" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Salir</a>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          {% if message.startswith('✅') %}
+            <div class="flash-success"><i class="fas fa-check-circle"></i> {{ message }}</div>
+          {% elif message.startswith('❌') %}
+            <div class="flash-error"><i class="fas fa-times-circle"></i> {{ message }}</div>
+          {% elif message.startswith('⚠️') %}
+            <div class="flash-warning"><i class="fas fa-exclamation-triangle"></i> {{ message }}</div>
+          {% else %}
+            <div class="flash-info"><i class="fas fa-info-circle"></i> {{ message }}</div>
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- Panel de estadísticas rápidas -->
+    <div class="stats-bar">
+        <div class="stat-card">
+            <div class="stat-icon" style="background:#eff6ff;"><i class="fas fa-boxes" style="color:#2563eb;"></i></div>
+            <div class="stat-info">
+                <div class="stat-num" style="color:#2563eb;">{{ items | length }}</div>
+                <div class="stat-label">Ítems únicos</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background:#f0fdf4;"><i class="fas fa-check-circle" style="color:#22c55e;"></i></div>
+            <div class="stat-info">
+                <div class="stat-num" style="color:#22c55e;">{{ items | sum(attribute='cantidad_disponible') }}</div>
+                <div class="stat-label">Unidades disponibles</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background:#fffbeb;"><i class="fas fa-hand-holding" style="color:#f59e0b;"></i></div>
+            <div class="stat-info">
+                <div class="stat-num" style="color:#f59e0b;">{{ prestamos_activos }}</div>
+                <div class="stat-label">Préstamos activos</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background:#fef2f2;"><i class="fas fa-exclamation-triangle" style="color:#ef4444;"></i></div>
+            <div class="stat-info">
+                <div class="stat-num" style="color:#ef4444;">{{ items | sum(attribute='cantidad_mermada') }}</div>
+                <div class="stat-label">Merma total</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background:#f5f3ff;"><i class="fas fa-user-graduate" style="color:#8b5cf6;"></i></div>
+            <div class="stat-info">
+                <div class="stat-num" style="color:#8b5cf6;">{{ estudiantes | length }}</div>
+                <div class="stat-label">Estudiantes</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-menu">
+        <button class="tab-link active" onclick="abrirModulo(event, 'mod-fisico')"><i class="fas fa-boxes"></i> 1. Inventario Físico</button>
+        <button class="tab-link" onclick="abrirModulo(event, 'mod-activos')"><i class="fas fa-hand-holding"></i> 2. Préstamos Activos</button>
+        <button class="tab-link" onclick="abrirModulo(event, 'mod-merma')"><i class="fas fa-chart-pie"></i> 3. Merma por Práctica</button>
+        {% if session['usuario_rol'] in ['Administrador', 'Profesor'] %}
+        <button class="tab-link" onclick="abrirModulo(event, 'mod-admin')"><i class="fas fa-users-cog"></i> 4. Administración</button>
+        {% endif %}
+        <button class="tab-link" onclick="abrirModulo(event, 'mod-varios')"><i class="fas fa-folder-open"></i> 4. Varios</button>
+    </div>
+
+    <div id="mod-fisico" class="modulo-content" style="display: block;">
+        <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
+            <button onclick="abrirModalSalida()" class="action-btn action-btn-success"><i class="fas fa-arrow-circle-up"></i> Sacar Cosas (Préstamo)</button>
+            <button onclick="abrirModalDevolucion()" class="action-btn action-btn-warning"><i class="fas fa-arrow-circle-down"></i> Devolver Cosas</button>
+        </div>
+
+        {% if session['usuario_rol'] in ['Administrador', 'Profesor', 'Pañolero'] %}
+        <div class="card">
+            <h2 style="font-size: 0.95rem; margin-bottom: 10px;"><i class="fas fa-plus-circle"></i> Ingresar Nuevo Material al Taller</h2>
+            <form action="/agregar" method="POST" class="grid-form">
+                <div><label>Cód. Barras (Vacío=Auto)</label><input type="text" name="codigo_barras" placeholder="Escanear..."></div>
+                <div><label>Nombre</label><input type="text" name="nombre" required></div>
+                <div>
+                    <label>Categoría</label>
+                    <select name="categoria">
+                        <option value="Herramienta">Herramienta</option>
+                        <option value="Componente">Componente</option>
+                        <option value="Material">Material</option>
+                        <option value="Fungible">Fungible</option>
+                    </select>
+                </div>
+                <div><label>Cant.</label><input type="number" name="cantidad" min="1" value="1" required></div>
+                <div><label>Ubicación</label><input type="text" name="ubicacion" placeholder="Ej: Estante A, Armario 1, etc."></div>
+                <div><label>URL Imagen (Opcional)</label><input type="url" name="imagen_url" placeholder="Pegar link..."></div>
+                <button type="submit" class="btn-add"><i class="fas fa-save"></i> Guardar</button>
+            </form>
+        </div>
+        {% endif %}
+
+        <div class="card">
+            <h2>
+                <span><i class="fas fa-cubes"></i> Existencias Físicas en Taller</span>
+                <input type="text" id="buscadorInventario" onkeyup="filtrarInventario()" placeholder="🔍 Buscar equipo..." style="width: auto; min-width: 200px;">
+            </h2>
+
+            <!-- Filtros rápidos por categoría -->
+            <div class="cat-filters">
+                <button class="cat-btn active" onclick="filtrarCategoria(this, 'TODOS')">Todos</button>
+                <button class="cat-btn" onclick="filtrarCategoria(this, 'Herramienta')"><i class="fas fa-wrench"></i> Herramienta</button>
+                <button class="cat-btn" onclick="filtrarCategoria(this, 'Componente')"><i class="fas fa-microchip"></i> Componente</button>
+                <button class="cat-btn" onclick="filtrarCategoria(this, 'Material')"><i class="fas fa-layer-group"></i> Material</button>
+                <button class="cat-btn" onclick="filtrarCategoria(this, 'Fungible')"><i class="fas fa-flask"></i> Fungible</button>
+            </div>
+
+            <div class="table-responsive">
+                <table id="tablaInventario">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Nombre</th>
+                            <th>Ubicación</th>
+                            <th style="text-align: center;">Disponible</th>
+                            <th style="text-align: center;">En uso</th>
+                            <th style="text-align: center;">Merma</th>
+                            {% if session['usuario_rol'] not in ['Estudiante'] %}<th>Acción</th>{% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr class="fila-item" data-categoria="{{ item.categoria }}">
+                            <td>
+                                <div style="display:flex; flex-direction:column; gap:3px;">
+                                    <span style="font-family: monospace; background:#eee; padding:2px 4px; border-radius:3px; font-size:0.75rem;">{{ item.codigo_barras }}</span>
+                                    <svg class="barcode-mini" data-code="{{ item.codigo_barras }}" style="width:120px; height:30px;"></svg>
+                                </div>
+                            </td>
+                            <td style="display: flex; align-items: center; gap: 10px;">
+                                {% if item.imagen_url %}
+                                    <img src="{{ item.imagen_url }}" class="thumb-img"
+                                         onmouseover="iniciarHoverImagen('{{ item.imagen_url }}')"
+                                         onmouseout="cancelarHoverImagen()"
+                                         onclick="mostrarImagenGrande('{{ item.imagen_url }}')">
+                                {% else %}
+                                    <div class="thumb-placeholder"><i class="fas fa-image"></i></div>
+                                {% endif %}
+                                <div>
+                                    <strong>{{ item.nombre }}</strong> <br>
+                                    <span style="font-size: 0.7rem; color:var(--secondary);">{{ item.categoria }}</span>
+                                </div>
+                            </td>
+                            <td><span style="font-size: 0.85rem; background:#f0fdf4; padding:4px 8px; border-radius:4px; color:#166534;"><i class="fas fa-map-marker-alt"></i> {{ item.ubicacion or 'Sin especificar' }}</span></td>
+                            <td style="color: var(--success); font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_disponible }}</td>
+                            <td style="color: #ca8a04; font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_total - item.cantidad_disponible }}</td>
+                            <td style="color: var(--danger); font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_mermada | default(0, true) }}</td>
+                            {% if session['usuario_rol'] not in ['Estudiante'] %}
+                            <td>
+                                <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                                    <button type="button" class="btn-edit" title="Editar"
+                                        onclick="abrirModalEditar({{ item.id }}, '{{ item.nombre | replace("'", "\\'") }}', '{{ item.categoria }}', '{{ item.imagen_url or '' }}', '{{ item.ubicacion or '' }}')">
+                                        <i class="fas fa-pencil-alt"></i>
+                                    </button>
+                                    <a href="/etiqueta/{{ item.id }}" target="_blank" title="Imprimir etiqueta con código de barras"
+                                       style="background: #6366f1; color: white; padding: 6px 8px; border-radius: 4px; text-decoration: none; display: inline-flex; align-items: center;">
+                                        <i class="fas fa-barcode"></i>
+                                    </a>
+                                    <form action="/eliminar/{{ item.id }}" method="POST" onsubmit="return confirm('¿Eliminar {{ item.nombre }}? Esta acción no se puede deshacer.');" style="display:inline;">
+                                        <button type="submit" class="btn-delete" title="Eliminar"><i class="fas fa-trash"></i></button>
+                                    </form>
+                                </div>
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div id="mod-activos" class="modulo-content" style="display: none;">
+        <div class="card">
+            <h2>
+                <span><i class="fas fa-history"></i> Préstamos Activos en Tiempo Real</span>
+                <input type="text" id="buscadorPrestamos" onkeyup="filtrarPrestamos()" placeholder="🔍 Buscar alumno, ítem o práctica..." style="width: auto; min-width: 220px;">
+            </h2>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+                <button class="cat-btn active" onclick="filtrarEstadoPrestamo(this, 'TODOS')">Todos</button>
+                <button class="cat-btn" onclick="filtrarEstadoPrestamo(this, 'Pendiente')" style="border-color:#f59e0b; color:#92400e;">En uso</button>
+                <button class="cat-btn" onclick="filtrarEstadoPrestamo(this, 'Devuelto')" style="border-color:#22c55e; color:#166534;">Devueltos</button>
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Alumno (Autoriza)</th>
+                            <th>Ítem (Cant) / Práctica</th>
+                            <th>Estado</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for prestamo in prestamos %}
+                       <tr class="fila-prestamo"
+                            data-codigo="{{ prestamo.item.codigo_barras if prestamo.item else '' }}"
+                            data-estudiante="{{ prestamo.estudiante.rut_matricula if prestamo.estudiante else '' }}"
+                            data-estado="{{ prestamo.estado }}">
+                            <td style="font-size: 0.75rem;">{{ prestamo.fecha_prestamo.strftime('%d/%m %H:%M') }}</td>
+                            <td>
+                                <strong>{{ prestamo.estudiante.nombre if prestamo.estudiante else 'Eliminado' }}</strong><br>
+                                <span style="font-size: 0.7rem; color:var(--secondary);">{{ prestamo.encargado }}</span>
+                            </td>
+                            <td>
+                                {{ prestamo.item.nombre if prestamo.item else 'Eliminado' }} <strong>(x{{ prestamo.cantidad }})</strong>
+                                {% if prestamo.nombre_practica %}
+                                    <br><span style="font-size: 0.75rem; color: #1e40af; background: #e0e7ff; padding: 2px 6px; border-radius: 4px; margin-top: 4px; display: inline-block; border: 1px solid #bfdbfe;"><i class="fas fa-project-diagram"></i> {{ prestamo.nombre_practica }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if prestamo.estado == 'Pendiente' %}<span class="badge" style="background: #fef08a; color: #854d0e;">En uso</span>
+                                {% elif prestamo.estado == 'Devuelto' %}<span class="badge" style="background: #bbf7d0; color: #166534;">Devuelto</span>
+                                {% else %}<span class="badge" style="background: #e2e8f0;">Consumido</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if prestamo.estado == 'Pendiente' %}
+                                <form action="/devolver_prestamo/{{ prestamo.id }}" method="POST" class="form-devolucion">
+                                    <input type="hidden" name="cantidad_devuelta" class="input-hidden-cant" value="{{ prestamo.cantidad }}">
+                                    <button type="submit" style="background: var(--warning); padding: 5px 10px; font-size: 0.8rem; cursor: pointer; border-radius: 4px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: all 0.2s;"><i class="fas fa-undo"></i></button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="mod-merma" class="modulo-content" style="display: none;">
+        <div class="card" style="border-left: 4px solid #10b981;">
+            <h2 style="margin-top: 0;"><i class="fas fa-project-diagram"></i> Prácticas Realizadas (Consumo y Merma)</h2>
+            <div class="table-responsive">
+                <table style="border: 1px solid #e2e8f0;">
+                    <thead style="background: #f8fafc;">
+                        <tr>
+                            <th rowspan="2" style="vertical-align: middle; border-right: 2px solid #cbd5e1; width: 15%;">Práctica</th>
+                            <th colspan="2" style="text-align: center; border-right: 2px solid #cbd5e1;">Herr.</th>
+                            <th colspan="2" style="text-align: center; border-right: 2px solid #cbd5e1;">Comp.</th>
+                            <th colspan="2" style="text-align: center; border-right: 2px solid #cbd5e1;">Mat.</th>
+                            <th colspan="2" style="text-align: center;">Fung.</th>
+                        </tr>
+                        <tr>
+                            <th style="background:#f1f5f9;">Uso</th><th style="background:#fef2f2; color:var(--danger); border-right:2px solid #cbd5e1;">Merma</th>
+                            <th style="background:#f1f5f9;">Uso</th><th style="background:#fef2f2; color:var(--danger); border-right:2px solid #cbd5e1;">Merma</th>
+                            <th style="background:#f1f5f9;">Uso</th><th style="background:#fef2f2; color:var(--danger); border-right:2px solid #cbd5e1;">Merma</th>
+                            <th style="background:#f1f5f9;">Uso</th><th style="background:#fef2f2; color:var(--danger);">Merma</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if practicas_resumen %}
+                            {% for p in practicas_resumen %}
+                            <tr>
+                                <td style="border-right: 2px solid #cbd5e1;"><strong>{{ p.nombre }}</strong></td>
+                                <td style="text-align: center;">{{ p.herr_uso }}</td><td style="text-align: center; border-right: 2px solid #cbd5e1;">
+                                    <span style="color:var(--danger); font-weight:bold;">{{ p.herr_merma }}</span>
+                                    {% if p.herr_detalles %}<div style="font-size:0.7rem; background:#fee2e2; padding:3px; margin-top:4px;">{% for d in p.herr_detalles %}• {{ d }}<br>{% endfor %}</div>{% endif %}
+                                </td>
+                                <td style="text-align: center;">{{ p.comp_uso }}</td><td style="text-align: center; border-right: 2px solid #cbd5e1;">
+                                    <span style="color:var(--danger); font-weight:bold;">{{ p.comp_merma }}</span>
+                                    {% if p.comp_detalles %}<div style="font-size:0.7rem; background:#fee2e2; padding:3px; margin-top:4px;">{% for d in p.comp_detalles %}• {{ d }}<br>{% endfor %}</div>{% endif %}
+                                </td>
+                                <td style="text-align: center;">{{ p.mat_uso }}</td><td style="text-align: center; border-right: 2px solid #cbd5e1;">
+                                    <span style="color:var(--danger); font-weight:bold;">{{ p.mat_merma }}</span>
+                                    {% if p.mat_detalles %}<div style="font-size:0.7rem; background:#fee2e2; padding:3px; margin-top:4px;">{% for d in p.mat_detalles %}• {{ d }}<br>{% endfor %}</div>{% endif %}
+                                </td>
+                                <td style="text-align: center;">{{ p.fung_uso }}</td><td style="text-align: center;">
+                                    <span style="color:var(--danger); font-weight:bold;">{{ p.fung_merma }}</span>
+                                    {% if p.fung_detalles %}<div style="font-size:0.7rem; background:#fee2e2; padding:3px; margin-top:4px;">{% for d in p.fung_detalles %}• {{ d }}<br>{% endfor %}</div>{% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr><td colspan="9" style="text-align: center; padding: 25px; color: var(--secondary);">No hay datos.</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% if session['usuario_rol'] in ['Administrador', 'Profesor'] %}
+    <div id="mod-admin" class="modulo-content" style="display: none;">
+        <div class="card">
+            <h2><span><i class="fas fa-user-graduate"></i> Padrón de Estudiantes</span></h2>
+            <form action="/agregar_estudiante" method="POST" class="grid-form" style="margin-bottom: 15px;">
+                <div><label>RUT</label><input type="text" name="rut_matricula" required></div>
+                <div><label>Nombre</label><input type="text" name="nombre" required></div>
+                <div><label>Curso</label><input type="text" name="curso" placeholder="Ej: 3ro A" required></div>
+                <div><label>Especialidad</label><input type="text" name="especialidad" required></div>
+                <button type="submit" style="background: var(--purple); color: white; padding: 8px;"><i class="fas fa-save"></i> Registrar</button>
+            </form>
+            <div style="background: #f8fafc; padding: 10px; border-radius: 6px; margin-bottom: 10px;">
+                <label>Filtro Rápido por Curso:</label>
+                <select id="filtroTablaCurso" onchange="filtrarEstudiantesTabla()"><option value="ALL">Mostrar Todos los Cursos</option></select>
+            </div>
+            <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                <table>
+                    <thead style="position: sticky; top: 0; background: white;"><tr><th>RUT</th><th>Nombre</th><th>Curso</th><th>Estado</th><th>X</th></tr></thead>
+                    <tbody id="cuerpoTablaEstudiantes">
+                        {% for est in estudiantes %}
+                        <tr class="fila-estudiante" data-curso="{{ est.curso }}">
+                            <td>{{ est.rut_matricula }}</td><td>{{ est.nombre }}</td><td>{{ est.curso }}</td>
+                            <td>{% if est.tiene_deudas %}<span class="badge" style="background:#fee2e2; color:red;">Moroso</span>{% else %}<span class="badge" style="background:#dcfce7; color:green;">Al día</span>{% endif %}</td>
+                            <td><form action="/eliminar_estudiante/{{ est.id }}" method="POST" onsubmit="return confirm('¿Eliminar alumno?');"><button type="submit" class="btn-delete"><i class="fas fa-trash"></i></button></form></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 15px;">
+                <a href="/credenciales" target="_blank" style="display: block; width: 100%; text-align: center; background: var(--dark); color: white; padding: 10px; text-decoration: none; border-radius: 6px; font-weight: bold;"><i class="fas fa-id-card"></i> Imprimir Credenciales</a>
+            </div>
+        </div>
+
+        {% if session['usuario_rol'] == 'Administrador' %}
+        <div class="card">
+            <h2><span><i class="fas fa-shield-alt"></i> Usuarios Administrativos</span></h2>
+            <form action="/agregar_usuario" method="POST" class="grid-form" style="margin-bottom: 15px;">
+                <div><label>Nombre</label><input type="text" name="nombre" required></div>
+                <div><label>Login ID</label><input type="text" name="username" required></div>
+                <div><label>Clave</label><input type="password" name="password" required></div>
+                <div>
+                    <label>Rol</label>
+                    <select name="rol">
+                        <option value="Administrador">Admin</option>
+                        <option value="Profesor">Profesor</option>
+                        <option value="Pañolero">Pañolero</option>
+                    </select>
+                </div>
+                <button type="submit" style="background: var(--info); color: white; padding: 8px;"><i class="fas fa-user-plus"></i> Crear</button>
+            </form>
+            <div class="table-responsive">
+                <table>
+                    <tbody>
+                        {% for persona in usuarios_sistema %}
+                        <tr>
+                            <td><strong>{{ persona.nombre }}</strong> <br> <span style="font-size:0.7rem;">{{ persona.rol }}</span></td>
+                            <td>{{ persona.username }}</td>
+                            <td>
+                                {% if persona.id != session['usuario_id'] %}
+                                <form action="/eliminar_usuario/{{ persona.id }}" method="POST" onsubmit="return confirm('¿Eliminar usuario?');">
+                                    <button type="submit" class="btn-delete"><i class="fas fa-trash"></i></button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    <div id="mod-varios" class="modulo-content" style="display: none;">
+
+        <!-- Tarjeta Carga/Descarga de Excel -->
+        <div class="card" style="border-left: 4px solid #10b981; background: #ecfdf5;">
+            <h2 style="color: #065f46;"><i class="fas fa-file-excel"></i> Inventario Excel</h2>
+
+            <!-- Cargar Excel -->
+            <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 12px;">
+                <h3 style="margin: 0 0 10px 0; color: #065f46; font-size: 1rem;"><i class="fas fa-upload"></i> Cargar inventario desde Excel</h3>
+                <p style="font-size: 0.85rem; color: #555; margin: 0 0 12px 0;">
+                    Formato esperado (6 columnas en orden):
+                    <strong>1. Código</strong> (vacío = autogenerar) ·
+                    <strong>2. Nombre</strong> ·
+                    <strong>3. Categoría</strong> ·
+                    <strong>4. Cantidad</strong> ·
+                    <strong>5. Ubicación</strong> (opcional) ·
+                    <strong>6. Imagen URL</strong> (opcional).
+                </p>
+                <form action="/cargar_excel" method="POST" enctype="multipart/form-data"
+                      style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <input type="file" name="archivo_excel" accept=".xlsx, .xls" required
+                           style="flex: 1; min-width: 220px; padding: 8px; border: 2px dashed #10b981; border-radius: 6px; background: #f0fdf4;">
+                    <button type="submit"
+                            style="background: #10b981; color: white; padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">
+                        <i class="fas fa-upload"></i> Subir Excel
+                    </button>
+                </form>
+            </div>
+
+            <!-- Descargas -->
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                <a href="/descargar_plantilla"
+                   style="background: var(--info); color: white; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+                    <i class="fas fa-download"></i> Descargar plantilla (vacía)
+                </a>
+                <a href="/exportar_excel"
+                   style="background: #2563eb; color: white; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+                    <i class="fas fa-file-export"></i> Exportar mi inventario
+                </a>
+                {% if session['usuario_rol'] in ['Administrador', 'Admin', 'Profesor'] %}
+                <a href="/exportar_inventario"
+                   style="background: #065f46; color: white; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+                    <i class="fas fa-file-invoice-dollar"></i> Reporte contable general
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+
+            <div class="card" style="border-left: 4px solid var(--info);">
+                <h2>
+                    <i class="fas fa-clipboard-check"></i> Órdenes de Trabajo (OT)
+                    {% if session['usuario_rol'] in ['Administrador', 'Admin', 'Profesor', 'Pañolero'] %}
+                        <button onclick="abrirModalOT()" class="btn-add" style="font-size: 0.8rem;"><i class="fas fa-plus"></i> Nueva OT</button>
+                    {% endif %}
+                </h2>
+
+                <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                    <table>
+                        <thead><tr><th>OT / Detalles</th><th>Estado</th><th>Acciones</th></tr></thead>
+                        <tbody>
+                            {% for ot in ordenes_trabajo %}
+                            <tr>
+                                <td>
+                                    <strong>#{{ ot.id }} - {{ ot.titulo }}</strong><br>
+                                    <span style="font-size: 0.75rem; color: gray;">
+                                        Por: {{ ot.profesional_cargo }} <br> Fecha: {{ ot.fecha_creacion.strftime('%d/%m/%Y') }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if ot.estado == 'Pendiente' %}<span class="badge" style="background: #fef08a; color: #854d0e;">En Curso</span>
+                                    {% else %}<span class="badge" style="background: #bbf7d0; color: #166534;">Cerrada</span>{% endif %}
+                                </td>
+                                <td style="display: flex; gap: 5px;">
+                                    {% if ot.estado == 'Pendiente' and session['usuario_rol'] in ['Administrador', 'Admin', 'Profesor', 'Pañolero'] %}
+                                    <form action="/completar_ot/{{ ot.id }}" method="POST">
+                                        <button type="submit" style="background: var(--success); color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer;" title="Cerrar y Devolver Herramientas"><i class="fas fa-check"></i></button>
+                                    </form>
+                                    {% endif %}
+                                    <a href="/imprimir_ot/{{ ot.id }}" target="_blank" style="background: var(--info); color: white; padding: 6px 10px; border-radius: 4px; text-decoration: none; text-align: center;" title="Imprimir Documento OT"><i class="fas fa-print"></i></a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card" style="border-left: 4px solid var(--purple);">
+                <h2><i class="fas fa-exchange-alt"></i> Préstamos a Especialidades</h2>
+
+                {% if session['usuario_rol'] in ['Administrador', 'Pañolero'] %}
+                <form action="/agregar_prestamo_externo" method="POST" style="margin-bottom: 20px; background: #f8fafc; padding: 15px; border-radius: 6px;">
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <div style="flex: 2;"><label>Cód. Ítem</label><input type="text" name="codigo_item" required></div>
+                        <div style="flex: 1;"><label>Cant</label><input type="number" name="cantidad" min="1" value="1" required></div>
+                    </div>
+
+                    <label>Especialidad / Depto. Destino</label>
+                    <input type="text" name="especialidad_destino" placeholder="Ej: Electrónica, Computación..." required style="margin-bottom: 10px;">
+
+                    <label>¿Quién Retira el Equipo?</label>
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <select name="tipo_persona" id="tipo_persona_ext" onchange="toggleProfesorExt()" style="flex: 1;">
+                            <option value="Profesor">Profesor / Funcionario</option>
+                            <option value="Alumno">Estudiante</option>
+                        </select>
+                    </div>
+                    <input type="text" name="persona_retira" placeholder="Nombre completo de quien retira..." required style="margin-bottom: 10px;">
+
+                    <div id="div_profesor_cargo_ext" style="display: none; margin-bottom: 10px;">
+                        <label style="color: var(--danger);">Profesor a Cargo (Autoriza al alumno)</label>
+                        <input type="text" name="profesor_cargo" placeholder="Nombre del docente a cargo...">
+                    </div>
+
+                    <button type="submit" style="background: var(--purple); color: white; padding: 8px 15px; width: 100%;"><i class="fas fa-sign-out-alt"></i> Registrar Préstamo Externo</button>
+                </form>
+                {% endif %}
+
+                <div class="table-responsive" style="max-height: 200px; overflow-y: auto;">
+                    <table>
+                        <thead><tr><th>Ítem Destino</th><th>Retira</th><th>Estado</th></tr></thead>
+                        <tbody>
+                            {% for ext in prestamos_externos %}
+                            <tr>
+                                <td>
+                                    <strong>{{ ext.item.nombre }} (x{{ ext.cantidad }})</strong><br>
+                                    <span style="font-size: 0.75rem; color: gray;">Para: {{ ext.especialidad_destino }}</span>
+                                </td>
+                                <td>
+                                    <span style="font-size: 0.8rem;">{{ ext.persona_retira }}</span><br>
+                                    {% if ext.es_alumno %}<span style="font-size: 0.7rem; color: var(--danger);">Autoriza: {{ ext.profesor_cargo }}</span>{% endif %}
+                                </td>
+                                <td>
+                                    {% if ext.estado == 'Activo' %}
+                                        <form action="/devolver_externo/{{ ext.id }}" method="POST">
+                                            <button type="submit" style="background: var(--warning); border:none; padding:5px 8px; border-radius:4px; cursor:pointer;" title="Recibir de vuelta"><i class="fas fa-undo"></i></button>
+                                        </form>
+                                    {% else %}
+                                        <span class="badge" style="background: #bbf7d0; color: #166534;">Devuelto</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+<div id="modalSalida" class="modal">
+    <div class="modal-content">
+        <h2 style="margin-top:0; border-bottom: 2px solid var(--primary); padding-bottom: 10px;"><i class="fas fa-shipping-fast"></i> Registrar Salida</h2>
+        <div style="background: #f8fafc; padding: 10px; border-radius: 6px; margin-bottom: 15px;">
+            <label style="color: var(--danger);">1. Profesor Supervisor a Cargo <span style="color:red;">*</span></label>
+            <select id="profesor_id_modal" required style="border: 2px solid var(--danger); margin-bottom: 10px;">
+                <option value="" disabled selected>-- Seleccione al Profesor --</option>
+                {% for prof in profesores %}<option value="{{ prof.id }}">{{ prof.nombre }}</option>{% endfor %}
+            </select>
+            <label>2. Filtro de Curso</label>
+            <select id="curso_salida" onchange="filtrarAlumnosModalSalida()" style="margin-bottom: 10px;">
+                <option value="ALL">Mostrar Todos los Cursos</option>
+            </select>
+            <label>3. Estudiante Solicitante <span style="color:red;">*</span></label>
+            <select id="estudiante_id_modal" required>
+                <option value="" disabled selected>-- Seleccione al Estudiante --</option>
+                {% for est in estudiantes %}<option value="{{ est.id }}" class="opt-alumno" data-curso="{{ est.curso }}">{{ est.rut_matricula }} - {{ est.nombre }}</option>{% endfor %}
+            </select>
+        </div>
+        <div style="border: 1px dashed var(--secondary); padding: 10px; border-radius: 6px; margin-bottom: 15px;">
+            <label>Pistolear Código y Cantidad</label>
+            <div style="display: flex; gap: 5px; margin-top: 5px;">
+                <input type="text" id="inputScanSalida" placeholder="Código..." onkeypress="manejarEnterScan(event)" style="flex: 1;">
+                <input type="number" id="inputCantSalida" value="1" min="1" style="width: 60px;">
+                <button type="button" onclick="agregarAlPedido()" class="btn-add"><i class="fas fa-plus"></i></button>
+            </div>
+        </div>
+        <div class="table-responsive" style="max-height: 150px; overflow-y: auto; margin-bottom: 15px;">
+            <table style="min-width: 100%;">
+                <thead><tr><th>Cód</th><th style="width:50px;">Cant.</th><th>X</th></tr></thead>
+                <tbody id="lista_pedido_cuerpo"></tbody>
+            </table>
+        </div>
+        <form action="/registrar_salida" method="POST" id="form_final_despacho">
+            <input type="hidden" name="estudiante_id" id="hidden_estudiante_id">
+            <input type="hidden" name="profesor_id" id="hidden_profesor_id">
+            <input type="hidden" name="carrito_data" id="hidden_carrito">
+            <div style="margin-bottom: 20px;">
+                <label style="font-weight: 600; color: var(--dark);">Práctica / Proyecto (Opcional):</label>
+                <input type="text" name="nombre_practica" placeholder="Ej: Taller de Motores..." style="width: 100%; padding: 10px; border: 2px solid var(--secondary);">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button type="button" onclick="finalizarDespacho()" style="flex: 1; background: var(--primary); color: white; padding: 12px;"><i class="fas fa-check"></i> Confirmar Salida</button>
+                <button type="button" onclick="cerrarModalSalida()" style="background: #e2e8f0; color: var(--dark); padding: 12px;">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="modalDevolucion" class="modal">
+    <div class="modal-content" style="text-align: center;">
+        <h2 style="margin-top:0; border-bottom: 2px solid var(--warning); padding-bottom: 10px;"><i class="fas fa-dolly-flatbed"></i> Recepción de Materiales</h2>
+        <p style="font-size: 0.85rem; color: var(--secondary); margin-bottom: 20px;">Ingrese el RUT o escanee la credencial del alumno para ver la lista completa de materiales prestados.</p>
+        <form action="/buscar_hoja_vida" method="POST">
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <input type="text" name="scan_estudiante" placeholder="Escanear RUT..." required style="flex: 1; font-size: 1.1rem; text-align: center; border: 2px solid var(--warning); padding: 12px; border-radius: 6px;">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" style="flex:1; background: var(--warning); color: var(--dark); padding: 12px;"><i class="fas fa-search"></i> Ver Hoja de Vida</button>
+                <button type="button" onclick="cerrarModalDevolucion()" style="background: #e2e8f0; color: var(--dark); padding: 12px;">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="modalOT" class="modal">
+    <div class="modal-content">
+        <h2 style="margin-top:0; border-bottom: 2px solid var(--info); padding-bottom: 10px;"><i class="fas fa-tools"></i> Nueva Orden de Trabajo</h2>
+
+        <form action="/agregar_ot" method="POST" id="form_ot_final">
+            <label>Título de la OT <span style="color:red;">*</span></label>
+            <input type="text" name="titulo" placeholder="Ej: Reparación Tablero Eléctrico" required style="margin-bottom: 10px;">
+
+            <label>Profesional a Cargo <span style="color:red;">*</span></label>
+            <input type="text" name="profesional_cargo" placeholder="Nombre del profesional..." required style="margin-bottom: 10px;">
+
+            <label>Alumno(s) a Cargo (Opcional)</label>
+            <input type="text" name="alumnos_cargo" placeholder="Nombres separados por coma..." style="margin-bottom: 10px;">
+
+            <label>Descripción General</label>
+            <textarea name="descripcion" rows="2" placeholder="Falla detectada o trabajo a realizar..." style="margin-bottom: 15px;"></textarea>
+
+            <div style="background: #e0f2fe; padding: 10px; border-radius: 6px; border: 1px solid #7dd3fc; margin-bottom: 15px;">
+                <label style="color: #0284c7;"><i class="fas fa-barcode"></i> Añadir Insumos / Herramientas (Opcional)</label>
+                <p style="font-size: 0.75rem; color: #0369a1; margin: 3px 0 8px 0;">Pistolea aquí. Los repuestos se descontarán como "Merma", y las herramientas se marcarán como "Préstamo" asociado a la OT.</p>
+                <div style="display: flex; gap: 5px;">
+                    <input type="text" id="inputScanOT" placeholder="Código..." style="flex: 1;" onkeypress="if(event.key === 'Enter') { event.preventDefault(); agregarAlPedidoOT(); }">
+                    <input type="number" id="inputCantOT" value="1" min="1" style="width: 60px;">
+                    <button type="button" onclick="agregarAlPedidoOT()" class="btn-add" style="background: var(--info);"><i class="fas fa-plus"></i></button>
+                </div>
+            </div>
+
+            <div class="table-responsive" style="max-height: 120px; overflow-y: auto; margin-bottom: 15px; display: none;" id="div_tabla_ot">
+                <table style="min-width: 100%;">
+                    <thead><tr><th>Cód. Ítem</th><th style="width:50px;">Cant.</th><th>X</th></tr></thead>
+                    <tbody id="lista_ot_cuerpo"></tbody>
+                </table>
+            </div>
+
+            <input type="hidden" name="carrito_ot_data" id="hidden_carrito_ot">
+
+            <div style="display: flex; gap: 10px;">
+                <button type="button" onclick="finalizarOT()" style="flex: 1; background: var(--info); color: white; padding: 12px;"><i class="fas fa-save"></i> Generar OT</button>
+                <button type="button" onclick="cerrarModalOT()" style="background: #e2e8f0; color: var(--dark); padding: 12px;">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal de Edición de Ítem -->
+<div id="modalEditar" class="modal">
+    <div class="modal-content">
+        <h2 style="margin-top:0; border-bottom: 2px solid #0ea5e9; padding-bottom: 10px; color:#0284c7;">
+            <i class="fas fa-pencil-alt"></i> Editar Ítem
+        </h2>
+        <form id="formEditar" action="" method="POST">
+            <label>Nombre del ítem <span style="color:red;">*</span></label>
+            <input type="text" name="nombre" id="edit_nombre" required style="margin-bottom: 12px;">
+
+            <label>Categoría</label>
+            <select name="categoria" id="edit_categoria" style="margin-bottom: 12px;">
+                <option value="Herramienta">Herramienta</option>
+                <option value="Componente">Componente</option>
+                <option value="Material">Material</option>
+                <option value="Fungible">Fungible</option>
+            </select>
+
+            <label>URL de Imagen (dejar vacío para no cambiar)</label>
+            <input type="url" name="imagen_url" id="edit_imagen" placeholder="https://..." style="margin-bottom: 12px;">
+
+            <label>Ubicación</label>
+            <input type="text" name="ubicacion" id="edit_ubicacion" placeholder="Ej: Estante A, Armario 1, etc." style="margin-bottom: 12px;">
+
+            <label>Ajuste de stock (+ para agregar, - para restar)</label>
+            <input type="number" name="ajuste_cantidad" id="edit_ajuste" value="0" style="margin-bottom: 20px;">
+
+            <div style="background:#fffbeb; border:1px solid #fcd34d; border-radius:6px; padding:10px; margin-bottom:15px; font-size:0.8rem; color:#92400e;">
+                <i class="fas fa-info-circle"></i> El ajuste de stock modifica tanto el total como el disponible. Úsalo para correcciones de inventario.
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button type="button" onclick="confirmarEdicion()" style="flex:1; background:#0ea5e9; color:white; padding:12px;"><i class="fas fa-save"></i> Guardar Cambios</button>
+                <button type="button" onclick="cerrarModalEditar()" style="background:#e2e8f0; color:var(--dark); padding:12px;">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="modalVisorImagen">
+    <button class="btn-cerrar-visor" onclick="cerrarImagenGrande()">&times;</button>
+    <img id="imagenExpandida" src="" alt="Vista ampliada">
+    <p style="color: white; margin-top: 15px; font-size: 1.2rem; font-weight: bold;">Haz clic en cualquier lado para cerrar</p>
+</div>
+
+<script>
+    // --- NAVEGACION ---
+    function abrirModulo(evt, nombreModulo) {
+        var i, modulos, links;
+        modulos = document.getElementsByClassName("modulo-content");
+        for (i = 0; i < modulos.length; i++) { modulos[i].style.display = "none"; }
+        links = document.getElementsByClassName("tab-link");
+        for (i = 0; i < links.length; i++) { links[i].classList.remove("active"); links[i].style.background = "#e2e8f0"; links[i].style.color = "var(--dark)"; }
+        document.getElementById(nombreModulo).style.display = "block";
+        evt.currentTarget.classList.add("active");
+        evt.currentTarget.style.background = "var(--primary)";
+        evt.currentTarget.style.color = "white";
+    }
+
+    // --- CARGA DE CURSOS PARA LOS FILTROS ---
+    document.addEventListener('DOMContentLoaded', () => {
+        const cursosSet = new Set();
+        document.querySelectorAll('.fila-estudiante').forEach(row => {
+            const c = row.getAttribute('data-curso');
+            if (c) cursosSet.add(c);
+        });
+        const filtroTabla = document.getElementById('filtroTablaCurso');
+        const filtroModal = document.getElementById('curso_salida');
+        cursosSet.forEach(curso => {
+            if (filtroTabla) filtroTabla.innerHTML += `<option value="${curso}">${curso}</option>`;
+            if (filtroModal) filtroModal.innerHTML += `<option value="${curso}">${curso}</option>`;
+        });
+    });
+
+    function filtrarEstudiantesTabla() {
+        const c = document.getElementById('filtroTablaCurso').value;
+        document.querySelectorAll('.fila-estudiante').forEach(f => {
+            f.style.display = (c === "ALL" || f.getAttribute('data-curso') === c) ? "" : "none";
+        });
+    }
+
+    function filtrarAlumnosModalSalida() {
+        const c = document.getElementById('curso_salida').value;
+        document.querySelectorAll('.opt-alumno').forEach(opt => {
+            opt.style.display = (c === "ALL" || opt.getAttribute('data-curso') === c) ? "" : "none";
+        });
+        document.getElementById('estudiante_id_modal').value = "";
+    }
+
+    function filtrarTabla(inputId, tablaId) {
+        let input = document.getElementById(inputId).value.toLowerCase();
+        let tr = document.getElementById(tablaId).getElementsByTagName("tr");
+        for (let i = 1; i < tr.length; i++) {
+            let tds = tr[i].getElementsByTagName("td");
+            if (tds[0] || tds[1]) {
+                if (tds[0].innerText.toLowerCase().indexOf(input) > -1 || tds[1].innerText.toLowerCase().indexOf(input) > -1) {
+                    tr[i].style.display = "";
+                } else { tr[i].style.display = "none"; }
+            }
+        }
+    }
+
+    // --- LOGICA DE IMAGENES (CLICK Y HOVER 3 SEGUNDOS) ---
+    let temporizadorImagen;
+
+    function iniciarHoverImagen(url) {
+        temporizadorImagen = setTimeout(() => {
+            mostrarImagenGrande(url);
+        }, 3000);
+    }
+
+    function cancelarHoverImagen() {
+        clearTimeout(temporizadorImagen);
+    }
+
+    function mostrarImagenGrande(url) {
+        clearTimeout(temporizadorImagen);
+        document.getElementById('imagenExpandida').src = url;
+        document.getElementById('modalVisorImagen').style.display = 'flex';
+    }
+
+    function cerrarImagenGrande() {
+        document.getElementById('modalVisorImagen').style.display = 'none';
+        document.getElementById('imagenExpandida').src = "";
+    }
+
+    document.getElementById('modalVisorImagen').addEventListener('click', function(e) {
+        if (e.target === this) { cerrarImagenGrande(); }
+    });
+
+    // --- LOGICA CARRITO DE SALIDA STANDARD ---
+    let carrito = [];
+    function abrirModalSalida() { document.getElementById('modalSalida').style.display = 'block'; setTimeout(() => document.getElementById('inputScanSalida').focus(), 100); }
+    function cerrarModalSalida() { document.getElementById('modalSalida').style.display = 'none'; carrito = []; document.getElementById('inputCantSalida').value = 1; actualizarTablaVisual(); }
+    function manejarEnterScan(e) { if (e.key === 'Enter') { e.preventDefault(); agregarAlPedido(); } }
+
+    function agregarAlPedido() {
+        const input = document.getElementById('inputScanSalida');
+        const codigo = input.value.trim();
+        const cantidad = parseInt(document.getElementById('inputCantSalida').value) || 1;
+        if (codigo === "") return;
+        let encontrado = carrito.find(p => p.codigo === codigo);
+        if (encontrado) encontrado.cantidad += cantidad;
+        else carrito.push({ codigo: codigo, cantidad: cantidad });
+        input.value = ""; document.getElementById('inputCantSalida').value = 1; input.focus();
+        actualizarTablaVisual();
+    }
+
+    function actualizarTablaVisual() {
+        const cuerpo = document.getElementById('lista_pedido_cuerpo');
+        cuerpo.innerHTML = "";
+        carrito.forEach((prod, index) => {
+            cuerpo.innerHTML += `<tr><td><span style="font-family:monospace; background:#eee; padding:2px; font-size:0.8rem;">${prod.codigo}</span></td>
+                    <td><input type="number" value="${prod.cantidad}" min="1" onchange="carrito[${index}].cantidad=parseInt(this.value)||1" style="width:45px; padding:2px;"></td>
+                    <td><button onclick="carrito.splice(${index}, 1); actualizarTablaVisual();" type="button" class="btn-delete"><i class="fas fa-times"></i></button></td></tr>`;
+        });
+    }
+
+    function finalizarDespacho() {
+        const estId = document.getElementById('estudiante_id_modal').value;
+        const profId = document.getElementById('profesor_id_modal').value;
+        if (estId === "" || carrito.length === 0) { alert("Seleccione estudiante y agregue un item."); return; }
+        if (document.getElementById('profesor_id_modal').hasAttribute('required') && profId === "") { alert("Seleccione el Profesor que autoriza."); return; }
+        document.getElementById('hidden_estudiante_id').value = estId;
+        document.getElementById('hidden_profesor_id').value = profId;
+        document.getElementById('hidden_carrito').value = JSON.stringify(carrito);
+        document.getElementById('form_final_despacho').submit();
+    }
+
+    // --- MODAL DEVOLUCION ---
+    function abrirModalDevolucion() { document.getElementById('modalDevolucion').style.display = 'block'; }
+    function cerrarModalDevolucion() { document.getElementById('modalDevolucion').style.display = 'none'; }
+
+    // --- LOGICA PRESTAMOS EXTERNOS ---
+    function toggleProfesorExt() {
+        const select = document.getElementById('tipo_persona_ext').value;
+        document.getElementById('div_profesor_cargo_ext').style.display = (select === 'Alumno') ? 'block' : 'none';
+    }
+
+    // --- LOGICA CARRITO ORDENES DE TRABAJO (OT) ---
+    let carritoOT = [];
+    function abrirModalOT() { document.getElementById('modalOT').style.display = 'block'; setTimeout(() => document.getElementById('inputScanOT').focus(), 100); }
+    function cerrarModalOT() { document.getElementById('modalOT').style.display = 'none'; carritoOT = []; actualizarTablaOT(); }
+
+    function agregarAlPedidoOT() {
+        const input = document.getElementById('inputScanOT');
+        const codigo = input.value.trim();
+        const cantidad = parseInt(document.getElementById('inputCantOT').value) || 1;
+        if (codigo === "") return;
+        let encontrado = carritoOT.find(p => p.codigo === codigo);
+        if (encontrado) encontrado.cantidad += cantidad;
+        else carritoOT.push({ codigo: codigo, cantidad: cantidad });
+        input.value = ""; document.getElementById('inputCantOT').value = 1; input.focus();
+        actualizarTablaOT();
+    }
+
+    function actualizarTablaOT() {
+        const cuerpo = document.getElementById('lista_ot_cuerpo');
+        const contenedor = document.getElementById('div_tabla_ot');
+        cuerpo.innerHTML = "";
+        if(carritoOT.length > 0) {
+            contenedor.style.display = 'block';
+            carritoOT.forEach((prod, index) => {
+                cuerpo.innerHTML += `<tr><td><span style="font-family:monospace; background:#f1f5f9; padding:2px; font-size:0.8rem;">${prod.codigo}</span></td>
+                        <td><strong>${prod.cantidad}</strong></td>
+                        <td><button onclick="carritoOT.splice(${index}, 1); actualizarTablaOT();" type="button" style="background:var(--danger); color:white; padding:4px 8px; border:none; border-radius:4px;"><i class="fas fa-times"></i></button></td></tr>`;
+            });
+        } else {
+            contenedor.style.display = 'none';
+        }
+    }
+
+    function finalizarOT() {
+        document.getElementById('hidden_carrito_ot').value = JSON.stringify(carritoOT);
+        document.getElementById('form_ot_final').submit();
+    }
+
+    // --- FILTRO DE INVENTARIO (texto + categoria) ---
+    let categoriaActiva = 'TODOS';
+
+    function filtrarInventario() {
+        const texto = document.getElementById('buscadorInventario').value.toLowerCase();
+        document.querySelectorAll('.fila-item').forEach(tr => {
+            const matchCat = categoriaActiva === 'TODOS' || tr.getAttribute('data-categoria') === categoriaActiva;
+            const matchTexto = tr.innerText.toLowerCase().includes(texto);
+            tr.style.display = (matchCat && matchTexto) ? '' : 'none';
+        });
+    }
+
+    function filtrarCategoria(btn, categoria) {
+        categoriaActiva = categoria;
+        document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        filtrarInventario();
+    }
+
+    // --- FILTRO DE PRESTAMOS ACTIVOS ---
+    let estadoPrestamoActivo = 'TODOS';
+
+    function filtrarPrestamos() {
+        const texto = document.getElementById('buscadorPrestamos').value.toLowerCase();
+        document.querySelectorAll('.fila-prestamo').forEach(tr => {
+            const matchEstado = estadoPrestamoActivo === 'TODOS' || tr.getAttribute('data-estado') === estadoPrestamoActivo;
+            const matchTexto = tr.innerText.toLowerCase().includes(texto);
+            tr.style.display = (matchEstado && matchTexto) ? '' : 'none';
+        });
+    }
+
+    function filtrarEstadoPrestamo(btn, estado) {
+        estadoPrestamoActivo = estado;
+        document.querySelectorAll('#mod-activos .cat-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        filtrarPrestamos();
+    }
+
+    // --- MODAL DE EDICION DE ITEM ---
+    function abrirModalEditar(id, nombre, categoria, imagen, ubicacion) {
+        document.getElementById('formEditar').action = '/editar_item/' + id;
+        document.getElementById('edit_nombre').value = nombre;
+        document.getElementById('edit_imagen').value = imagen;
+        document.getElementById('edit_ubicacion').value = ubicacion || '';
+        document.getElementById('edit_ajuste').value = 0;
+        const sel = document.getElementById('edit_categoria');
+        for (let i = 0; i < sel.options.length; i++) {
+            if (sel.options[i].value === categoria) { sel.selectedIndex = i; break; }
+        }
+        document.getElementById('modalEditar').style.display = 'block';
+        setTimeout(() => document.getElementById('edit_nombre').focus(), 100);
+    }
+
+    function cerrarModalEditar() {
+        document.getElementById('modalEditar').style.display = 'none';
+    }
+
+    function confirmarEdicion() {
+        document.getElementById('formEditar').submit();
+    }
+
+    document.getElementById('modalEditar').addEventListener('click', function(e) {
+        if (e.target === this) { cerrarModalEditar(); }
+    });
+
+</script>
+
+
+<script>
+// Pintar códigos de barras Code128 en todas las filas del inventario
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof JsBarcode === 'undefined') return;
+    document.querySelectorAll('svg.barcode-mini').forEach(function(svg) {
+        var code = svg.getAttribute('data-code') || '';
+        if (!code) return;
+        try {
+            JsBarcode(svg, code, {
+                format: "CODE128",
+                width: 1.4,
+                height: 24,
+                displayValue: false,
+                margin: 0,
+            });
+        } catch(e) { console.warn('Barcode error', code, e); }
+    });
+});
+</script>
+</body>
+</html>

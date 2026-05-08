@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Buscador global | Admin</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #f1f5f9; margin: 0; padding: 16px; }
+        .wrap { max-width: 1200px; margin: 0 auto; }
+        .header {
+            background: #0f172a; color: white; padding: 14px 20px; border-radius: 10px;
+            margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;
+        }
+        .header h1 { margin: 0; font-size: 1.2rem; }
+        .header a { color: white; text-decoration: none; padding: 6px 12px; border-radius: 4px; }
+        .header a:hover { background: rgba(255,255,255,0.1); }
+        .search-box {
+            background: white; padding: 14px; border-radius: 10px; margin-bottom: 14px;
+            display: flex; gap: 10px;
+        }
+        .search-box input { flex: 1; padding: 10px; border: 2px solid #e2e8f0; border-radius: 6px; font-size: 0.95rem; }
+        .search-box button {
+            padding: 10px 18px; background: #2563eb; color: white;
+            border: none; border-radius: 6px; cursor: pointer; font-weight: 600;
+        }
+        .results { background: white; border-radius: 10px; padding: 14px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #f8fafc; padding: 10px; text-align: left; font-size: 0.8rem; color: #64748b; }
+        td { padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 0.88rem; }
+        tr:hover td { background: #f8fafc; }
+        .badge {
+            background: #e0e7ff; color: #3730a3; padding: 2px 8px;
+            border-radius: 12px; font-size: 0.7rem; font-weight: 600;
+        }
+        .empty { padding: 30px; text-align: center; color: #64748b; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="header">
+        <h1><i class="fas fa-search"></i> Buscador global de ítems</h1>
+        <a href="/dashboard_admin"><i class="fas fa-arrow-left"></i> Volver al panel</a>
+    </div>
+
+    <form action="/admin/buscar" method="GET" class="search-box">
+        <input type="text" name="q" value="{{ q or '' }}" placeholder="Buscar por nombre, código, ISBN o autor..." autofocus>
+        <button type="submit"><i class="fas fa-search"></i> Buscar</button>
+    </form>
+
+    <div class="results">
+        {% if q %}
+            <p style="color: #64748b; margin: 0 0 10px 0;">
+                {{ items|length }} resultado(s) para <strong>"{{ q }}"</strong>
+            </p>
+            {% if items %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Código</th><th>Nombre</th><th>Categoría</th>
+                        <th>Área</th><th>Disponible</th><th>Total</th><th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for i in items %}
+                <tr>
+                    <td><code>{{ i.codigo_barras }}</code></td>
+                    <td><strong>{{ i.nombre }}</strong>
+                        {% if i.autor %}<br><span style="font-size: 0.75rem; color: #64748b;">{{ i.autor }}</span>{% endif %}
+                    </td>
+                    <td>{{ i.categoria or '—' }}</td>
+                    <td><span class="badge">{{ i.especialidad.nombre if i.especialidad else '?' }}</span></td>
+                    <td style="text-align: center; color: #10b981; font-weight: 700;">{{ i.cantidad_disponible }}</td>
+                    <td style="text-align: center;">{{ i.cantidad_total }}</td>
+                    <td>
+                        <a href="/inventario?especialidad_id={{ i.especialidad_id }}"
+                           style="color: #2563eb; text-decoration: none; font-weight: 600;">Ver</a>
+                        ·
+                        <a href="/etiqueta/{{ i.id }}" target="_blank"
+                           style="color: #6366f1; text-decoration: none; font-weight: 600;">Etiqueta</a>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty">🔍 No se encontraron ítems con "<strong>{{ q }}</strong>"</div>
+            {% endif %}
+        {% else %}
+            <div class="empty">Ingresa un término en el buscador.</div>
+        {% endif %}
+    </div>
+</div>
+</body>
+</html>

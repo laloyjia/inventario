@@ -1,0 +1,24 @@
+Flask>=3.0,<4.0
+Flask-SQLAlchemy>=3.1,<4.0
+SQLAlchemy>=2.0,<3.0
+Werkzeug>=3.0,<4.0
+Jinja2>=3.1,<4.0
+itsdangerous>=2.1
+click>=8.1
+
+# Producción
+gunicorn>=21.2
+
+# Base de datos
+psycopg2-binary>=2.9        # PostgreSQL para cloud (Render/Railway)
+
+# Excel
+pandas>=2.0
+openpyxl>=3.1
+
+# Cliente HTTP (sync)
+requests>=2.31
+
+# Seguridad
+Flask-Limiter>=3.5          # Rate limiting en /login
+Flask-Talisman>=1.1         # HTTPS forzado, headers de seguridad

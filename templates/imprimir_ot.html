@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Orden de Trabajo #{{ ot.id }}</title>
+    <style>
+        body { font-family: 'Arial', sans-serif; padding: 20px; max-width: 800px; margin: auto; color: #333; }
+        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 30px; }
+        .header h1 { margin: 0 0 5px 0; font-size: 24px; text-transform: uppercase;}
+        .header p { margin: 0; font-size: 14px; color: #555; }
+        .info-box { border: 1px solid #ccc; padding: 15px; border-radius: 6px; margin-bottom: 20px; background-color: #f9f9f9; }
+        .info-box p { margin: 8px 0; font-size: 15px; }
+        .info-box strong { color: #000; }
+        h3 { border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 30px;}
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { border: 1px solid #aaa; padding: 10px; text-align: left; }
+        th { background: #eee; font-weight: bold; }
+        .firmas { margin-top: 60px; display: flex; justify-content: space-around; text-align: center; }
+        .firma-linea { border-top: 1px solid #000; width: 250px; padding-top: 10px; font-weight: bold; }
+
+        .botones-accion { display: flex; gap: 10px; margin-bottom: 30px; }
+        .btn { flex: 1; border: none; padding: 15px; font-size: 16px; font-weight: bold; border-radius: 6px; cursor: pointer; text-align: center; text-decoration: none; }
+        .btn-imprimir { background: #2563eb; color: white; }
+        .btn-volver { background: #64748b; color: white; }
+
+        /* MAGIA: Esconder botones cuando sale por la impresora */
+        @media print { 
+            .botones-accion { display: none !important; }
+            body { padding: 0; }
+        }
+    </style>
+</head>
+<body onload="window.print()">
+
+    <div class="botones-accion">
+        <button class="btn btn-imprimir" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+        <a href="/inventario" class="btn btn-volver">⬅️ Volver al Pañol</a>
+    </div>
+
+    <div class="header">
+        <h1>Orden de Trabajo - Pañol</h1>
+        <p><strong>N° Documento:</strong> OT-{{ "%04d" | format(ot.id) }} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Fecha Emisión:</strong> {{ ot.fecha_creacion.strftime('%d/%m/%Y %H:%M') }} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Estado:</strong> {{ ot.estado }}</p>
+    </div>
+
+    <div class="info-box">
+        <p><strong>📝 Título OT:</strong> {{ ot.titulo }}</p>
+        <p><strong>👨‍🔧 Profesional a Cargo:</strong> {{ ot.profesional_cargo }}</p>
+        <p><strong>🎓 Alumnos Asignados:</strong> {{ ot.alumnos_cargo or 'Ninguno' }}</p>
+        <p><strong>📋 Descripción:</strong> {{ ot.descripcion }}</p>
+    </div>
+    
+    <h3>🔧 Herramientas Solicitadas (Préstamo)</h3>
+    {% if herramientas %}
+    <table>
+        <tr><th style="width: 100px;">Código</th><th>Herramienta</th><th style="width: 80px; text-align: center;">Cantidad</th></tr>
+        {% for h in herramientas %}
+            <tr><td>{{ h.codigo }}</td><td>{{ h.nombre }}</td><td style="text-align: center;"><strong>{{ h.cantidad }}</strong></td></tr>
+        {% endfor %}
+    </table>
+    <p style="font-size: 12px; color: #555;"><i>* Las herramientas deben ser devueltas al pañol al finalizar la Orden de Trabajo.</i></p>
+    {% else %}
+    <p style="color: #666; font-style: italic;">No se solicitaron herramientas para esta Orden de Trabajo.</p>
+    {% endif %}
+
+    <h3>⚙️ Repuestos e Insumos (Merma / Consumo)</h3>
+    {% if repuestos %}
+    <table>
+        <tr><th style="width: 100px;">Código</th><th>Insumo/Repuesto</th><th style="width: 80px; text-align: center;">Cantidad</th></tr>
+        {% for r in repuestos %}
+            <tr><td>{{ r.codigo }}</td><td>{{ r.nombre }}</td><td style="text-align: center;"><strong>{{ r.cantidad }}</strong></td></tr>
+        {% endfor %}
+    </table>
+    <p style="font-size: 12px; color: #555;"><i>* Estos componentes han sido descontados definitivamente del inventario (Merma) para su uso en este trabajo.</i></p>
+    {% else %}
+    <p style="color: #666; font-style: italic;">No se registraron repuestos ni insumos consumibles.</p>
+    {% endif %}
+    
+    <div class="firmas">
+        <div class="firma-linea">Firma Profesional a Cargo<br><span style="font-weight: normal; font-size: 12px;">{{ ot.profesional_cargo }}</span></div>
+        <div class="firma-linea">Firma Encargado de Pañol<br><span style="font-weight: normal; font-size: 12px;">Despacho de Inventario</span></div>
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+build/
+dist/
+
+# Virtual env
+venv/
+env/
+.venv/
+
+# Base de datos local (NO subir al repo)
+instance/*.db
+instance/*.db-journal
+instance/*.bak*
+
+# Backups
+*.bak
+*.backup_*
+inventario.db.bak*
+
+# Logs
+*.log
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Variables de entorno (NUNCA subir)
+.env
+.env.local
+.env.production
+
+# Archivos generados
+inventario_exportado_*.xlsx
+*.spec
+PanolERP/
+build/

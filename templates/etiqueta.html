@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Etiqueta - {{ item.nombre }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            background: #f1f5f9;
+            margin: 0;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        .toolbar {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+            text-decoration: none;
+            color: white;
+        }
+        .btn-print { background: #10b981; }
+        .btn-back { background: #64748b; }
+
+        .etiquetas {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .etiqueta {
+            border: 2px dashed #94a3b8;
+            border-radius: 6px;
+            padding: 12px 16px;
+            width: 320px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            background: white;
+        }
+        .titulo {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #0f172a;
+            line-height: 1.2;
+            margin: 0;
+        }
+        .subtitulo {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin: 2px 0 8px 0;
+        }
+        .barcode-box {
+            text-align: center;
+            margin: 4px 0;
+        }
+        .barcode-box svg {
+            width: 100%;
+            max-width: 280px;
+            height: 50px;
+        }
+        .codigo-texto {
+            font-family: monospace;
+            font-size: 0.85rem;
+            text-align: center;
+            color: #334155;
+            margin-top: 4px;
+        }
+        .pie {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: #475569;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 4px;
+            margin-top: 6px;
+        }
+
+        /* Modo impresión */
+        @media print {
+            body { background: white; padding: 0; }
+            .toolbar, .no-print { display: none !important; }
+            .etiquetas {
+                box-shadow: none;
+                padding: 0;
+                gap: 8px;
+            }
+            .etiqueta {
+                page-break-inside: avoid;
+                border: 1px solid #94a3b8;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar no-print">
+        <button class="btn btn-print" onclick="window.print()">
+            🖨️ Imprimir
+        </button>
+        <a class="btn btn-back" href="javascript:window.close()">✖️ Cerrar</a>
+    </div>
+
+    <div class="etiquetas">
+        {# Imprimimos 4 copias por defecto (mitad de hoja A4 con 2x4 etiquetas) #}
+        {% for i in range(4) %}
+        <div class="etiqueta">
+            <div>
+                <p class="titulo">{{ item.nombre }}</p>
+                <p class="subtitulo">
+                    {{ item.categoria or 'Sin categoría' }}
+                    {% if especialidad %} · {{ especialidad }}{% endif %}
+                </p>
+            </div>
+            <div class="barcode-box">
+                <svg class="barcode" data-code="{{ item.codigo_barras }}"></svg>
+                <div class="codigo-texto">{{ item.codigo_barras }}</div>
+            </div>
+            <div class="pie">
+                <span>📍 {{ item.ubicacion or 'Sin ubicación' }}</span>
+                <span>{{ now }}</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('svg.barcode').forEach(function(svg) {
+                var code = svg.getAttribute('data-code') || '';
+                try {
+                    JsBarcode(svg, code, {
+                        format: "CODE128",
+                        width: 2,
+                        height: 50,
+                        displayValue: false,
+                        margin: 0,
+                    });
+                } catch(e) { console.error(e); }
+            });
+        });
+    </script>
+</body>
+</html>

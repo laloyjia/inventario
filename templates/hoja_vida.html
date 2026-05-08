@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hoja de Vida - {{ estudiante.nombre }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #1e3a8a; 
+            --secondary: #64748b;
+            --success: #16a34a;
+            --danger: #dc2626;
+            --warning: #facc15;
+            --dark: #0f172a;
+            --bg: #f8fafc;
+        }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--dark); padding: 20px; margin: 0; }
+        .container { max-width: 1100px; margin: 0 auto; }
+        .card { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h1, h2 { margin-top: 0; }
+        .table-responsive { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+        th { background: #f1f5f9; font-weight: 600; color: #334155; }
+        .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; transition: 0.2s; }
+        .btn-success { background: var(--success); }
+        .btn-secondary { background: var(--secondary); }
+        .btn-success:hover { background: #15803d; }
+        .input-number { width: 80px; padding: 10px; border: 2px solid #cbd5e1; border-radius: 6px; text-align: center; font-size: 1.1rem; font-weight: bold; }
+        .input-good { border-color: #86efac; background: #f0fdf4; color: #166534; }
+        .input-bad { border-color: #fca5a5; background: #fef2f2; color: #991b1b; }
+        .input-number:focus { outline: none; box-shadow: 0 0 0 3px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card" style="display: flex; justify-content: space-between; align-items: center; border-top: 5px solid var(--primary);">
+            <div>
+                <h1 style="color: var(--primary);"><i class="fas fa-id-badge"></i> Hoja de Vida: {{ estudiante.nombre }}</h1>
+                <p style="margin: 0; font-size: 1.1rem; color: var(--secondary);"><i class="fas fa-fingerprint"></i> RUT/Matrícula: <strong>{{ estudiante.rut_matricula }}</strong></p>
+            </div>
+            <a href="/ver_inventario" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Volver al Pañol</a>
+        </div>
+
+        <div class="card">
+            <h2><i class="fas fa-dolly-flatbed"></i> Insumos en su poder</h2>
+            
+            {% if prestamos %}
+            <form action="/procesar_hoja_vida" method="POST">
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha y Práctica</th>
+                                <th>Ítem Solicitado</th>
+                                <th style="text-align: center;">Total Prestado</th>
+                                <th style="text-align: center;">Devolver Bueno <br><i class="fas fa-check-circle" style="color:var(--success);"></i></th>
+                                <th style="text-align: center;">Declarar Merma <br><i class="fas fa-times-circle" style="color:var(--danger);"></i></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in prestamos %}
+                            <tr>
+                                <td style="font-size: 0.95rem;">
+                                    <strong>{{ p.fecha_prestamo.strftime('%d/%m/%Y %H:%M') }}</strong>
+                                    {% if p.nombre_practica %}
+                                        <br><span style="color: #1e40af; background: #e0e7ff; padding: 3px 8px; border-radius: 4px; display: inline-block; margin-top: 5px; font-size: 0.85rem;"><i class="fas fa-project-diagram"></i> {{ p.nombre_practica }}</span>
+                                    {% endif %}
+                                </td>
+                                <td><strong style="font-size: 1.1rem;">{{ p.item.nombre }}</strong> <br><span style="color: var(--secondary); font-size: 0.85rem;">{{ p.item.categoria }}</span></td>
+                                <td style="font-size: 1.5rem; font-weight: bold; text-align: center; color: var(--primary);">{{ p.cantidad }}</td>
+                                <td style="text-align: center;">
+                                    <input type="hidden" name="prestamo_id[]" value="{{ p.id }}">
+                                    <input type="number" name="cant_buena[]" class="input-number input-good" min="0" max="{{ p.cantidad }}" placeholder="0">
+                                </td>
+                                <td style="text-align: center;">
+                                    <input type="number" name="cant_mala[]" class="input-number input-bad" min="0" max="{{ p.cantidad }}" placeholder="0">
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div style="margin-top: 25px; text-align: right; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+                    <button type="submit" class="btn btn-success" style="font-size: 1.2rem; padding: 15px 35px; box-shadow: 0 4px 6px rgba(22, 163, 74, 0.3);"><i class="fas fa-save"></i> Procesar Cierre de Práctica</button>
+                </div>
+            </form>
+            {% else %}
+            <div style="text-align: center; padding: 50px 20px;">
+                <i class="fas fa-check-double" style="font-size: 4rem; color: var(--success); margin-bottom: 15px;"></i>
+                <h3 style="font-size: 1.5rem; color: var(--dark);">¡Todo al día!</h3>
+                <p style="font-size: 1.1rem; color: var(--secondary);">Este estudiante no tiene préstamos pendientes ni materiales en su poder.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

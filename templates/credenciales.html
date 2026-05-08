@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Impresión de Credenciales | Pañol</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+
+    <style>
+        :root {
+            --primary: #1e3a8a; /* Azul oscuro institucional */
+            --accent: #3b82f6;
+            --dark: #0f172a;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+            margin: 0;
+            padding: 20px;
+        }
+
+        /* Controles de impresión (Se ocultan al imprimir) */
+        .controles-impresion {
+            text-align: center;
+            margin-bottom: 30px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 0 10px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-print { background: var(--primary); color: white; }
+        .btn-back { background: #e2e8f0; color: var(--dark); }
+
+        /* Grilla de credenciales optimizada para hoja A4/Carta */
+        .grilla-credenciales {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, 8.5cm); /* Ancho estándar de tarjeta */
+            gap: 1.5cm 1cm;
+            justify-content: center;
+            max-width: 21cm; /* Ancho de un A4 */
+            margin: 0 auto;
+        }
+
+        /* Diseño de la Credencial */
+        .credencial {
+            width: 8.5cm;
+            height: 5.4cm; /* Proporción estándar CR80 (Tarjeta de crédito) */
+            background: white;
+            border: 2px solid #cbd5e1;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            position: relative;
+        }
+
+        .credencial-header {
+            background: var(--primary);
+            color: white;
+            padding: 8px 10px;
+            text-align: center;
+            font-size: 0.8rem;
+            font-weight: 900;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .credencial-header i { font-size: 1.2rem; }
+
+        .credencial-body {
+            padding: 10px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .estudiante-nombre {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--dark);
+            margin: 0 0 5px 0;
+            text-transform: uppercase;
+            line-height: 1.1;
+        }
+
+        .estudiante-carrera {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin: 0 0 5px 0;
+            font-weight: 600;
+        }
+
+        .estudiante-rut {
+            font-size: 0.85rem;
+            color: var(--primary);
+            font-weight: bold;
+            margin: 0;
+        }
+
+        .credencial-footer {
+            text-align: center;
+            padding-bottom: 5px;
+            background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        /* Ajuste del código de barras */
+        .barcode-img {
+            height: 40px; /* Altura ajustada para no salir de la tarjeta */
+            width: 90%;
+            margin-top: 5px;
+        }
+
+        /* --- ESTILOS EXCLUSIVOS PARA CUANDO SE MANDA A IMPRIMIR --- */
+        @media print {
+            body { background: white; padding: 0; }
+            .controles-impresion { display: none !important; } /* Ocultar botones */
+
+            .grilla-credenciales {
+                gap: 5mm; /* Menos espacio entre tarjetas para aprovechar la hoja */
+            }
+
+            .credencial {
+                box-shadow: none; /* Quitar sombras que gastan tinta */
+                border: 1px dashed #94a3b8; /* Borde punteado para guiar el recorte */
+                page-break-inside: avoid; /* Evitar que una tarjeta se parta a la mitad de la hoja */
+                -webkit-print-color-adjust: exact; /* Forzar impresión de colores de fondo (Header azul) */
+                print-color-adjust: exact;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="controles-impresion">
+        <h2 style="margin-top: 0; color: var(--dark);">Vista Previa de Impresión</h2>
+        <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 20px;">
+            Asegúrate de habilitar "Gráficos de fondo" en los ajustes de impresión para conservar los colores.
+        </p>
+        <a href="/inventario" class="btn btn-back"><i class="fas fa-arrow-left"></i> Volver al Sistema</a>
+        <button onclick="window.print()" class="btn btn-print"><i class="fas fa-print"></i> Imprimir Credenciales</button>
+    </div>
+
+    <div class="grilla-credenciales">
+        {% for est in estudiantes %}
+        <div class="credencial">
+            <div class="credencial-header">
+                <span><i class="fas fa-microchip"></i> PAÑOL EDUCATIVO</span>
+                <span style="background: white; color: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 0.65rem;">ESTUDIANTE</span>
+            </div>
+
+            <div class="credencial-body">
+                <h3 class="estudiante-nombre">{{ est.nombre }}</h3>
+                <p class="estudiante-carrera">{{ est.carrera }}</p>
+            </div>
+
+            <div class="credencial-footer">
+                <svg class="barcode"
+                     jsbarcode-value="{{ est.rut_matricula }}"
+                     jsbarcode-format="EAN13"
+                     jsbarcode-height="45"
+                     jsbarcode-width="2"
+                     jsbarcode-displayvalue="true"
+                     jsbarcode-fontsize="16"
+                     jsbarcode-textmargin="4"
+                     jsbarcode-fontoptions="bold"
+                     jsbarcode-linecolor="#0f172a">
+                </svg>
+            </div>
+        </div>
+        {% else %}
+        <div style="grid-column: 1 / -1; text-align: center; color: #64748b; padding: 50px;">
+            <h3>No hay estudiantes registrados en el padrón.</h3>
+            <p>Vuelve al sistema y agrega alumnos manual o masivamente por Excel.</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            JsBarcode(".barcode").init();
+        });
+    </script>
+
+</body>
+</html>
