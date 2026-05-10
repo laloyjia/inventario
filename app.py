@@ -116,6 +116,10 @@ class Usuario(db.Model):
     activo = db.Column(db.Boolean, default=True)
     ultimo_login = db.Column(db.DateTime, nullable=True)
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    # Hardening seguridad (fase go-live)
+    failed_attempts = db.Column(db.Integer, default=0, nullable=False, server_default='0')
+    locked_until = db.Column(db.DateTime, nullable=True)
+    must_change_password = db.Column(db.Boolean, default=False, nullable=False, server_default='false')
     alertas_stock = db.relationship('AlertaStock', backref='usuario', lazy=True)
 
 class Estudiante(db.Model):
@@ -292,7 +296,8 @@ def crear_admin_central():
         db.session.add(Usuario(
             nombre="Administrador Central", username="admin_central",
             password_hash=generate_password_hash("admin123"),
-            rol="Admin", email="admin@colegio.local", especialidad_id=None
+            rol="Admin", email="admin@colegio.local", especialidad_id=None,
+            must_change_password=True,  # forzado a cambiar en primer login
         ))
         db.session.commit()
 
@@ -311,15 +316,71 @@ def crear_pañoleros_por_especialidad():
             db.session.add(Usuario(
                 nombre=f"Pañolero {esp.nombre}", username=username,
                 password_hash=generate_password_hash("pañol123"),
-                rol="Pañolero", email=email, especialidad_id=esp.id
+                rol="Pañolero", email=email, especialidad_id=esp.id,
+                must_change_password=True,  # forzado a cambiar en primer login
             ))
     db.session.commit()
 
+def _migrar_columnas_seguridad():
+    """Añade las columnas de hardening (failed_attempts, locked_until, must_change_password)
+    si la BD ya existía antes del fix de seguridad. Idempotente — seguro de correr en cada arranque.
+    """
+    from sqlalchemy import inspect, text
+    try:
+        insp = inspect(db.engine)
+        if 'usuario' not in insp.get_table_names():
+            return  # tabla aún no existe, db.create_all() la creará con todas las columnas
+        cols = {c['name'] for c in insp.get_columns('usuario')}
+        dialect = db.engine.dialect.name  # 'postgresql' o 'sqlite'
+        ts_type = 'TIMESTAMP' if dialect == 'postgresql' else 'DATETIME'
+        bool_default = 'FALSE' if dialect == 'postgresql' else '0'
+        statements = []
+        if 'failed_attempts' not in cols:
+            statements.append("ALTER TABLE usuario ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0")
+        if 'locked_until' not in cols:
+            statements.append(f"ALTER TABLE usuario ADD COLUMN locked_until {ts_type} NULL")
+        if 'must_change_password' not in cols:
+            statements.append(
+                f"ALTER TABLE usuario ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT {bool_default}"
+            )
+        if statements:
+            with db.engine.begin() as conn:
+                for s in statements:
+                    conn.execute(text(s))
+            print(f"[MIGRACION] Aplicadas {len(statements)} columnas nuevas a usuario")
+    except Exception as e:
+        print(f"[MIGRACION] Aviso: {e}")
+
+
+def _flag_passwords_default():
+    """Marca must_change_password=True en usuarios sembrados que aún tienen las
+    contraseñas por defecto (admin123 / pañol123). Imprescindible para go-live cloud
+    cuando la BD ya tenía esos usuarios creados antes de añadir el flag.
+    """
+    cambios = 0
+    for u in Usuario.query.all():
+        if u.must_change_password:
+            continue
+        # Admin con password default
+        if u.username == 'admin_central' and check_password_hash(u.password_hash, 'admin123'):
+            u.must_change_password = True
+            cambios += 1
+        # Pañoleros con password default
+        elif u.rol == 'Pañolero' and check_password_hash(u.password_hash, 'pañol123'):
+            u.must_change_password = True
+            cambios += 1
+    if cambios:
+        db.session.commit()
+        print(f"[SEC] {cambios} usuarios marcados para cambio obligatorio de contraseña")
+
+
 with app.app_context():
     db.create_all()
+    _migrar_columnas_seguridad()
     crear_especialidades_por_defecto()
     crear_admin_central()
     crear_pañoleros_por_especialidad()
+    _flag_passwords_default()
     print("✅ BD inicializada correctamente")
     print(f"✅ {Especialidad.query.count()} especialidades disponibles")
     print("✅ Admin central creado")
@@ -417,6 +478,29 @@ def login_requerido(f):
         return f(*a, **kw)
     return w
 
+
+@app.before_request
+def _forzar_cambio_password_si_corresponde():
+    """Si el usuario logueado tiene must_change_password=True, bloquear navegación
+    a cualquier ruta excepto la de cambio de contraseña, logout, y assets estáticos."""
+    if 'usuario_id' not in session:
+        return
+    if session.get('usuario_rol') == 'Estudiante':
+        return  # estudiantes no tienen este flag
+    rutas_permitidas = {'admin_cambiar_password', 'logout', 'static'}
+    if request.endpoint in rutas_permitidas:
+        return
+    # Solo verificamos en BD si la sesión marca el flag — evita query por request.
+    if not session.get('forzar_cambio_password'):
+        # Refrescar desde BD una vez por sesión: si la BD dice que debe cambiar, redirigir.
+        user = Usuario.query.get(session['usuario_id'])
+        if user and user.must_change_password:
+            session['forzar_cambio_password'] = True
+        else:
+            return
+    flash("⚠️ Debes cambiar tu contraseña inicial antes de usar el sistema.")
+    return redirect(url_for('admin_cambiar_password'))
+
 def admin_requerido(f):
     @wraps(f)
     def w(*a, **kw):
@@ -445,13 +529,29 @@ def index():
         return redirect(url_for('ver_inventario'))
     return redirect(url_for('login'))
 
+MAX_INTENTOS_LOGIN = 5
+LOCKOUT_MINUTOS = 15
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         usuario = Usuario.query.filter_by(username=username).first()
+
+        # 1) Bloqueo activo: rechazar incluso si la contraseña fuese correcta.
+        if usuario and usuario.locked_until and usuario.locked_until > datetime.utcnow():
+            restantes_min = int((usuario.locked_until - datetime.utcnow()).total_seconds() / 60) + 1
+            flash(f"🔒 Cuenta bloqueada por intentos fallidos. Vuelve en {restantes_min} minutos.")
+            return render_template('login.html')
+
+        # 2) Login OK
         if usuario and usuario.activo and check_password_hash(usuario.password_hash, password):
+            # Resetear contador de fallos al ingresar correctamente
+            usuario.failed_attempts = 0
+            usuario.locked_until = None
+
             session['usuario_id'] = usuario.id
             session['usuario_nombre'] = usuario.nombre
             session['usuario_rol'] = usuario.rol
@@ -461,8 +561,17 @@ def login():
                 session['usuario_especialidad'] = usuario.especialidad_asignada.nombre
             usuario.ultimo_login = datetime.utcnow()
             db.session.commit()
+
+            # Forzar cambio de contraseña en primer login
+            if usuario.must_change_password:
+                session['forzar_cambio_password'] = True
+                flash("⚠️ Por seguridad, debes cambiar tu contraseña antes de continuar.")
+                return redirect(url_for('admin_cambiar_password'))
+
             flash(f"✅ Bienvenido {usuario.nombre}")
             return redirect(url_for('index'))
+
+        # 3) Login de estudiante (por RUT) — sin lockout (lo añadiremos si hace falta)
         estudiante = Estudiante.query.filter_by(rut_matricula=username).first()
         if estudiante and estudiante.activo and check_password_hash(estudiante.password_hash, password):
             session['usuario_id'] = estudiante.id
@@ -472,7 +581,22 @@ def login():
             session['usuario_especialidad'] = estudiante.especialidad.nombre
             flash(f"✅ Bienvenido {estudiante.nombre}")
             return redirect(url_for('ver_inventario'))
-        flash("❌ Credenciales incorrectas.")
+
+        # 4) Credenciales incorrectas: si el usuario existe, incrementar contador.
+        if usuario:
+            usuario.failed_attempts = (usuario.failed_attempts or 0) + 1
+            if usuario.failed_attempts >= MAX_INTENTOS_LOGIN:
+                usuario.locked_until = datetime.utcnow() + timedelta(minutes=LOCKOUT_MINUTOS)
+                usuario.failed_attempts = 0
+                db.session.commit()
+                flash(f"🔒 Demasiados intentos fallidos. Cuenta bloqueada por {LOCKOUT_MINUTOS} minutos.")
+            else:
+                restantes = MAX_INTENTOS_LOGIN - usuario.failed_attempts
+                db.session.commit()
+                flash(f"❌ Credenciales incorrectas. Te quedan {restantes} intento(s) antes del bloqueo.")
+        else:
+            # No revelar si el usuario existe o no: mensaje genérico.
+            flash("❌ Credenciales incorrectas.")
     return render_template('login.html')
 
 @app.route('/logout')
@@ -2002,7 +2126,145 @@ def admin_cambiar_password():
             return redirect(url_for('admin_cambiar_password'))
 
         user.password_hash = generate_password_hash(nueva)
+        # Limpiar flag de cambio obligatorio (primer login completado)
+        user.must_change_password = False
+        # Limpiar contador de fallos por las dudas
+        user.failed_attempts = 0
+        user.locked_until = None
         db.session.commit()
+        session.pop('forzar_cambio_password', None)
+        registrar_auditoria('actualizar', 'Usuario', user.id,
+                            valores_nuevos={'accion': 'cambio_password_propio'})
+        flash("✅ Contraseña actualizada correctamente. Tu próxima sesión usará la nueva clave.")
+        return redirect(url_for('index'))
+
+    return render_template('cambiar_password.html', usuario=user)
+
+
+if __name__ == '__main__':
+    import threading, webbrowser, sys
+    es_exe = getattr(sys, 'frozen', False)
+    def abrir_navegador():
+        import time; time.sleep(1.5)
+        webbrowser.open('http://127.0.0.1:8080')
+    PORT = 8080
+    if es_exe:
+        threading.Thread(target=abrir_navegador, daemon=True).start()
+        app.run(host='127.0.0.1', port=PORT, debug=False, use_reloader=False)
+    else:
+        app.run(host='127.0.0.1', port=PORT, debug=True)
+tal - i.cantidad_disponible,
+                'Mermada': i.cantidad_mermada, 'Mínima': i.cantidad_minima,
+                'Ubicación': i.ubicacion, 'Precio': i.precio_unitario,
+                'Autor': getattr(i, 'autor', None), 'ISBN': getattr(i, 'isbn', None),
+                'Editorial': getattr(i, 'editorial', None),
+            } for i in items])
+            # Excel limita nombres de hoja a 31 chars
+            sheet = (esp.nombre[:28] + '...') if len(esp.nombre) > 31 else esp.nombre
+            if df.empty:
+                df = pd.DataFrame([{'Nombre': '(sin items)'}])
+            df.to_excel(writer, sheet_name=sheet, index=False)
+    buf.seek(0)
+    fname = f"inventario_completo_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/admin/reporte_mermas')
+@login_requerido
+@admin_requerido
+def admin_reporte_mermas():
+    """Excel con todos los ítems con merma + préstamos cerrados con merma."""
+    items_merma = Item.query.filter(Item.cantidad_mermada > 0) \
+        .order_by(Item.especialidad_id.asc(), Item.cantidad_mermada.desc()).all()
+    df_items = pd.DataFrame([{
+        'Especialidad': i.especialidad.nombre if i.especialidad else '',
+        'Código': i.codigo_barras, 'Nombre': i.nombre, 'Categoría': i.categoria,
+        'Cantidad mermada': i.cantidad_mermada,
+        'Cantidad total restante': i.cantidad_total,
+        'Valor estimado merma': (i.cantidad_mermada or 0) * (i.precio_unitario or 0),
+    } for i in items_merma])
+
+    prest_merma = Prestamo.query.filter(Prestamo.cantidad_mermada > 0) \
+        .order_by(Prestamo.fecha_devolucion.desc()).all()
+    df_prest = pd.DataFrame([{
+        'Fecha devolución': p.fecha_devolucion.strftime('%Y-%m-%d %H:%M') if p.fecha_devolucion else '',
+        'Especialidad': p.item.especialidad.nombre if (p.item and p.item.especialidad) else '',
+        'Ítem': p.item.nombre if p.item else '',
+        'Código': p.item.codigo_barras if p.item else '',
+        'Estudiante': p.estudiante.nombre if p.estudiante else '',
+        'RUT': p.estudiante.rut_matricula if p.estudiante else '',
+        'Cantidad mermada': p.cantidad_mermada,
+        'Práctica': p.nombre_practica or '',
+    } for p in prest_merma])
+
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        if df_items.empty: df_items = pd.DataFrame([{'_': 'Sin mermas'}])
+        df_items.to_excel(writer, sheet_name='Items con merma', index=False)
+        if df_prest.empty: df_prest = pd.DataFrame([{'_': 'Sin préstamos con merma'}])
+        df_prest.to_excel(writer, sheet_name='Préstamos con merma', index=False)
+    buf.seek(0)
+    fname = f"reporte_mermas_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+
+@app.route('/admin/cambiar_password', methods=['GET', 'POST'])
+@login_requerido
+def admin_cambiar_password():
+    """Permite al usuario logueado (admin o pañolero) cambiar su propia contraseña."""
+    usuario_id = session.get('usuario_id')
+    rol = session.get('usuario_rol')
+
+    # Estudiantes no pasan por aquí (su login es por RUT)
+    if rol == 'Estudiante':
+        flash("❌ Los estudiantes no pueden cambiar contraseña por aquí.")
+        return redirect(url_for('index'))
+
+    user = Usuario.query.get(usuario_id)
+    if not user:
+        flash("❌ Usuario no encontrado en la sesión.")
+        return redirect(url_for('logout'))
+
+    if request.method == 'POST':
+        actual = request.form.get('actual', '')
+        nueva = request.form.get('nueva', '')
+        confirmar = request.form.get('confirmar', '')
+
+        if not check_password_hash(user.password_hash, actual):
+            flash("❌ La contraseña actual es incorrecta.")
+            return redirect(url_for('admin_cambiar_password'))
+
+        if not nueva or len(nueva) < 8:
+            flash("❌ La nueva contraseña debe tener al menos 8 caracteres.")
+            return redirect(url_for('admin_cambiar_password'))
+
+        if nueva != confirmar:
+            flash("❌ La confirmación no coincide con la nueva contraseña.")
+            return redirect(url_for('admin_cambiar_password'))
+
+        if nueva == actual:
+            flash("⚠️ La nueva contraseña debe ser distinta de la actual.")
+            return redirect(url_for('admin_cambiar_password'))
+
+        # Validación opcional de fortaleza (mínimo: mayúscula + minúscula + número)
+        tiene_mayus = any(c.isupper() for c in nueva)
+        tiene_minus = any(c.islower() for c in nueva)
+        tiene_num = any(c.isdigit() for c in nueva)
+        if not (tiene_mayus and tiene_minus and tiene_num):
+            flash("⚠️ La contraseña debe tener al menos una mayúscula, una minúscula y un número.")
+            return redirect(url_for('admin_cambiar_password'))
+
+        user.password_hash = generate_password_hash(nueva)
+        # Limpiar flag de cambio obligatorio (primer login completado)
+        user.must_change_password = False
+        # Limpiar contador de fallos por las dudas
+        user.failed_attempts = 0
+        user.locked_until = None
+        db.session.commit()
+        session.pop('forzar_cambio_password', None)
         registrar_auditoria('actualizar', 'Usuario', user.id,
                             valores_nuevos={'accion': 'cambio_password_propio'})
         flash("✅ Contraseña actualizada correctamente. Tu próxima sesión usará la nueva clave.")
