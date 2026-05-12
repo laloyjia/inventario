@@ -312,13 +312,35 @@
             <div class="asignar-bloque">
                 <h4><i class="fas fa-arrow-right"></i> Asignar seleccionados a un curso</h4>
                 <div class="row">
-                    <input type="text" name="curso_destino" required placeholder="Ej: 3°A Electrónica" list="cursos_lista">
+                    <input type="text" name="curso_destino" placeholder="Ej: 3°A Electrónica" list="cursos_lista">
                     <datalist id="cursos_lista">
                         {% for c in cursos %}<option value="{{ c.nombre }}"></option>{% endfor %}
                     </datalist>
-                    <button class="btn-mini btn-assign" type="submit"><i class="fas fa-check"></i> Asignar</button>
+                    <button class="btn-mini btn-assign" type="submit"
+                            formaction="/curso/asignar_alumnos"><i class="fas fa-check"></i> Asignar</button>
                 </div>
             </div>
+
+            <div class="asignar-bloque" style="border-top:1px solid #fecaca; background:#fef2f2;">
+                <h4 style="color:#991b1b;"><i class="fas fa-trash"></i> Eliminar alumnos</h4>
+                <div class="row">
+                    <button class="btn-mini btn-del" type="submit"
+                            formaction="/eliminar_alumnos_masivo"
+                            onclick="return confirmarEliminarSeleccionados(event)">
+                        <i class="fas fa-trash"></i> Eliminar seleccionados
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <form action="/eliminar_alumnos_masivo" method="POST"
+              onsubmit="return confirmarEliminarTodos({{ alumnos_sin_curso | length }})"
+              style="padding: 0 14px 14px;">
+            <input type="hidden" name="todos_sin_curso" value="1">
+            <button class="btn-mini btn-del" type="submit"
+                    style="width:100%; justify-content:center; padding:10px;">
+                <i class="fas fa-bomb"></i> Eliminar TODOS los alumnos sin curso ({{ alumnos_sin_curso | length }})
+            </button>
         </form>
     </div>
     {% endif %}
@@ -416,6 +438,33 @@
         const n = document.querySelectorAll('.chk-alumno:checked').length;
         const el = document.getElementById('contadorSel');
         if (el) el.textContent = n;
+    }
+
+    function confirmarEliminarSeleccionados(e) {
+        const n = document.querySelectorAll('.chk-alumno:checked').length;
+        if (n === 0) {
+            e.preventDefault();
+            alert('No seleccionaste ningún alumno.');
+            return false;
+        }
+        if (!confirm('¿Eliminar ' + n + ' alumno(s) seleccionado(s)?\n\nSe darán de baja (no se borran los préstamos históricos).\nLos alumnos con préstamos pendientes se omiten.')) {
+            e.preventDefault();
+            return false;
+        }
+        return true;
+    }
+
+    function confirmarEliminarTodos(total) {
+        if (total === 0) {
+            alert('No hay alumnos sin curso para eliminar.');
+            return false;
+        }
+        const r = prompt('⚠️ Vas a dar de baja a TODOS los ' + total + ' alumnos sin curso asignado.\n\nEscribe la palabra BORRAR para confirmar:');
+        if (r !== 'BORRAR') {
+            alert('Cancelado. No se eliminó nada.');
+            return false;
+        }
+        return true;
     }
 </script>
 

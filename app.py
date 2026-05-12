@@ -1872,6 +1872,69 @@ def eliminar_curso(curso_id):
     return redirect(url_for('ver_cursos'))
 
 
+@app.route('/eliminar_alumnos_masivo', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def eliminar_alumnos_masivo():
+    """Da de baja a varios alumnos en una sola operación.
+
+    Recibe del form alguno de estos campos:
+      - alumno_ids:        lista de IDs (checkboxes seleccionados)
+      - todos_sin_curso=1: borrar TODOS los alumnos sin curso de la especialidad
+
+    Soft delete: marca activo=False, no rompe los préstamos históricos.
+    """
+    especialidad_id = session.get('usuario_especialidad_id')
+    es_admin = session.get('usuario_rol') == 'Admin'
+    if not especialidad_id and not es_admin:
+        flash("❌ Cuenta sin especialidad.")
+        return redirect(url_for('ver_cursos'))
+
+    todos_sin_curso = request.form.get('todos_sin_curso') == '1'
+    alumno_ids = request.form.getlist('alumno_ids')
+
+    if todos_sin_curso:
+        q = Estudiante.query.filter_by(curso_id=None, activo=True)
+        if not es_admin:
+            q = q.filter_by(especialidad_id=especialidad_id)
+        alumnos = q.all()
+    else:
+        if not alumno_ids:
+            flash("⚠️ No seleccionaste ningún alumno.")
+            return redirect(url_for('ver_cursos'))
+        try:
+            ids = [int(x) for x in alumno_ids]
+        except (ValueError, TypeError):
+            flash("❌ IDs inválidos.")
+            return redirect(url_for('ver_cursos'))
+        q = Estudiante.query.filter(Estudiante.id.in_(ids))
+        if not es_admin:
+            q = q.filter_by(especialidad_id=especialidad_id)
+        alumnos = q.all()
+
+    eliminados = 0
+    con_deuda = 0
+    for est in alumnos:
+        # No tocar si el alumno tiene préstamos pendientes
+        if Prestamo.query.filter_by(estudiante_id=est.id, estado='Pendiente').first():
+            con_deuda += 1
+            continue
+        est.activo = False
+        registrar_cambio_sync('estudiante', est.id, 'actualizar', est)
+        eliminados += 1
+    db.session.commit()
+    registrar_auditoria('eliminar', 'Estudiante', 0,
+                        valores_nuevos={'eliminados': eliminados,
+                                        'con_deuda_omitidos': con_deuda,
+                                        'todos_sin_curso': todos_sin_curso})
+
+    msg = f"✅ {eliminados} alumno(s) dado(s) de baja."
+    if con_deuda:
+        msg += f" ⚠️ {con_deuda} omitido(s) por tener préstamos pendientes."
+    flash(msg)
+    return redirect(url_for('ver_cursos'))
+
+
 @app.route('/curso/asignar_alumnos', methods=['POST'])
 @login_requerido
 @pañolero_o_admin
@@ -2761,6 +2824,7 @@ def _upsert_prestamo(nodo, p, accion):
                         cantidad=p.get('cantidad') or 1,
                         encargado=encargado_marker)
         db.session.add(pres)
+
     for k in ('cantidad', 'cantidad_solicitada', 'cantidad_mermada',
               'nombre_practica', 'estado', 'multa'):
         if k in p:
