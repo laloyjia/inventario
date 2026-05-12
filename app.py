@@ -168,7 +168,9 @@ class Estudiante(db.Model):
     rut_matricula = db.Column(db.String(50), unique=True, nullable=False)
     nombre = db.Column(db.String(100), nullable=False)
     curso = db.Column(db.String(50))  # legado: string libre (se mantiene por compatibilidad)
-    curso_id = db.Column(db.Integer, db.ForeignKey('curso.id'), nullable=True)  # nuevo
+    curso_id = db.Column(db.Integer, db.ForeignKey('curso.id'), nullable=True)
+    numero_lista = db.Column(db.Integer, nullable=True, index=True)  # N° lista dentro del curso
+    codigo_barras = db.Column(db.String(50), unique=True, nullable=True, index=True)  # único global
     especialidad_id = db.Column(db.Integer, db.ForeignKey('especialidad.id'), nullable=False)
     email = db.Column(db.String(120), nullable=True)
     password_hash = db.Column(db.String(200), nullable=False)
@@ -176,6 +178,12 @@ class Estudiante(db.Model):
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
     especialidad = db.relationship('Especialidad', backref='estudiantes', lazy=True)
     curso_rel = db.relationship('Curso', backref='alumnos', lazy=True)
+
+    # N° lista único dentro de un curso (puede repetirse entre cursos)
+    __table_args__ = (
+        db.UniqueConstraint('curso_id', 'numero_lista', name='uq_estud_curso_numlista'),
+    )
+
     @property
     def tiene_deudas(self):
         return Prestamo.query.filter_by(estudiante_id=self.id, estado='Pendiente').count() > 0
@@ -186,6 +194,31 @@ class Estudiante(db.Model):
         if self.curso_rel:
             return self.curso_rel.nombre
         return self.curso or '—'
+
+    @property
+    def etiqueta_display(self):
+        """Formato para dropdowns: 'N°lista — Nombre — Curso'."""
+        partes = []
+        if self.numero_lista is not None:
+            partes.append(f"N°{self.numero_lista}")
+        partes.append(self.nombre)
+        if self.curso_display and self.curso_display != '—':
+            partes.append(self.curso_display)
+        return ' — '.join(partes)
+
+
+def generar_codigo_barras_alumno():
+    """Genera un código de barras único para un alumno: AL + timestamp + 3 dígitos."""
+    import random
+    base = "AL" + datetime.now().strftime('%y%m%d%H%M%S')
+    # Reintenta si por azar colisiona (improbable)
+    for _ in range(5):
+        codigo = base + f"{random.randint(0, 999):03d}"
+        if not Estudiante.query.filter_by(codigo_barras=codigo).first():
+            return codigo
+    # Fallback con uuid
+    import uuid
+    return "AL" + uuid.uuid4().hex[:14].upper()
 
 
 class Item(db.Model):
@@ -536,13 +569,17 @@ def _migrar_columnas_seguridad():
             if 'panolero_dia_id' not in cols:
                 statements.append("ALTER TABLE prestamo ADD COLUMN panolero_dia_id INTEGER NULL")
 
-        # === estudiante: curso_id (FK a curso) + email ===
+        # === estudiante: curso_id, email, numero_lista, codigo_barras ===
         if 'estudiante' in tablas:
             cols = {c['name'] for c in insp.get_columns('estudiante')}
             if 'curso_id' not in cols:
                 statements.append("ALTER TABLE estudiante ADD COLUMN curso_id INTEGER NULL")
             if 'email' not in cols:
                 statements.append("ALTER TABLE estudiante ADD COLUMN email VARCHAR(120) NULL")
+            if 'numero_lista' not in cols:
+                statements.append("ALTER TABLE estudiante ADD COLUMN numero_lista INTEGER NULL")
+            if 'codigo_barras' not in cols:
+                statements.append("ALTER TABLE estudiante ADD COLUMN codigo_barras VARCHAR(50) NULL")
 
         if statements:
             with db.engine.begin() as conn:
@@ -958,6 +995,13 @@ def ver_inventario():
     tipo_area = (esp_obj_actual.tipo_area or 'GENERAL') if esp_obj_actual else 'GENERAL'
     # Pañoleros del día activos para esta especialidad (máx. 6)
     panoleros_dia = _panoleros_dia_activos(especialidad_id) if especialidad_id else []
+    # Cursos disponibles en esta especialidad (para datalist/dropdowns)
+    try:
+        cursos_disponibles = Curso.query.filter_by(
+            especialidad_id=especialidad_id, activo=True
+        ).order_by(Curso.nombre.asc()).all()
+    except Exception:
+        cursos_disponibles = []
     return render_template('inventario.html',
                            items=items, estudiantes=estudiantes, prestamos=prestamos,
                            prestamos_externos=prestamos_externos,
@@ -969,6 +1013,7 @@ def ver_inventario():
                            alertas=alertas,
                            tipo_area=tipo_area,
                            panoleros_dia=panoleros_dia,
+                           cursos_disponibles=cursos_disponibles,
                            max_panoleros_dia=MAX_PANOLEROS_DIA,
                            especialidad=(session.get('admin_viendo_especialidad')
                                           if session.get('usuario_rol') == 'Admin'
@@ -1208,17 +1253,20 @@ def agregar_estudiante():
 def cargar_alumnos_excel():
     """Carga masiva de alumnos desde Excel.
 
-    Formato esperado (4 columnas en orden fijo):
-      Col 1 → RUT / Matrícula (obligatorio, único)
-      Col 2 → Nombre completo  (obligatorio)
-      Col 3 → Curso            (ej: "3°A Electrónica"; si no existe se crea)
-      Col 4 → Email            (opcional)
+    Formato simplificado (2 columnas en orden fijo):
+      Col 1 → N° de lista  (entero)
+      Col 2 → Nombre completo (obligatorio)
+
+    El CURSO al que pertenecen los alumnos se elige en un input del formulario
+    (campo 'curso_destino'). Todos los alumnos de la planilla quedan asignados
+    a ese curso. Si el curso no existe, se crea.
 
     Reglas:
       - Solo el pañolero crea alumnos en SU especialidad.
-      - Si el RUT ya existe, se actualizan nombre/curso/email (no se duplica).
-      - Si el curso no existe en esa especialidad, se crea automáticamente.
-      - Contraseña inicial = RUT (el alumno la cambia en su primer login).
+      - Identidad del alumno = curso + N° lista (puede repetirse N° entre cursos).
+      - Si ya existe un alumno con ese (curso, N° lista), se actualiza su nombre.
+      - Cada alumno obtiene un código de barras autogenerado (único global).
+      - Contraseña inicial = código de barras del alumno.
     """
     archivo = request.files.get('archivo_excel')
     if not archivo or archivo.filename == '':
@@ -1228,6 +1276,11 @@ def cargar_alumnos_excel():
     especialidad_id = session.get('usuario_especialidad_id')
     if not especialidad_id:
         flash("❌ Tu cuenta no tiene una especialidad asignada.")
+        return redirect(url_for('ver_inventario'))
+
+    nombre_curso = (request.form.get('curso_destino') or '').strip()
+    if not nombre_curso:
+        flash("❌ Debes indicar el curso al que pertenecen estos alumnos.")
         return redirect(url_for('ver_inventario'))
 
     try:
@@ -1240,15 +1293,14 @@ def cargar_alumnos_excel():
         flash("⚠️ El Excel está vacío.")
         return redirect(url_for('ver_inventario'))
 
-    # Detectar cabecera: si la primera fila col 0 dice "rut" / "matricula" / etc., saltar
+    # Detectar cabecera: si la primera fila col 1 (nombre) no es nombre real ni la col 0 (N°) es entero, saltar
     inicio = 0
     primera = df.iloc[0]
     try:
-        primer_rut = str(primera[0]).strip().lower()
-        if any(x in primer_rut for x in ('rut', 'matric', 'cédula', 'cedula', 'id alumno')):
-            inicio = 1
-    except Exception:
-        pass
+        # Si la primera celda no es número, probablemente es cabecera ("N° lista" / "Nombre")
+        int(float(str(primera[0]).strip()))
+    except (ValueError, TypeError, IndexError):
+        inicio = 1
 
     def col(fila, i, default=''):
         try:
@@ -1264,83 +1316,68 @@ def cargar_alumnos_excel():
             return default
         return s
 
-    # Cache de cursos creados/encontrados en esta carga
-    cursos_cache = {}
+    # Get-or-create del curso destino UNA sola vez
+    curso_obj = Curso.query.filter_by(nombre=nombre_curso, especialidad_id=especialidad_id).first()
+    curso_nuevo = False
+    if not curso_obj:
+        import re
+        m = re.match(r'^\s*(\d+)\s*[°º]?\s*([A-Za-z])?', nombre_curso)
+        nivel = f"{m.group(1)}° Medio" if (m and m.group(1)) else None
+        letra = m.group(2).upper() if (m and m.group(2)) else None
+        curso_obj = Curso(nombre=nombre_curso, nivel=nivel, letra=letra,
+                          anio=datetime.now().year,
+                          especialidad_id=especialidad_id, activo=True)
+        db.session.add(curso_obj)
+        db.session.flush()
+        curso_nuevo = True
 
-    def get_or_create_curso(nombre_curso):
-        """Devuelve un Curso para el nombre dado, creándolo si hace falta."""
-        if not nombre_curso:
-            return None
-        clave = nombre_curso.strip().lower()
-        if clave in cursos_cache:
-            return cursos_cache[clave]
-        c = Curso.query.filter_by(nombre=nombre_curso, especialidad_id=especialidad_id).first()
-        if not c:
-            # Parsear nivel y letra simples (ej: "3°A", "4°B Electrónica")
-            import re
-            m = re.match(r'^\s*(\d+)\s*[°º]?\s*([A-Z])?', nombre_curso, re.IGNORECASE)
-            nivel = letra = None
-            if m:
-                nivel = f"{m.group(1)}° Medio" if m.group(1) else None
-                letra = m.group(2).upper() if m.group(2) else None
-            c = Curso(nombre=nombre_curso, nivel=nivel, letra=letra,
-                      anio=datetime.now().year,
-                      especialidad_id=especialidad_id, activo=True)
-            db.session.add(c)
-            db.session.flush()
-        cursos_cache[clave] = c
-        return c
-
-    creados = actualizados = cursos_nuevos = 0
+    creados = actualizados = 0
     errores = []
-    ya_existian = set()
 
     for idx in range(inicio, len(df)):
         fila = df.iloc[idx]
-        rut = col(fila, 0)
+        n_lista_str = col(fila, 0)
         nombre = col(fila, 1)
-        nombre_curso = col(fila, 2)
-        email = col(fila, 3) or None
 
-        if not rut or not nombre:
-            # Saltar filas en blanco al final del Excel
-            if rut or nombre or nombre_curso:
-                errores.append(f"Fila {idx + 1}: falta RUT o nombre")
+        if not nombre:
+            if n_lista_str:
+                errores.append(f"Fila {idx + 1}: falta nombre")
             continue
 
-        # Curso (crear si no existe)
-        curso_obj = None
-        if nombre_curso:
-            antes = Curso.query.filter_by(nombre=nombre_curso,
-                                          especialidad_id=especialidad_id).first() is not None
-            curso_obj = get_or_create_curso(nombre_curso)
-            if not antes and curso_obj is not None:
-                cursos_nuevos += 1
+        # N° lista
+        try:
+            n_lista = int(float(n_lista_str)) if n_lista_str else None
+        except Exception:
+            errores.append(f"Fila {idx + 1}: N° lista inválido ({n_lista_str})")
+            continue
 
-        existente = Estudiante.query.filter_by(rut_matricula=rut).first()
+        # Buscar existente por (curso_id, numero_lista). Si no, crear nuevo.
+        existente = None
+        if n_lista is not None:
+            existente = Estudiante.query.filter_by(curso_id=curso_obj.id,
+                                                   numero_lista=n_lista).first()
+
         if existente:
-            # Solo actualizar si pertenece a esta especialidad (seguridad)
-            if existente.especialidad_id != especialidad_id and session.get('usuario_rol') != 'Admin':
-                errores.append(f"Fila {idx + 1}: RUT {rut} pertenece a otra especialidad")
-                continue
             existente.nombre = nombre
-            if nombre_curso:
-                existente.curso = nombre_curso
-                if curso_obj:
-                    existente.curso_id = curso_obj.id
-            if email:
-                existente.email = email
+            existente.curso = nombre_curso
+            existente.curso_id = curso_obj.id
+            # Si no tiene código de barras, generarle uno
+            if not existente.codigo_barras:
+                existente.codigo_barras = generar_codigo_barras_alumno()
             registrar_cambio_sync('estudiante', existente.id, 'actualizar', existente)
             actualizados += 1
-            ya_existian.add(rut)
         else:
+            codigo_alumno = generar_codigo_barras_alumno()
+            # rut_matricula se mantiene como identificador único interno; usamos el código de barras
             nuevo = Estudiante(
-                rut_matricula=rut, nombre=nombre,
-                curso=nombre_curso or None,
-                curso_id=curso_obj.id if curso_obj else None,
+                rut_matricula=codigo_alumno,  # idéntico al codigo_barras para mantener unicidad
+                codigo_barras=codigo_alumno,
+                nombre=nombre,
+                numero_lista=n_lista,
+                curso=nombre_curso,
+                curso_id=curso_obj.id,
                 especialidad_id=especialidad_id,
-                email=email,
-                password_hash=generate_password_hash(rut),
+                password_hash=generate_password_hash(codigo_alumno),
                 activo=True,
             )
             db.session.add(nuevo)
@@ -1352,15 +1389,133 @@ def cargar_alumnos_excel():
     registrar_auditoria('importar', 'Estudiante', 0,
                         valores_nuevos={'creados': creados,
                                         'actualizados': actualizados,
-                                        'cursos_nuevos': cursos_nuevos,
+                                        'curso': nombre_curso,
+                                        'curso_nuevo': curso_nuevo,
                                         'errores': len(errores)})
 
-    msg = (f"✅ Carga de alumnos: {creados} nuevo(s), {actualizados} actualizado(s), "
-           f"{cursos_nuevos} curso(s) creado(s).")
+    extra = " (curso recién creado)" if curso_nuevo else ""
+    msg = (f"✅ Carga de alumnos a {nombre_curso}{extra}: "
+           f"{creados} nuevo(s), {actualizados} actualizado(s).")
     if errores:
         msg += f" ⚠️ {len(errores)} fila(s) con error: " + " | ".join(errores[:3])
     flash(msg)
     return redirect(url_for('ver_inventario'))
+
+
+@app.route('/editar_alumno/<int:est_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def editar_alumno(est_id):
+    """Permite editar nombre, N° lista y curso de un alumno.
+    Solo el pañolero de su misma especialidad puede editarlo (o el Admin)."""
+    est = Estudiante.query.get_or_404(est_id)
+    if session.get('usuario_rol') != 'Admin' and est.especialidad_id != session.get('usuario_especialidad_id'):
+        flash("❌ Sin permiso para editar a este alumno.")
+        return redirect(url_for('ver_inventario'))
+
+    nombre = (request.form.get('nombre') or '').strip()
+    if nombre:
+        est.nombre = nombre
+
+    n_lista_raw = (request.form.get('numero_lista') or '').strip()
+    if n_lista_raw:
+        try:
+            est.numero_lista = int(n_lista_raw)
+        except ValueError:
+            pass
+
+    nombre_curso = (request.form.get('curso_destino') or '').strip()
+    if nombre_curso:
+        c = Curso.query.filter_by(nombre=nombre_curso,
+                                  especialidad_id=est.especialidad_id).first()
+        if not c:
+            c = Curso(nombre=nombre_curso, especialidad_id=est.especialidad_id,
+                      anio=datetime.now().year, activo=True)
+            db.session.add(c)
+            db.session.flush()
+        est.curso_id = c.id
+        est.curso = nombre_curso
+
+    activo_val = request.form.get('activo')
+    if activo_val is not None:
+        est.activo = activo_val in ('1', 'true', 'on', 'si', 'sí')
+
+    db.session.commit()
+    registrar_auditoria('actualizar', 'Estudiante', est.id,
+                        valores_nuevos={'nombre': est.nombre,
+                                        'numero_lista': est.numero_lista,
+                                        'curso': est.curso})
+    registrar_cambio_sync('estudiante', est.id, 'actualizar', est)
+    flash(f"✅ Alumno {est.nombre} actualizado.")
+    return redirect(url_for('ver_inventario'))
+
+
+@app.route('/regenerar_codigo_alumno/<int:est_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def regenerar_codigo_alumno(est_id):
+    """Genera un nuevo código de barras para el alumno (útil si pierde el carnet)."""
+    est = Estudiante.query.get_or_404(est_id)
+    if session.get('usuario_rol') != 'Admin' and est.especialidad_id != session.get('usuario_especialidad_id'):
+        flash("❌ Sin permiso.")
+        return redirect(url_for('ver_inventario'))
+    est.codigo_barras = generar_codigo_barras_alumno()
+    db.session.commit()
+    registrar_auditoria('actualizar', 'Estudiante', est.id,
+                        valores_nuevos={'accion': 'regenerar_codigo',
+                                        'nuevo_codigo': est.codigo_barras})
+    registrar_cambio_sync('estudiante', est.id, 'actualizar', est)
+    flash(f"✅ Nuevo código de {est.nombre}: {est.codigo_barras}")
+    return redirect(url_for('ver_inventario'))
+
+
+@app.route('/etiqueta_alumno/<int:est_id>')
+@login_requerido
+def etiqueta_alumno(est_id):
+    """Página imprimible con el carnet (código de barras) del alumno."""
+    est = Estudiante.query.get_or_404(est_id)
+    if session.get('usuario_rol') == 'Pañolero' and est.especialidad_id != session.get('usuario_especialidad_id'):
+        flash("❌ Sin permiso.")
+        return redirect(url_for('ver_inventario'))
+    # Si no tiene código aún, generarlo
+    if not est.codigo_barras:
+        est.codigo_barras = generar_codigo_barras_alumno()
+        db.session.commit()
+    return render_template('etiqueta_alumno.html', alumno=est)
+
+
+@app.route('/api/item/<codigo>')
+@login_requerido
+def api_buscar_item(codigo):
+    """Devuelve JSON con datos del ítem si el código existe en la especialidad
+    del usuario. Lo usa el formulario de agregar para autocompletar al escanear."""
+    codigo = (codigo or '').strip()
+    if not codigo:
+        return jsonify({'found': False})
+    especialidad_id = session.get('usuario_especialidad_id')
+    q = Item.query.filter_by(codigo_barras=codigo)
+    if especialidad_id and session.get('usuario_rol') != 'Admin':
+        q = q.filter_by(especialidad_id=especialidad_id)
+    item = q.first()
+    if not item:
+        return jsonify({'found': False})
+    return jsonify({
+        'found': True,
+        'id': item.id,
+        'nombre': item.nombre,
+        'descripcion': item.descripcion or '',
+        'categoria': item.categoria or '',
+        'ubicacion': item.ubicacion or '',
+        'imagen_url': item.imagen_url or '',
+        'precio_unitario': item.precio_unitario or 0,
+        'desgaste': item.desgaste or 0,
+        'marca': item.marca or '',
+        'modelo': item.modelo or '',
+        'numero_serie': item.numero_serie or '',
+        'estado': item.estado or '',
+        'cantidad_total': item.cantidad_total or 0,
+        'cantidad_disponible': item.cantidad_disponible or 0,
+    })
 
 
 @app.route('/eliminar_estudiante/<int:est_id>', methods=['POST'])
@@ -2538,110 +2693,14 @@ def exportar_inventario():
     return exportar_excel()
 
 
-@app.route('/descargar_plantilla_alumnos')
-@login_requerido
-def descargar_plantilla_alumnos():
-    """Descarga la plantilla Excel para carga masiva de alumnos."""
-    aqui = os.path.dirname(os.path.abspath(__file__))
-    plantilla = os.path.join(aqui, 'alumnos_muestra.xlsx')
-    if not os.path.exists(plantilla):
-        # Generar plantilla mínima al vuelo
-        from openpyxl import Workbook
-        wb = Workbook()
-        ws = wb.active
-        ws.title = 'Alumnos'
-        for c, h in enumerate(['RUT / Matrícula', 'Nombre completo', 'Curso', 'Email'], 1):
-            ws.cell(row=1, column=c, value=h)
-        buf = io.BytesIO()
-        wb.save(buf)
-        buf.seek(0)
-        return send_file(buf, as_attachment=True,
-                         download_name='plantilla_alumnos.xlsx',
-                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    return send_file(plantilla, as_attachment=True,
-                     download_name='plantilla_alumnos.xlsx')
 
-
-@app.route('/descargar_plantilla')
-@login_requerido
-def descargar_plantilla():
-    """Descarga el archivo inventario_muestra.xlsx como plantilla."""
-    aqui = os.path.dirname(os.path.abspath(__file__))
-    plantilla = os.path.join(aqui, 'inventario_muestra.xlsx')
-    if not os.path.exists(plantilla):
-        # Si no está, generamos una plantilla mínima al vuelo (13 columnas A–M, mismo orden que /cargar_excel)
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill, Alignment
-        wb = Workbook()
-        ws = wb.active
-        ws.title = 'Inventario'
-        headers = ['Código de barra', 'Nombre', 'Descripción', 'Marca', 'Modelo',
-                   'Categoría', 'Cantidad', 'Ubicación', 'Fecha adquisición',
-                   'Desgaste ($)', 'Costo unitario ($)', 'Costo total ($)',
-                   'Imagen de referencia']
-        for c, h in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=c, value=h)
-            cell.font = Font(bold=True, color='FFFFFF')
-            cell.fill = PatternFill(start_color='1E3A8A', end_color='1E3A8A', fill_type='solid')
-            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-        ws.row_dimensions[1].height = 30
-        ws.freeze_panes = 'A2'
-        buf = io.BytesIO()
-        wb.save(buf)
-        buf.seek(0)
-        return send_file(buf, as_attachment=True,
-                         download_name='plantilla_inventario.xlsx',
-                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    return send_file(plantilla, as_attachment=True,
-                     download_name='plantilla_inventario.xlsx')
-
-
-
-@app.route('/etiqueta/<int:item_id>')
-@login_requerido
-def etiqueta_item(item_id):
-    """Vista imprimible con código de barras Code128 del ítem (4 copias por defecto)."""
-    item = Item.query.get_or_404(item_id)
-    if session.get('usuario_rol') != 'Admin' and item.especialidad_id != session.get('usuario_especialidad_id'):
-        flash("❌ No tienes acceso a este ítem.")
-        return redirect(url_for('ver_inventario'))
-    return render_template('etiqueta.html', item=item,
-                           especialidad=item.especialidad.nombre if item.especialidad else '',
-                           now=datetime.now().strftime('%d/%m/%Y'))
-
-
-# ========================================================================
-# RUTAS DE ADMINISTRADOR CENTRAL (vistas globales y reportes)
-# ========================================================================
-
-@app.route('/admin/buscar')
+@app.route('/admin/reporte_mermas')
 @login_requerido
 @admin_requerido
-def admin_buscar_items():
-    """Buscador global de ítems (en las 8 áreas)."""
-    q = (request.args.get('q') or '').strip()
-    if not q:
-        return render_template('admin_buscar.html', items=[], q='')
-    like = f"%{q}%"
-    items = Item.query.filter(
-        db.or_(
-            Item.nombre.ilike(like),
-            Item.codigo_barras.ilike(like),
-            Item.autor.ilike(like) if hasattr(Item, 'autor') else False,
-            Item.isbn.ilike(like) if hasattr(Item, 'isbn') else False,
-        )
-    ).order_by(Item.especialidad_id.asc(), Item.nombre.asc()).limit(200).all()
-    return render_template('admin_buscar.html', items=items, q=q)
-
-
-
-# ------------------------------------------------------------------
-# Endpoints de administrador (stubs temporales).
-# El archivo original venia truncado; estos stubs garantizan que la
-# app levante. Reemplazar con las implementaciones reales cuando se
-# necesiten.
-# ------------------------------------------------------------------
-
+def admin_reporte_mermas():
+    """Reporte de mermas (placeholder). Reescribir cuando se necesite."""
+    flash("Reporte de mermas: funcion en construccion.")
+    return redirect(url_for('ver_inventario'))
 
 
 @app.route('/admin/exportar_completo')
@@ -2671,15 +2730,6 @@ def admin_exportar_completo():
     fname = f"inventario_consolidado_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
     return send_file(buf, as_attachment=True, download_name=fname,
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-
-@app.route('/admin/reporte_mermas')
-@login_requerido
-@admin_requerido
-def admin_reporte_mermas():
-    """Reporte de mermas (placeholder)."""
-    flash("Reporte de mermas: funcion en construccion.")
-    return redirect(url_for('ver_inventario'))
 
 
 if __name__ == '__main__':

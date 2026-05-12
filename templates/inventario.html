@@ -198,7 +198,9 @@
                 <div style="background: #fef3c7; border: 1px solid #fbbf24; border-radius: 20px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem;">
                     <i class="fas fa-user-graduate" style="color: #b45309;"></i>
                     <span><strong>{{ pd.estudiante.nombre }}</strong>
-                        <span style="color: #92400e; font-size: 0.75rem;">{{ pd.estudiante.rut_matricula }}{% if pd.estudiante.curso %} · {{ pd.estudiante.curso }}{% endif %}</span>
+                        <span style="color: #92400e; font-size: 0.75rem;">
+                            {% if pd.estudiante.numero_lista is not none %}N°{{ pd.estudiante.numero_lista }} · {% endif %}{{ pd.estudiante.curso_display }}
+                        </span>
                     </span>
                     <form action="/panoleros_dia/quitar/{{ pd.id }}" method="POST" style="display: inline; margin: 0;"
                           onsubmit="return confirm('¿Quitar a {{ pd.estudiante.nombre }} como pañolero del día?');">
@@ -223,7 +225,7 @@
                         {% set ya_es_panolero = false %}
                         {% for pd in panoleros_dia %}{% if pd.estudiante_id == est.id %}{% set ya_es_panolero = true %}{% endif %}{% endfor %}
                         {% if not ya_es_panolero %}
-                        <option value="{{ est.id }}">{{ est.nombre }} — {{ est.rut_matricula }}{% if est.curso %} ({{ est.curso }}){% endif %}</option>
+                        <option value="{{ est.id }}">{{ est.etiqueta_display }}</option>
                         {% endif %}
                     {% endfor %}
                 </select>
@@ -396,9 +398,12 @@
                 <div><label>URL Imagen (Opcional)</label><input type="url" name="imagen_url" placeholder="Pegar link..."></div>
                 {% endif %}
 
-                {# === CAMPOS COMUNES: costos y desgaste (todos los tipos) === #}
+                {# === CAMPOS COMUNES: costos y desgaste === #}
+                {# PANOL_TP ya los incluye dentro de su propio bloque (líneas ~374-375); para los demás tipos los agregamos aquí. #}
+                {% if ta != 'PANOL_TP' %}
                 <div><label>Costo unitario ($)</label><input type="number" name="precio_unitario" min="0" step="1" value="0" placeholder="Ej: 12500"></div>
                 <div><label>Desgaste ($)</label><input type="number" name="desgaste" min="0" step="1" value="0" placeholder="Depreciación acumulada"></div>
+                {% endif %}
 
                 <button type="submit" class="btn-add"><i class="fas fa-save"></i> Guardar</button>
             </form>
@@ -745,13 +750,43 @@
             </div>
             <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                 <table>
-                    <thead style="position: sticky; top: 0; background: white;"><tr><th>RUT</th><th>Nombre</th><th>Curso</th><th>Estado</th><th>X</th></tr></thead>
+                    <thead style="position: sticky; top: 0; background: white;"><tr><th>N°</th><th>Nombre</th><th>Curso</th><th>Código de barras</th><th>Estado</th><th style="min-width:140px;">Acciones</th></tr></thead>
                     <tbody id="cuerpoTablaEstudiantes">
                         {% for est in estudiantes %}
-                        <tr class="fila-estudiante" data-curso="{{ est.curso }}">
-                            <td>{{ est.rut_matricula }}</td><td>{{ est.nombre }}</td><td>{{ est.curso }}</td>
+                        <tr class="fila-estudiante" data-curso="{{ est.curso_display }}">
+                            <td style="text-align:center; font-weight:600;">{{ est.numero_lista if est.numero_lista is not none else '—' }}</td>
+                            <td>{{ est.nombre }}</td>
+                            <td>{{ est.curso_display }}</td>
+                            <td>
+                                {% if est.codigo_barras %}
+                                <span style="font-family:monospace; font-size:0.75rem; background:#eef2ff; color:#3730a3; padding:2px 6px; border-radius:4px;">{{ est.codigo_barras }}</span>
+                                {% else %}
+                                <span style="color:#9ca3af; font-size:0.75rem;">— sin código —</span>
+                                {% endif %}
+                            </td>
                             <td>{% if est.tiene_deudas %}<span class="badge" style="background:#fee2e2; color:red;">Moroso</span>{% else %}<span class="badge" style="background:#dcfce7; color:green;">Al día</span>{% endif %}</td>
-                            <td><form action="/eliminar_estudiante/{{ est.id }}" method="POST" onsubmit="return confirm('¿Eliminar alumno?');"><button type="submit" class="btn-delete"><i class="fas fa-trash"></i></button></form></td>
+                            <td>
+                                <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                                    <button type="button" class="btn-edit" title="Editar alumno"
+                                            onclick="abrirModalEditarAlumno({{ est.id }}, '{{ est.nombre | replace("'", "\\'") }}', '{{ est.numero_lista or '' }}', '{{ est.curso_display | replace("'", "\\'") }}', {{ 'true' if est.activo else 'false' }})">
+                                        <i class="fas fa-pencil-alt"></i>
+                                    </button>
+                                    <a href="/etiqueta_alumno/{{ est.id }}" target="_blank" title="Imprimir carnet con código de barras"
+                                       style="background:#6366f1; color:white; padding:4px 8px; border-radius:4px; text-decoration:none; display:inline-flex; align-items:center;">
+                                        <i class="fas fa-id-card"></i>
+                                    </a>
+                                    <form action="/regenerar_codigo_alumno/{{ est.id }}" method="POST"
+                                          onsubmit="return confirm('¿Generar un nuevo código de barras para {{ est.nombre }}? El anterior dejará de funcionar.');" style="display:inline; margin:0;">
+                                        <button type="submit" title="Regenerar código de barras"
+                                                style="background:#f59e0b; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">
+                                            <i class="fas fa-sync-alt"></i>
+                                        </button>
+                                    </form>
+                                    <form action="/eliminar_estudiante/{{ est.id }}" method="POST" onsubmit="return confirm('¿Dar de baja a {{ est.nombre }}?');" style="display:inline; margin:0;">
+                                        <button type="submit" class="btn-delete" title="Dar de baja"><i class="fas fa-trash"></i></button>
+                                    </form>
+                                </div>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -863,23 +898,35 @@
             <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 12px;">
                 <h3 style="margin: 0 0 10px 0; color: #3730a3; font-size: 1rem;"><i class="fas fa-upload"></i> Cargar planilla de alumnos</h3>
                 <p style="font-size: 0.85rem; color: #555; margin: 0 0 12px 0;">
-                    Formato esperado (4 columnas en orden):
-                    <strong>1.</strong> RUT / Matrícula ·
-                    <strong>2.</strong> Nombre completo ·
-                    <strong>3.</strong> Curso (ej: 3°A Electrónica) ·
-                    <strong>4.</strong> Email (opcional).
+                    Planilla con <strong>2 columnas</strong>: N° lista · Nombre completo.
                 </p>
                 <p style="font-size: 0.8rem; color: #4338ca; margin: 0 0 12px 0;">
-                    <i class="fas fa-info-circle"></i> Si el RUT ya existe, se actualiza. Si el curso aún no existe en tu pañol, se crea automáticamente. La contraseña inicial es el mismo RUT (el alumno la cambia en su primer login).
+                    <i class="fas fa-info-circle"></i>
+                    Elige el curso destino: todos los alumnos de esta planilla quedarán en ese curso.
+                    Si el curso no existe, se crea solo. Cada alumno recibe un <strong>código de barras</strong> autogenerado para escanear su carnet.
                 </p>
                 <form action="/cargar_alumnos_excel" method="POST" enctype="multipart/form-data"
-                      style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                    <input type="file" name="archivo_excel" accept=".xlsx, .xls" required
-                           style="flex: 1; min-width: 220px; padding: 8px; border: 2px dashed #6366f1; border-radius: 6px; background: #eef2ff;">
-                    <button type="submit"
-                            style="background: #6366f1; color: white; padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">
-                        <i class="fas fa-upload"></i> Subir Alumnos
-                    </button>
+                      style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <label style="font-weight:600; color:#3730a3; min-width:120px;">Curso destino:</label>
+                        <input type="text" name="curso_destino" required
+                               placeholder="Ej: 3°A Electrónica"
+                               list="cursos_existentes"
+                               style="flex:1; min-width: 200px; padding: 8px; border: 1px solid #c7d2fe; border-radius: 6px;">
+                        <datalist id="cursos_existentes">
+                            {% for c in (cursos_disponibles or []) %}
+                            <option value="{{ c.nombre }}"></option>
+                            {% endfor %}
+                        </datalist>
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <input type="file" name="archivo_excel" accept=".xlsx, .xls" required
+                               style="flex: 1; min-width: 220px; padding: 8px; border: 2px dashed #6366f1; border-radius: 6px; background: #eef2ff;">
+                        <button type="submit"
+                                style="background: #6366f1; color: white; padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">
+                            <i class="fas fa-upload"></i> Subir Alumnos
+                        </button>
+                    </div>
                 </form>
             </div>
 
@@ -1013,7 +1060,7 @@
             <label>3. Estudiante Solicitante <span style="color:red;">*</span></label>
             <select id="estudiante_id_modal" required>
                 <option value="" disabled selected>-- Seleccione al Estudiante --</option>
-                {% for est in estudiantes %}<option value="{{ est.id }}" class="opt-alumno" data-curso="{{ est.curso }}">{{ est.rut_matricula }} - {{ est.nombre }}</option>{% endfor %}
+                {% for est in estudiantes %}<option value="{{ est.id }}" class="opt-alumno" data-curso="{{ est.curso_display }}">{{ est.etiqueta_display }}</option>{% endfor %}
             </select>
         </div>
         <div style="border: 1px dashed var(--secondary); padding: 10px; border-radius: 6px; margin-bottom: 15px;">
@@ -1044,7 +1091,7 @@
                 <select name="panolero_dia_id" required style="width: 100%; padding: 8px; margin-top: 5px; border: 2px solid #fbbf24;">
                     <option value="" disabled selected>— Selecciona al pañolero del día que está atendiendo —</option>
                     {% for pd in panoleros_dia %}
-                    <option value="{{ pd.estudiante.id }}">{{ pd.estudiante.nombre }} ({{ pd.estudiante.rut_matricula }})</option>
+                    <option value="{{ pd.estudiante.id }}">{{ pd.estudiante.etiqueta_display }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -1124,6 +1171,41 @@
             <div style="display: flex; gap: 10px;">
                 <button type="button" onclick="finalizarOT()" style="flex: 1; background: var(--info); color: white; padding: 12px;"><i class="fas fa-save"></i> Generar OT</button>
                 <button type="button" onclick="cerrarModalOT()" style="background: #e2e8f0; color: var(--dark); padding: 12px;">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal de Edición de Alumno -->
+<div id="modalEditarAlumno" class="modal">
+    <div class="modal-content">
+        <h2 style="margin-top:0; border-bottom: 2px solid #6366f1; padding-bottom: 10px; color:#3730a3;">
+            <i class="fas fa-user-edit"></i> Editar Alumno
+        </h2>
+        <form id="formEditarAlumno" action="" method="POST">
+            <label>Nombre completo <span style="color:red;">*</span></label>
+            <input type="text" name="nombre" id="edit_alumno_nombre" required style="margin-bottom: 12px;">
+
+            <label>N° de lista</label>
+            <input type="number" name="numero_lista" id="edit_alumno_nlista" min="1" style="margin-bottom: 12px;">
+
+            <label>Curso</label>
+            <input type="text" name="curso_destino" id="edit_alumno_curso" list="cursos_existentes"
+                   placeholder="Ej: 3°A Electrónica" style="margin-bottom: 12px;">
+
+            <label>
+                <input type="checkbox" name="activo" id="edit_alumno_activo" value="1">
+                Alumno activo
+            </label>
+            <div style="height:15px;"></div>
+
+            <div style="display: flex; gap: 10px;">
+                <button type="button" onclick="document.getElementById('formEditarAlumno').submit()"
+                        style="flex:1; background:#6366f1; color:white; padding:12px;">
+                    <i class="fas fa-save"></i> Guardar
+                </button>
+                <button type="button" onclick="cerrarModalEditarAlumno()"
+                        style="background:#e2e8f0; color:var(--dark); padding:12px;">Cancelar</button>
             </div>
         </form>
     </div>
@@ -1319,9 +1401,43 @@
     // solo necesita ajustar la cantidad para SUMAR al stock existente.
     function autocompletarItemExistente(codigo) {
         const aviso = document.getElementById('agregar_codigo_aviso');
+        codigo = (codigo || '').trim();
+        if (!codigo) {
+            if (aviso) aviso.style.display = 'none';
+            return;
+        }
         const info = buscarItemPorCodigo(codigo);
         if (!info) {
-            if (aviso) { aviso.style.display = 'none'; }
+            // Fallback al servidor (puede ser un item de otra especialidad para admin)
+            fetch('/api/item/' + encodeURIComponent(codigo))
+                .then(r => r.json())
+                .then(data => {
+                    if (data && data.found) {
+                        // Pintarlo igual que el caso normal
+                        const setIfEmpty = (id, val) => {
+                            const el = document.getElementById(id);
+                            if (el && (!el.value || el.value === '0' || el.value === '')) el.value = val ?? '';
+                        };
+                        setIfEmpty('agregar_nombre',       data.nombre);
+                        setIfEmpty('agregar_descripcion',  data.descripcion);
+                        setIfEmpty('agregar_marca',        data.marca);
+                        setIfEmpty('agregar_modelo',       data.modelo);
+                        setIfEmpty('agregar_ubicacion',    data.ubicacion);
+                        setIfEmpty('agregar_imagen',       data.imagen_url);
+                        setIfEmpty('agregar_precio',       data.precio_unitario);
+                        setIfEmpty('agregar_desgaste',     data.desgaste);
+                        if (aviso) {
+                            aviso.innerHTML = `<i class="fas fa-info-circle"></i> Código ya existe (otra área). Datos precargados.`;
+                            aviso.style.color = '#7c3aed';
+                            aviso.style.display = 'block';
+                        }
+                    } else if (aviso) {
+                        aviso.innerHTML = `<i class="fas fa-plus-circle"></i> Código nuevo — completa los datos manualmente.`;
+                        aviso.style.color = '#16a34a';
+                        aviso.style.display = 'block';
+                    }
+                })
+                .catch(() => { if (aviso) aviso.style.display = 'none'; });
             return;
         }
         // Llenar campos solo si están vacíos (no pisar lo que el usuario ya escribió)
@@ -1363,214 +1479,163 @@
         const cantidad = parseInt(document.getElementById('inputCantSalida').value) || 1;
         if (codigo === "") return;
 
-        // Buscar el ítem por código (case-sensitive primero, después flexible)
+        // Buscar el item por codigo (estricto + flexible)
         let info = ITEMS_POR_CODIGO[codigo];
         if (!info) {
-            // Búsqueda flexible: ignorar mayúsculas/minúsculas y espacios
-            const normalizado = codigo.toLowerCase().trim();
+            const norm = codigo.toLowerCase().trim();
             for (const [k, v] of Object.entries(ITEMS_POR_CODIGO)) {
-                if (k.toLowerCase().trim() === normalizado) { info = v; break; }
+                if (k.toLowerCase().trim() === norm) { info = v; break; }
             }
         }
         if (!info) {
-            alert("❌ No se encontró ningún ítem con el código: " + codigo);
-            input.value = ""; input.focus();
+            alert("Codigo no encontrado: " + codigo);
+            input.select();
             return;
         }
-
-        // Verificar stock disponible
-        const yaEnCarrito = carrito.find(p => p.item_id === info.id);
-        const totalPedido = (yaEnCarrito ? yaEnCarrito.cantidad : 0) + cantidad;
-        if (totalPedido > info.disponible) {
-            alert("⚠️ Stock insuficiente para '" + info.nombre + "'. Disponible: " + info.disponible);
-            input.value = ""; input.focus();
-            return;
-        }
-
-        if (yaEnCarrito) {
-            yaEnCarrito.cantidad += cantidad;
+        const existente = carrito.find(p => p.codigo === codigo);
+        if (existente) {
+            existente.cantidad += cantidad;
         } else {
-            carrito.push({
-                item_id: info.id,
-                codigo: codigo,
-                nombre: info.nombre,
-                cantidad: cantidad,
-                disponible: info.disponible
-            });
+            carrito.push({ id: info.id, codigo: codigo, nombre: info.nombre, cantidad: cantidad });
         }
-        input.value = ""; document.getElementById('inputCantSalida').value = 1; input.focus();
         actualizarTablaVisual();
+        input.value = "";
+        document.getElementById('inputCantSalida').value = 1;
+        input.focus();
     }
 
     function actualizarTablaVisual() {
-        const cuerpo = document.getElementById('lista_pedido_cuerpo');
-        cuerpo.innerHTML = "";
-        carrito.forEach((prod, index) => {
-            const codigoEscapado = (prod.codigo || '').replace(/'/g, "&#39;");
-            const nombreEscapado = (prod.nombre || '').replace(/</g, "&lt;").replace(/>/g, "&gt;");
-            cuerpo.innerHTML += `<tr>
-                <td><span style="font-family:monospace; background:#eee; padding:2px 4px; font-size:0.75rem; border-radius:3px;">${codigoEscapado}</span></td>
-                <td><strong style="font-size:0.85rem;">${nombreEscapado}</strong></td>
-                <td><input type="number" value="${prod.cantidad}" min="1" max="${prod.disponible}" onchange="carrito[${index}].cantidad=Math.min(${prod.disponible}, parseInt(this.value)||1); actualizarTablaVisual();" style="width:50px; padding:2px;"></td>
-                <td><button onclick="carrito.splice(${index}, 1); actualizarTablaVisual();" type="button" class="btn-delete" style="padding:4px 8px;"><i class="fas fa-times"></i></button></td>
-            </tr>`;
+        const tbody = document.getElementById('lista_pedido_cuerpo');
+        if (!tbody) return;
+        tbody.innerHTML = "";
+        carrito.forEach((p, i) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="font-family:monospace; font-size:0.75rem;">${p.codigo}</td>
+                <td>${p.nombre}</td>
+                <td style="text-align:center;">${p.cantidad}</td>
+                <td><button type="button" onclick="quitarDelPedido(${i})" style="background:none; border:none; color:#dc2626; cursor:pointer;"><i class="fas fa-times"></i></button></td>`;
+            tbody.appendChild(tr);
         });
     }
 
-    function finalizarDespacho() {
-        const estId = document.getElementById('estudiante_id_modal').value;
-        const profId = document.getElementById('profesor_id_modal').value;
-        if (estId === "" || carrito.length === 0) { alert("Seleccione estudiante y agregue un item."); return; }
-        if (document.getElementById('profesor_id_modal').hasAttribute('required') && profId === "") { alert("Seleccione el Profesor que autoriza."); return; }
-        document.getElementById('hidden_estudiante_id').value = estId;
-        document.getElementById('hidden_profesor_id').value = profId;
-        document.getElementById('hidden_carrito').value = JSON.stringify(carrito);
-        document.getElementById('form_final_despacho').submit();
+    function quitarDelPedido(i) {
+        carrito.splice(i, 1);
+        actualizarTablaVisual();
     }
 
-    // --- MODAL DEVOLUCION ---
-    function abrirModalDevolucion() { document.getElementById('modalDevolucion').style.display = 'block'; }
-    function cerrarModalDevolucion() { document.getElementById('modalDevolucion').style.display = 'none'; }
-
-    // --- LOGICA PRESTAMOS EXTERNOS ---
-    function toggleProfesorExt() {
-        const select = document.getElementById('tipo_persona_ext').value;
-        document.getElementById('div_profesor_cargo_ext').style.display = (select === 'Alumno') ? 'block' : 'none';
-    }
-
-    // --- LOGICA CARRITO ORDENES DE TRABAJO (OT) ---
-    let carritoOT = [];
-    function abrirModalOT() { document.getElementById('modalOT').style.display = 'block'; setTimeout(() => document.getElementById('inputScanOT').focus(), 100); }
-    function cerrarModalOT() { document.getElementById('modalOT').style.display = 'none'; carritoOT = []; actualizarTablaOT(); }
-
-    function agregarAlPedidoOT() {
-        const input = document.getElementById('inputScanOT');
-        const codigo = input.value.trim();
-        const cantidad = parseInt(document.getElementById('inputCantOT').value) || 1;
-        if (codigo === "") return;
-        let encontrado = carritoOT.find(p => p.codigo === codigo);
-        if (encontrado) encontrado.cantidad += cantidad;
-        else carritoOT.push({ codigo: codigo, cantidad: cantidad });
-        input.value = ""; document.getElementById('inputCantOT').value = 1; input.focus();
-        actualizarTablaOT();
-    }
-
-    function actualizarTablaOT() {
-        const cuerpo = document.getElementById('lista_ot_cuerpo');
-        const contenedor = document.getElementById('div_tabla_ot');
-        cuerpo.innerHTML = "";
-        if(carritoOT.length > 0) {
-            contenedor.style.display = 'block';
-            carritoOT.forEach((prod, index) => {
-                cuerpo.innerHTML += `<tr><td><span style="font-family:monospace; background:#f1f5f9; padding:2px; font-size:0.8rem;">${prod.codigo}</span></td>
-                        <td><strong>${prod.cantidad}</strong></td>
-                        <td><button onclick="carritoOT.splice(${index}, 1); actualizarTablaOT();" type="button" style="background:var(--danger); color:white; padding:4px 8px; border:none; border-radius:4px;"><i class="fas fa-times"></i></button></td></tr>`;
-            });
-        } else {
-            contenedor.style.display = 'none';
-        }
-    }
-
-    function finalizarOT() {
-        document.getElementById('hidden_carrito_ot').value = JSON.stringify(carritoOT);
-        document.getElementById('form_ot_final').submit();
-    }
-
-    // --- FILTRO DE INVENTARIO (texto + categoria) ---
-    let categoriaActiva = 'TODOS';
-
-    function filtrarInventario() {
-        const texto = document.getElementById('buscadorInventario').value.toLowerCase();
-        document.querySelectorAll('.fila-item').forEach(tr => {
-            const matchCat = categoriaActiva === 'TODOS' || tr.getAttribute('data-categoria') === categoriaActiva;
-            const matchTexto = tr.innerText.toLowerCase().includes(texto);
-            tr.style.display = (matchCat && matchTexto) ? '' : 'none';
+    // --- Validacion antes de enviar form de salida ---
+    const formFinal = document.getElementById('form_final_despacho');
+    if (formFinal) {
+        formFinal.addEventListener('submit', function (e) {
+            const estId = document.getElementById('estudiante_id_modal').value;
+            if (!estId) { e.preventDefault(); alert("Selecciona un estudiante."); return; }
+            if (carrito.length === 0) { e.preventDefault(); alert("El carrito esta vacio."); return; }
+            document.getElementById('hidden_estudiante_id').value = estId;
+            document.getElementById('hidden_carrito').value = JSON.stringify(carrito);
         });
-    }
-
-    function filtrarCategoria(btn, categoria) {
-        categoriaActiva = categoria;
-        document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        filtrarInventario();
-    }
-
-    // --- FILTRO DE PRESTAMOS ACTIVOS ---
-    let estadoPrestamoActivo = 'TODOS';
-
-    function filtrarPrestamos() {
-        const texto = document.getElementById('buscadorPrestamos').value.toLowerCase();
-        document.querySelectorAll('.fila-prestamo').forEach(tr => {
-            const matchEstado = estadoPrestamoActivo === 'TODOS' || tr.getAttribute('data-estado') === estadoPrestamoActivo;
-            const matchTexto = tr.innerText.toLowerCase().includes(texto);
-            tr.style.display = (matchEstado && matchTexto) ? '' : 'none';
-        });
-    }
-
-    function filtrarEstadoPrestamo(btn, estado) {
-        estadoPrestamoActivo = estado;
-        document.querySelectorAll('#mod-activos .cat-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        filtrarPrestamos();
     }
 
     // --- MODAL DE EDICION DE ITEM ---
     function abrirModalEditar(id, nombre, categoria, imagen, ubicacion, descripcion, precio, desgaste, fechaAdq) {
-        document.getElementById('formEditar').action = '/editar_item/' + id;
-        document.getElementById('edit_nombre').value = nombre;
-        document.getElementById('edit_imagen').value = imagen;
+        const f = document.getElementById('formEditar');
+        if (!f) return;
+        f.action = '/editar_item/' + id;
+        document.getElementById('edit_nombre').value = nombre || '';
+        document.getElementById('edit_imagen').value = imagen || '';
         document.getElementById('edit_ubicacion').value = ubicacion || '';
-        document.getElementById('edit_ajuste').value = 0;
-        // Campos nuevos
-        const elDesc = document.getElementById('edit_descripcion');
-        if (elDesc) elDesc.value = descripcion || '';
+        const elAj = document.getElementById('edit_ajuste'); if (elAj) elAj.value = 0;
+        const elDesc = document.getElementById('edit_descripcion'); if (elDesc) elDesc.value = descripcion || '';
         const elPrecio = document.getElementById('edit_precio');
-        if (elPrecio) elPrecio.value = precio !== undefined && precio !== null ? Math.round(precio) : 0;
+        if (elPrecio) elPrecio.value = (precio !== undefined && precio !== null) ? Math.round(precio) : 0;
         const elDesg = document.getElementById('edit_desgaste');
-        if (elDesg) elDesg.value = desgaste !== undefined && desgaste !== null ? Math.round(desgaste) : 0;
-        const elFecha = document.getElementById('edit_fecha_adq');
-        if (elFecha) elFecha.value = fechaAdq || '';
+        if (elDesg) elDesg.value = (desgaste !== undefined && desgaste !== null) ? Math.round(desgaste) : 0;
+        const elFecha = document.getElementById('edit_fecha_adq'); if (elFecha) elFecha.value = fechaAdq || '';
         const sel = document.getElementById('edit_categoria');
-        for (let i = 0; i < sel.options.length; i++) {
-            if (sel.options[i].value === categoria) { sel.selectedIndex = i; break; }
+        if (sel && categoria) {
+            for (let i = 0; i < sel.options.length; i++) {
+                if (sel.options[i].value === categoria) { sel.selectedIndex = i; break; }
+            }
         }
         document.getElementById('modalEditar').style.display = 'block';
         setTimeout(() => document.getElementById('edit_nombre').focus(), 100);
     }
 
     function cerrarModalEditar() {
-        document.getElementById('modalEditar').style.display = 'none';
+        const m = document.getElementById('modalEditar');
+        if (m) m.style.display = 'none';
     }
 
-    function confirmarEdicion() {
-        document.getElementById('formEditar').submit();
+    const _modalEd = document.getElementById('modalEditar');
+    if (_modalEd) _modalEd.addEventListener('click', function (e) { if (e.target === this) cerrarModalEditar(); });
+
+    // --- MODAL DE EDICION DE ALUMNO ---
+    function abrirModalEditarAlumno(id, nombre, numeroLista, curso, activo) {
+        const f = document.getElementById('formEditarAlumno');
+        if (!f) return;
+        f.action = '/editar_alumno/' + id;
+        document.getElementById('edit_alumno_nombre').value = nombre || '';
+        document.getElementById('edit_alumno_nlista').value = numeroLista || '';
+        document.getElementById('edit_alumno_curso').value = curso === '—' ? '' : (curso || '');
+        document.getElementById('edit_alumno_activo').checked = !!activo;
+        document.getElementById('modalEditarAlumno').style.display = 'block';
+        setTimeout(() => document.getElementById('edit_alumno_nombre').focus(), 100);
     }
 
-    document.getElementById('modalEditar').addEventListener('click', function(e) {
-        if (e.target === this) { cerrarModalEditar(); }
-    });
+    function cerrarModalEditarAlumno() {
+        const m = document.getElementById('modalEditarAlumno');
+        if (m) m.style.display = 'none';
+    }
+
+    const _modalEdAl = document.getElementById('modalEditarAlumno');
+    if (_modalEdAl) _modalEdAl.addEventListener('click', function (e) { if (e.target === this) cerrarModalEditarAlumno(); });
+
+    // --- MODAL DE OT (orden de trabajo) — stubs por si los onclick lo invocan
+    function abrirModalOT() {
+        const m = document.getElementById('modalOT');
+        if (m) m.style.display = 'block';
+    }
+    function cerrarModalOT() {
+        const m = document.getElementById('modalOT');
+        if (m) m.style.display = 'none';
+    }
+
+    // --- BUSCADOR de prestamos en tabla "Activos" ---
+    function filtrarPrestamos() {
+        const q = (document.getElementById('buscadorPrestamos') || {value: ''}).value.toLowerCase().trim();
+        document.querySelectorAll('tr[data-estudiante], tr.fila-prestamo').forEach(tr => {
+            const txt = tr.textContent.toLowerCase();
+            tr.style.display = (!q || txt.indexOf(q) !== -1) ? '' : 'none';
+        });
+    }
+    function filtrarEstadoPrestamo(btn, estado) {
+        document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+        document.querySelectorAll('tr.fila-prestamo, tr[data-estudiante]').forEach(tr => {
+            const e = tr.getAttribute('data-estado') || '';
+            tr.style.display = (estado === 'TODOS' || e === estado) ? '' : 'none';
+        });
+    }
 
 </script>
 
 
 <script>
-// Pintar códigos de barras Code128 en todas las filas del inventario
+// Pintar codigos de barras Code128 en todas las filas del inventario
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof JsBarcode === 'undefined') return;
-    document.querySelectorAll('svg.barcode-mini').forEach(function(svg) {
-        var code = svg.getAttribute('data-code') || '';
+    document.querySelectorAll('svg.barcode-mini').forEach(function (svg) {
+        const code = svg.dataset.code;
         if (!code) return;
         try {
             JsBarcode(svg, code, {
-                format: "CODE128",
-                width: 1.4,
-                height: 24,
-                displayValue: false,
-                margin: 0,
+                format: 'CODE128', displayValue: false,
+                height: 26, width: 1.2, margin: 0
             });
-        } catch(e) { console.warn('Barcode error', code, e); }
+        } catch (e) { /* ignorar errores individuales */ }
     });
 });
 </script>
+
 </body>
 </html>

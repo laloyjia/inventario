@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Carnet - {{ alumno.nombre }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            background: #f1f5f9;
+            margin: 0;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        .toolbar { display: flex; gap: 10px; }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+            text-decoration: none;
+            color: white;
+        }
+        .btn-print { background: #10b981; }
+        .btn-back  { background: #64748b; }
+
+        .carnet-wrap {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+            background: white;
+            padding: 24px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .carnet {
+            border: 2px dashed #94a3b8;
+            border-radius: 8px;
+            padding: 14px 18px;
+            width: 340px;
+            min-height: 160px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            background: white;
+            position: relative;
+        }
+        .carnet .escuela {
+            font-size: 0.7rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .carnet .nombre {
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: #0f172a;
+            line-height: 1.2;
+            margin: 4px 0;
+        }
+        .carnet .meta {
+            font-size: 0.85rem;
+            color: #475569;
+        }
+        .carnet .codigo {
+            font-family: 'Courier New', monospace;
+            font-size: 0.75rem;
+            color: #1e293b;
+            text-align: center;
+            margin-top: 4px;
+            letter-spacing: 0.5px;
+        }
+        .carnet svg {
+            display: block;
+            margin: 4px auto 0;
+        }
+
+        @media print {
+            body { background: white; padding: 0; }
+            .toolbar { display: none !important; }
+            .carnet-wrap { box-shadow: none; border-radius: 0; padding: 0; }
+            .carnet { border: 1px solid #475569; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="toolbar">
+        <button class="btn btn-print" onclick="window.print()">🖨️ Imprimir carnet</button>
+        <a href="/inventario" class="btn btn-back">← Volver</a>
+    </div>
+
+    <div class="carnet-wrap">
+        {# Imprimimos 2 copias del mismo carnet para tener una de respaldo #}
+        {% for _ in range(2) %}
+        <div class="carnet">
+            <div>
+                <div class="escuela">Pañol · {{ alumno.especialidad.nombre if alumno.especialidad else 'Carnet alumno' }}</div>
+                <div class="nombre">{{ alumno.nombre }}</div>
+                <div class="meta">
+                    {% if alumno.numero_lista is not none %}N° {{ alumno.numero_lista }} · {% endif %}
+                    {{ alumno.curso_display }}
+                </div>
+            </div>
+            <div>
+                <svg class="codigo-svg" data-code="{{ alumno.codigo_barras }}"></svg>
+                <div class="codigo">{{ alumno.codigo_barras }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <script>
+        document.querySelectorAll('.codigo-svg').forEach(function(svg) {
+            try {
+                JsBarcode(svg, svg.dataset.code, {
+                    format: 'CODE128',
+                    displayValue: false,
+                    height: 60,
+                    width: 1.6,
+                    margin: 4
+                });
+            } catch (e) {
+                console.warn('Error generando código:', e);
+            }
+        });
+    </script>
+
+</body>
+</html>
