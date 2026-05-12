@@ -1,0 +1,21 @@
+# No copiar al contenedor
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+.env
+.env.*
+instance/*.db
+instance/*.bak*
+instance/*.db-journal
+*.log
+build/
+dist/
+PanolERP/
+*.spec
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

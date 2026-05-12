@@ -38,6 +38,12 @@ Thumbs.db
 .env.local
 .env.production
 
+# Credenciales y scripts de reset (NUNCA subir)
+CREDENCIALES_NUEVAS.md
+CREDENCIALES_*.md
+reset_passwords.sql
+reset_passwords_*.sql
+
 # Archivos generados
 inventario_exportado_*.xlsx
 *.spec
