@@ -343,24 +343,36 @@
                 <div><label>Fecha adquisición</label><input type="date" name="fecha_adquisicion"></div>
                 <div><label>Máx. usos (desgaste)</label><input type="number" name="max_usos" min="0" placeholder="Opcional"></div>
 
-                {# === PANOL_TP (talleres técnicos) === #}
+                {# === PANOL_TP (talleres técnicos) — formulario completo 13-col === #}
                 {% elif ta == 'PANOL_TP' %}
-                <div><label>Cód. Barras (Vacío=Auto)</label><input type="text" name="codigo_barras" placeholder="Escanear..."></div>
-                <div><label>Nombre</label><input type="text" name="nombre" required></div>
+                <div>
+                    <label>Cód. Barras (Vacío=Auto)</label>
+                    <input type="text" name="codigo_barras" id="agregar_codigo_barras"
+                           placeholder="Escanear o digitar..." autocomplete="off"
+                           onchange="autocompletarItemExistente(this.value)"
+                           onblur="autocompletarItemExistente(this.value)">
+                    <small id="agregar_codigo_aviso" style="display:none; color:#1d4ed8; font-size:0.7rem;"></small>
+                </div>
+                <div><label>Nombre</label><input type="text" name="nombre" id="agregar_nombre" required></div>
+                <div><label>Descripción</label><input type="text" name="descripcion" id="agregar_descripcion" placeholder="Detalle libre"></div>
+                <div><label>Marca</label><input type="text" name="marca" id="agregar_marca" placeholder="Bosch, Makita..."></div>
+                <div><label>Modelo</label><input type="text" name="modelo" id="agregar_modelo" placeholder="Modelo / referencia"></div>
                 <div>
                     <label>Categoría</label>
-                    <select name="categoria">
+                    <select name="categoria" id="agregar_categoria">
                         <option value="Herramienta">Herramienta</option>
                         <option value="Componente">Componente</option>
                         <option value="Material">Material</option>
                         <option value="Fungible">Fungible</option>
                     </select>
                 </div>
-                <div><label>Cant.</label><input type="number" name="cantidad" min="1" value="1" required></div>
-                <div><label>Ubicación</label><input type="text" name="ubicacion" placeholder="Ej: Estante A, Armario 1, etc."></div>
-                <div><label>URL Imagen (Opcional)</label><input type="url" name="imagen_url" placeholder="Pegar link..."></div>
-                <div><label>Fecha adquisición</label><input type="date" name="fecha_adquisicion"></div>
-                <div><label>Máx. usos (desgaste)</label><input type="number" name="max_usos" min="0" placeholder="Opcional"></div>
+                <div><label>Cant.</label><input type="number" name="cantidad" id="agregar_cantidad" min="1" value="1" required></div>
+                <div><label>Ubicación</label><input type="text" name="ubicacion" id="agregar_ubicacion" placeholder="Estante A, Armario 1..."></div>
+                <div><label>Fecha adquisición</label><input type="date" name="fecha_adquisicion" id="agregar_fecha"></div>
+                <div><label>Desgaste ($)</label><input type="number" name="desgaste" id="agregar_desgaste" min="0" step="any" value="0"></div>
+                <div><label>Costo unitario ($)</label><input type="number" name="precio_unitario" id="agregar_precio" min="0" step="any" value="0"></div>
+                <div><label>URL Imagen (Opcional)</label><input type="url" name="imagen_url" id="agregar_imagen" placeholder="Pegar link..."></div>
+                <div><label>Máx. usos (desgaste)</label><input type="number" name="max_usos" id="agregar_max_usos" min="0" placeholder="Opcional"></div>
 
                 {# === GENERAL (ACLE, Salas, Oficina) === #}
                 {% else %}
@@ -474,13 +486,12 @@
                             {% elif ta == 'PANOL_TP' %}
                                 <th>Código</th>
                                 <th>Nombre</th>
+                                <th>Marca / Modelo</th>
+                                <th>Descripción</th>
                                 <th>Ubicación</th>
                                 <th style="text-align: center;">Disponible</th>
                                 <th style="text-align: center;">En uso</th>
-                                <th style="text-align: center;">Merma</th>
                                 <th style="text-align: center;">Uso</th>
-                                <th style="text-align: center;">Desgaste ($)</th>
-                                <th style="text-align: center;">Costo Total</th>
                             {% else %}
                                 <th>Nombre</th>
                                 <th>Categoría</th>
@@ -558,13 +569,19 @@
                                         <span style="font-size: 0.7rem; color:var(--secondary);">{{ item.categoria }}</span>
                                     </div>
                                 </td>
+                                <td style="font-size:0.85rem;">
+                                    {% if item.marca or item.modelo %}
+                                        {% if item.marca %}<strong>{{ item.marca }}</strong>{% endif %}
+                                        {% if item.modelo %}<br><span style="color:#6b7280;">{{ item.modelo }}</span>{% endif %}
+                                    {% else %}<span style="color:#9ca3af;">—</span>{% endif %}
+                                </td>
+                                <td style="font-size:0.8rem; max-width:220px; color:#4b5563;">
+                                    {{ (item.descripcion or '')[:120] }}{% if item.descripcion and item.descripcion|length > 120 %}…{% endif %}
+                                </td>
                                 <td><span style="font-size: 0.85rem; background:#f0fdf4; padding:4px 8px; border-radius:4px; color:#166534;"><i class="fas fa-map-marker-alt"></i> {{ item.ubicacion or 'Sin especificar' }}</span></td>
                                 <td style="color: var(--success); font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_disponible }}</td>
                                 <td style="color: #ca8a04; font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_total - item.cantidad_disponible }}</td>
-                                <td style="color: var(--danger); font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_mermada | default(0, true) }}</td>
                                 <td style="text-align:center;">{{ _uso_cell }}</td>
-                                <td style="text-align:center; color:#b45309; font-weight:600;">{{ item.desgaste | clp }}</td>
-                                <td style="text-align:center; color:#0f766e; font-weight:bold;">{{ item.costo_total | clp }}</td>
                             {% else %}
                                 <td><strong>{{ item.nombre }}</strong></td>
                                 <td>{{ item.categoria or '—' }}</td>
@@ -1222,16 +1239,77 @@
 
     // Diccionario de items disponibles, indexado por código de barras.
     // Se construye desde el contexto Jinja al renderizar la página.
+    // Incluye todos los campos para poder autocompletar el formulario de alta.
     const ITEMS_POR_CODIGO = {
         {% for item in items %}
         {{ (item.codigo_barras or '')|tojson }}: {
             id: {{ item.id }},
             nombre: {{ (item.nombre or '')|tojson }},
+            descripcion: {{ (item.descripcion or '')|tojson }},
+            marca: {{ (item.marca or '')|tojson }},
+            modelo: {{ (item.modelo or '')|tojson }},
+            categoria: {{ (item.categoria or '')|tojson }},
+            ubicacion: {{ (item.ubicacion or '')|tojson }},
+            imagen_url: {{ (item.imagen_url or '')|tojson }},
+            fecha_adquisicion: {{ (item.fecha_adquisicion.isoformat() if item.fecha_adquisicion else '')|tojson }},
+            precio_unitario: {{ item.precio_unitario|default(0) }},
+            desgaste: {{ item.desgaste|default(0) }},
+            max_usos: {{ item.max_usos|default(0) }},
             disponible: {{ item.cantidad_disponible|default(0) }},
-            categoria: {{ (item.categoria or '')|tojson }}
+            total: {{ item.cantidad_total|default(0) }}
         }{% if not loop.last %},{% endif %}
         {% endfor %}
     };
+
+    // Buscar ítem por código (case-insensitive, trim)
+    function buscarItemPorCodigo(codigo) {
+        if (!codigo) return null;
+        if (ITEMS_POR_CODIGO[codigo]) return ITEMS_POR_CODIGO[codigo];
+        const norm = codigo.toLowerCase().trim();
+        for (const [k, v] of Object.entries(ITEMS_POR_CODIGO)) {
+            if (k.toLowerCase().trim() === norm) return v;
+        }
+        return null;
+    }
+
+    // Autocompletar formulario de "Ingresar Nuevo Material" al ingresar un código existente.
+    // Si el código matchea un ítem, llena marca/modelo/descripción/etc. — el pañolero
+    // solo necesita ajustar la cantidad para SUMAR al stock existente.
+    function autocompletarItemExistente(codigo) {
+        const aviso = document.getElementById('agregar_codigo_aviso');
+        const info = buscarItemPorCodigo(codigo);
+        if (!info) {
+            if (aviso) { aviso.style.display = 'none'; }
+            return;
+        }
+        // Llenar campos solo si están vacíos (no pisar lo que el usuario ya escribió)
+        const setIfEmpty = (id, val) => {
+            const el = document.getElementById(id);
+            if (el && (!el.value || el.value === '0' || el.value === '')) el.value = val ?? '';
+        };
+        setIfEmpty('agregar_nombre',       info.nombre);
+        setIfEmpty('agregar_descripcion',  info.descripcion);
+        setIfEmpty('agregar_marca',        info.marca);
+        setIfEmpty('agregar_modelo',       info.modelo);
+        setIfEmpty('agregar_ubicacion',    info.ubicacion);
+        setIfEmpty('agregar_imagen',       info.imagen_url);
+        setIfEmpty('agregar_fecha',        info.fecha_adquisicion);
+        setIfEmpty('agregar_precio',       info.precio_unitario);
+        setIfEmpty('agregar_desgaste',     info.desgaste);
+        setIfEmpty('agregar_max_usos',     info.max_usos);
+        // Categoría (select) — sólo si está en su default
+        const cat = document.getElementById('agregar_categoria');
+        if (cat && info.categoria) {
+            for (let i = 0; i < cat.options.length; i++) {
+                if (cat.options[i].value === info.categoria) { cat.selectedIndex = i; break; }
+            }
+        }
+        if (aviso) {
+            aviso.innerHTML = `<i class="fas fa-info-circle"></i> Este código ya existe en el inventario (${info.disponible}/${info.total} disp.). Los campos se completaron — la cantidad que pongas se SUMARÁ al stock actual.`;
+            aviso.style.color = '#1d4ed8';
+            aviso.style.display = 'block';
+        }
+    }
 
     function abrirModalSalida() { document.getElementById('modalSalida').style.display = 'block'; setTimeout(() => document.getElementById('inputScanSalida').focus(), 100); }
     function cerrarModalSalida() { document.getElementById('modalSalida').style.display = 'none'; carrito = []; document.getElementById('inputCantSalida').value = 1; actualizarTablaVisual(); }
