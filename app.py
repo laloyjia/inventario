@@ -208,6 +208,8 @@ class Prestamo(db.Model):
     item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
     estudiante_id = db.Column(db.Integer, db.ForeignKey('estudiante.id'), nullable=False)
     profesor_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=True)
+    # Pañolero del día (estudiante designado que entregó el ítem). Opcional.
+    panolero_dia_id = db.Column(db.Integer, db.ForeignKey('estudiante.id'), nullable=True)
     encargado = db.Column(db.String(100))
     cantidad = db.Column(db.Integer)
     cantidad_solicitada = db.Column(db.Integer, default=0)
@@ -295,6 +297,35 @@ class PrestamoExterno(db.Model):
     tipo_movimiento = db.Column(db.String(20), default='prestamo')
     item = db.relationship('Item', backref='prestamos_externos', lazy=True)
     especialidad = db.relationship('Especialidad', backref='prestamos_externos', lazy=True)
+
+
+# ========================================================================
+# PAÑOLEROS DEL DÍA — estudiantes designados que pueden entregar insumos
+# ========================================================================
+MAX_PANOLEROS_DIA = 6   # tope de pañoleros activos por especialidad
+
+
+class PanoleroDesignado(db.Model):
+    """Designación de un estudiante como pañolero del día para una especialidad.
+    Persisten hasta que el encargado del pañol los reemplaza o limpia.
+    Solo cuentan los registros con activo=True (máx. 6 por especialidad)."""
+    __tablename__ = 'panolero_designado'
+    id = db.Column(db.Integer, primary_key=True)
+    estudiante_id = db.Column(db.Integer, db.ForeignKey('estudiante.id'),
+                              nullable=False, index=True)
+    especialidad_id = db.Column(db.Integer, db.ForeignKey('especialidad.id'),
+                                nullable=False, index=True)
+    designado_por_id = db.Column(db.Integer, db.ForeignKey('usuario.id'),
+                                 nullable=True)
+    fecha_designacion = db.Column(db.DateTime, default=datetime.utcnow,
+                                  nullable=False)
+    fecha_baja = db.Column(db.DateTime, nullable=True)
+    activo = db.Column(db.Boolean, default=True, nullable=False,
+                       server_default='true', index=True)
+    estudiante = db.relationship('Estudiante', backref='designaciones_panolero', lazy=True)
+    especialidad = db.relationship('Especialidad', backref='panoleros_designados', lazy=True)
+    designado_por = db.relationship('Usuario', foreign_keys=[designado_por_id], lazy=True)
+
 
 # 11. SYNC LOG (registro de cambios para sincronización entre nodos y admin central)
 class SyncLog(db.Model):
@@ -438,6 +469,12 @@ def _migrar_columnas_seguridad():
                 statements.append("ALTER TABLE item ADD COLUMN max_usos INTEGER NULL")
             if 'usos_actuales' not in cols:
                 statements.append("ALTER TABLE item ADD COLUMN usos_actuales INTEGER NOT NULL DEFAULT 0")
+
+        # === prestamo: panolero_dia_id ===
+        if 'prestamo' in tablas:
+            cols = {c['name'] for c in insp.get_columns('prestamo')}
+            if 'panolero_dia_id' not in cols:
+                statements.append("ALTER TABLE prestamo ADD COLUMN panolero_dia_id INTEGER NULL")
             if 'desgaste' not in cols:
                 statements.append("ALTER TABLE item ADD COLUMN desgaste FLOAT NOT NULL DEFAULT 0")
 
@@ -844,6 +881,8 @@ def ver_inventario():
     # Tipo de área: define qué campos del formulario y columnas de la lista se muestran
     esp_obj_actual = Especialidad.query.get(especialidad_id)
     tipo_area = (esp_obj_actual.tipo_area or 'GENERAL') if esp_obj_actual else 'GENERAL'
+    # Pañoleros del día activos para esta especialidad (máx. 6)
+    panoleros_dia = _panoleros_dia_activos(especialidad_id) if especialidad_id else []
     return render_template('inventario.html',
                            items=items, estudiantes=estudiantes, prestamos=prestamos,
                            prestamos_externos=prestamos_externos,
@@ -854,6 +893,8 @@ def ver_inventario():
                            prestamos_activos=prestamos_activos,
                            alertas=alertas,
                            tipo_area=tipo_area,
+                           panoleros_dia=panoleros_dia,
+                           max_panoleros_dia=MAX_PANOLEROS_DIA,
                            especialidad=(session.get('admin_viendo_especialidad')
                                           if session.get('usuario_rol') == 'Admin'
                                           else session.get('usuario_especialidad')))
@@ -1126,6 +1167,19 @@ def registrar_salida():
     # Plazo: obligatorio si todos los items son de BIBLIOTECA, opcional en otros.
     plazo_dias = request.form.get('plazo_dias', type=int)
 
+    # Pañolero del día (estudiante designado que atiende este préstamo). Opcional.
+    panolero_dia_id = request.form.get('panolero_dia_id', type=int)
+    if panolero_dia_id:
+        # Validar que sea un pañolero del día activo de esta especialidad
+        pd = PanoleroDesignado.query.filter_by(
+            estudiante_id=panolero_dia_id,
+            especialidad_id=session.get('usuario_especialidad_id'),
+            activo=True
+        ).first()
+        if not pd:
+            flash("⚠️ Pañolero del día seleccionado no está activo. El préstamo quedará a nombre del encargado.")
+            panolero_dia_id = None
+
     creados = 0
     for entry in carrito:
         item = Item.query.get(entry.get('item_id'))
@@ -1148,6 +1202,7 @@ def registrar_salida():
 
         db.session.add(Prestamo(item_id=item.id, estudiante_id=estudiante.id,
                                 profesor_id=profesor_id,
+                                panolero_dia_id=panolero_dia_id,
                                 encargado=session.get('usuario_nombre'),
                                 cantidad=cantidad, cantidad_solicitada=cantidad,
                                 nombre_practica=nombre_practica, estado='Pendiente',
@@ -2343,6 +2398,103 @@ def admin_reporte_mermas():
     Revisar y completar el reporte real cuando se necesite.
     """
     flash("Reporte de mermas: funcion en construccion.")
+    return redirect(url_for('ver_inventario'))
+
+
+# ========================================================================
+# PAÑOLEROS DEL DÍA — gestión de los estudiantes que entregan insumos
+# ========================================================================
+
+def _panoleros_dia_activos(especialidad_id):
+    """Lista de PanoleroDesignado activos para una especialidad (máx. 6)."""
+    return PanoleroDesignado.query.filter_by(
+        especialidad_id=especialidad_id, activo=True
+    ).order_by(PanoleroDesignado.fecha_designacion.desc()).all()
+
+
+@app.route('/panoleros_dia/agregar', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def agregar_panolero_dia():
+    """Designa un estudiante como pañolero del día de la especialidad actual."""
+    especialidad_id = session.get('usuario_especialidad_id')
+    if not especialidad_id:
+        flash("❌ No tienes una especialidad activa.")
+        return redirect(url_for('ver_inventario'))
+
+    estudiante_id = request.form.get('estudiante_id', type=int)
+    if not estudiante_id:
+        flash("❌ Debes seleccionar un estudiante.")
+        return redirect(url_for('ver_inventario'))
+
+    estudiante = Estudiante.query.get(estudiante_id)
+    if not estudiante or estudiante.especialidad_id != especialidad_id:
+        flash("❌ Estudiante no pertenece a esta especialidad.")
+        return redirect(url_for('ver_inventario'))
+
+    activos = _panoleros_dia_activos(especialidad_id)
+    if len(activos) >= MAX_PANOLEROS_DIA:
+        flash(f"⚠️ Ya hay {MAX_PANOLEROS_DIA} pañoleros del día designados. Quita uno para agregar otro.")
+        return redirect(url_for('ver_inventario'))
+
+    # No duplicar al mismo estudiante si ya está activo
+    if any(p.estudiante_id == estudiante_id for p in activos):
+        flash(f"⚠️ {estudiante.nombre} ya está designado como pañolero del día.")
+        return redirect(url_for('ver_inventario'))
+
+    db.session.add(PanoleroDesignado(
+        estudiante_id=estudiante_id,
+        especialidad_id=especialidad_id,
+        designado_por_id=session.get('usuario_id'),
+    ))
+    db.session.commit()
+    try:
+        registrar_auditoria('crear', 'PanoleroDesignado', estudiante_id,
+                            valores_nuevos={'estudiante': estudiante.nombre})
+    except Exception:
+        pass
+    flash(f"✅ {estudiante.nombre} designado como pañolero del día.")
+    return redirect(url_for('ver_inventario'))
+
+
+@app.route('/panoleros_dia/quitar/<int:designacion_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def quitar_panolero_dia(designacion_id):
+    """Desactiva una designación de pañolero del día."""
+    especialidad_id = session.get('usuario_especialidad_id')
+    pd = PanoleroDesignado.query.get_or_404(designacion_id)
+    if pd.especialidad_id != especialidad_id and session.get('usuario_rol') != 'Admin':
+        flash("❌ Sin permiso.")
+        return redirect(url_for('ver_inventario'))
+    pd.activo = False
+    pd.fecha_baja = datetime.utcnow()
+    db.session.commit()
+    nombre = pd.estudiante.nombre if pd.estudiante else f"id={pd.estudiante_id}"
+    try:
+        registrar_auditoria('actualizar', 'PanoleroDesignado', pd.id,
+                            valores_nuevos={'accion': 'quitar', 'estudiante': nombre})
+    except Exception:
+        pass
+    flash(f"✅ {nombre} dado de baja como pañolero del día.")
+    return redirect(url_for('ver_inventario'))
+
+
+@app.route('/panoleros_dia/limpiar', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def limpiar_panoleros_dia():
+    """Da de baja a todos los pañoleros del día de la especialidad actual."""
+    especialidad_id = session.get('usuario_especialidad_id')
+    if not especialidad_id:
+        flash("❌ No tienes una especialidad activa.")
+        return redirect(url_for('ver_inventario'))
+    activos = _panoleros_dia_activos(especialidad_id)
+    for pd in activos:
+        pd.activo = False
+        pd.fecha_baja = datetime.utcnow()
+    db.session.commit()
+    flash(f"✅ Se limpió la lista de pañoleros del día ({len(activos)} dados de baja).")
     return redirect(url_for('ver_inventario'))
 
 

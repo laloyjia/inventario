@@ -179,6 +179,71 @@
             <button onclick="abrirModalDevolucion()" class="action-btn action-btn-warning"><i class="fas fa-arrow-circle-down"></i> Devolver Cosas</button>
         </div>
 
+        {# ===== CARD: PAÑOLEROS DEL DÍA ===== #}
+        {% if session['usuario_rol'] in ['Pañolero', 'Admin'] %}
+        <div class="card" style="border-left: 4px solid #f59e0b; margin-bottom: 20px;">
+            <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
+                <i class="fas fa-user-shield"></i> Pañoleros del Día designados
+                <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
+                    ({{ panoleros_dia|length }} / {{ max_panoleros_dia }})
+                </span>
+            </h2>
+            <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 12px 0;">
+                Estudiantes autorizados a entregar insumos en nombre del pañol. Se mantienen hasta que tú los cambies.
+            </p>
+
+            {% if panoleros_dia %}
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                {% for pd in panoleros_dia %}
+                <div style="background: #fef3c7; border: 1px solid #fbbf24; border-radius: 20px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem;">
+                    <i class="fas fa-user-graduate" style="color: #b45309;"></i>
+                    <span><strong>{{ pd.estudiante.nombre }}</strong>
+                        <span style="color: #92400e; font-size: 0.75rem;">{{ pd.estudiante.rut_matricula }}{% if pd.estudiante.curso %} · {{ pd.estudiante.curso }}{% endif %}</span>
+                    </span>
+                    <form action="/panoleros_dia/quitar/{{ pd.id }}" method="POST" style="display: inline; margin: 0;"
+                          onsubmit="return confirm('¿Quitar a {{ pd.estudiante.nombre }} como pañolero del día?');">
+                        <button type="submit" style="background: none; border: none; color: #b91c1c; cursor: pointer; padding: 0; font-size: 0.9rem;" title="Quitar">
+                            <i class="fas fa-times-circle"></i>
+                        </button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p style="font-size: 0.85rem; color: #b91c1c; background: #fee2e2; padding: 8px 12px; border-radius: 4px; margin: 0 0 12px 0;">
+                <i class="fas fa-exclamation-triangle"></i> No hay pañoleros del día designados. Mientras tanto, solo tú (el encargado) puedes registrar préstamos.
+            </p>
+            {% endif %}
+
+            {% if panoleros_dia|length < max_panoleros_dia %}
+            <form action="/panoleros_dia/agregar" method="POST" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <select name="estudiante_id" required style="flex: 1; min-width: 200px; padding: 6px;">
+                    <option value="">— Selecciona un estudiante de tu área —</option>
+                    {% for est in estudiantes %}
+                        {% set ya_es_panolero = false %}
+                        {% for pd in panoleros_dia %}{% if pd.estudiante_id == est.id %}{% set ya_es_panolero = true %}{% endif %}{% endfor %}
+                        {% if not ya_es_panolero %}
+                        <option value="{{ est.id }}">{{ est.nombre }} — {{ est.rut_matricula }}{% if est.curso %} ({{ est.curso }}){% endif %}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn-add" style="white-space: nowrap;">
+                    <i class="fas fa-plus"></i> Designar pañolero del día
+                </button>
+            </form>
+            {% endif %}
+
+            {% if panoleros_dia %}
+            <form action="/panoleros_dia/limpiar" method="POST" style="margin-top: 10px;"
+                  onsubmit="return confirm('¿Limpiar TODA la lista de pañoleros del día? ({{ panoleros_dia|length }} estudiantes)');">
+                <button type="submit" style="background: none; border: 1px solid #b91c1c; color: #b91c1c; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">
+                    <i class="fas fa-broom"></i> Limpiar todos
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        {% endif %}
+
         {% if session['usuario_rol'] in ['Administrador', 'Profesor', 'Pañolero', 'Admin'] %}
         <div class="card">
             {% set ta = tipo_area | default('GENERAL') %}
@@ -910,6 +975,29 @@
             <input type="hidden" name="estudiante_id" id="hidden_estudiante_id">
             <input type="hidden" name="profesor_id" id="hidden_profesor_id">
             <input type="hidden" name="carrito_data" id="hidden_carrito">
+
+            {# Selector de pañolero del día que está atendiendo este préstamo #}
+            {% if panoleros_dia %}
+            <div style="margin-bottom: 15px; background: #fef3c7; padding: 10px; border-radius: 6px; border: 1px solid #fbbf24;">
+                <label style="font-weight: 600; color: #92400e;">
+                    <i class="fas fa-user-shield"></i> Pañolero del Día que entrega:
+                </label>
+                <select name="panolero_dia_id" required style="width: 100%; padding: 8px; margin-top: 5px; border: 2px solid #fbbf24;">
+                    <option value="" disabled selected>— Selecciona al pañolero del día que está atendiendo —</option>
+                    {% for pd in panoleros_dia %}
+                    <option value="{{ pd.estudiante.id }}">{{ pd.estudiante.nombre }} ({{ pd.estudiante.rut_matricula }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% else %}
+            <div style="margin-bottom: 15px; background: #fee2e2; padding: 10px; border-radius: 6px; border: 1px solid #fca5a5;">
+                <p style="margin: 0; color: #991b1b; font-size: 0.85rem;">
+                    <i class="fas fa-exclamation-triangle"></i> No hay pañoleros del día designados.
+                    Este préstamo quedará registrado a tu nombre como encargado.
+                </p>
+            </div>
+            {% endif %}
+
             <div style="margin-bottom: 20px;">
                 <label style="font-weight: 600; color: var(--dark);">Práctica / Proyecto (Opcional):</label>
                 <input type="text" name="nombre_practica" placeholder="Ej: Taller de Motores..." style="width: 100%; padding: 10px; border: 2px solid var(--secondary);">
