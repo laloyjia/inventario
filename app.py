@@ -269,18 +269,39 @@ class SyncLog(db.Model):
 # ========== INICIALIZACIÓN DE BD ==========
 
 def crear_especialidades_por_defecto():
+    """17 áreas: 5 TP (campus único) + 6 áreas en 2 sedes cada una (norte/sur)."""
     especialidades = [
+        # === 5 especialidades TP (sede única) ===
         {'nombre': 'Electrónica', 'color': '#FF6B6B'},
         {'nombre': 'Mecánica Automotriz', 'color': '#4ECDC4'},
         {'nombre': 'Mecánica Industrial', 'color': '#45B7D1'},
         {'nombre': 'Electricidad', 'color': '#FFA07A'},
         {'nombre': 'Gráfica', 'color': '#98D8C8'},
-        {'nombre': 'ACLE', 'color': '#A78BFA',
-         'descripcion': 'Actividades Curriculares de Libre Elección'},
-        {'nombre': 'Oficina', 'color': '#F59E0B',
-         'descripcion': 'Implementos y consumibles de oficina administrativa'},
-        {'nombre': 'Biblioteca', 'color': '#10B981',
-         'descripcion': 'Libros, recursos pedagógicos y material bibliográfico'},
+        # === 6 áreas duplicadas por sede ===
+        {'nombre': 'ACLE Sede Norte', 'color': '#A78BFA',
+         'descripcion': 'Actividades Curriculares de Libre Elección — Sede Norte'},
+        {'nombre': 'ACLE Sede Sur', 'color': '#7C3AED',
+         'descripcion': 'Actividades Curriculares de Libre Elección — Sede Sur'},
+        {'nombre': 'Biblioteca Sede Norte', 'color': '#10B981',
+         'descripcion': 'Libros y material bibliográfico — Sede Norte'},
+        {'nombre': 'Biblioteca Sede Sur', 'color': '#047857',
+         'descripcion': 'Libros y material bibliográfico — Sede Sur'},
+        {'nombre': 'Informática Sede Norte', 'color': '#3B82F6',
+         'descripcion': 'Sala/equipos de informática — Sede Norte'},
+        {'nombre': 'Informática Sede Sur', 'color': '#1E40AF',
+         'descripcion': 'Sala/equipos de informática — Sede Sur'},
+        {'nombre': 'Educación Física Sede Norte', 'color': '#F97316',
+         'descripcion': 'Implementos deportivos — Sede Norte'},
+        {'nombre': 'Educación Física Sede Sur', 'color': '#C2410C',
+         'descripcion': 'Implementos deportivos — Sede Sur'},
+        {'nombre': 'Salas de Clase Sede Norte', 'color': '#EC4899',
+         'descripcion': 'Recursos de salas de clase — Sede Norte'},
+        {'nombre': 'Salas de Clase Sede Sur', 'color': '#BE185D',
+         'descripcion': 'Recursos de salas de clase — Sede Sur'},
+        {'nombre': 'Oficina Sede Norte', 'color': '#F59E0B',
+         'descripcion': 'Implementos administrativos — Sede Norte'},
+        {'nombre': 'Oficina Sede Sur', 'color': '#B45309',
+         'descripcion': 'Implementos administrativos — Sede Sur'},
     ]
     for esp_data in especialidades:
         if not Especialidad.query.filter_by(nombre=esp_data['nombre']).first():
