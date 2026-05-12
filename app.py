@@ -102,6 +102,10 @@ class Especialidad(db.Model):
     color = db.Column(db.String(7), default="#2563eb")
     activa = db.Column(db.Boolean, default=True)
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    # Tipo de área: PANOL_TP, BIBLIOTECA, DEPORTIVO, INFORMATICA, GENERAL
+    # Define qué campos del Item se muestran/usan en el formulario y la lista.
+    tipo_area = db.Column(db.String(20), default='GENERAL', nullable=False,
+                          server_default='GENERAL')
     usuarios = db.relationship('Usuario', backref='especialidad_asignada', lazy=True)
     items = db.relationship('Item', backref='especialidad', lazy=True)
 
@@ -157,6 +161,24 @@ class Item(db.Model):
     isbn = db.Column(db.String(50), nullable=True, index=True)
     editorial = db.Column(db.String(200), nullable=True)
     anio_publicacion = db.Column(db.Integer, nullable=True)
+    # Campos específicos INFORMATICA / DEPORTIVO
+    marca = db.Column(db.String(100), nullable=True)
+    modelo = db.Column(db.String(100), nullable=True)
+    numero_serie = db.Column(db.String(100), nullable=True, index=True)
+    estado = db.Column(db.String(50), nullable=True)  # Nuevo/Bueno/Regular/Reposición
+    # Fecha de adquisición (todos los tipos, opcional)
+    fecha_adquisicion = db.Column(db.Date, nullable=True)
+    # Cálculo de desgaste por uso (INFORMATICA, PANOL_TP, DEPORTIVO)
+    max_usos = db.Column(db.Integer, nullable=True)  # tope total de préstamos antes de reponer
+    usos_actuales = db.Column(db.Integer, default=0, nullable=False,
+                              server_default='0')
+
+    @property
+    def porcentaje_desgaste(self):
+        """Devuelve % de desgaste basado en usos, o None si no aplica."""
+        if self.max_usos and self.max_usos > 0:
+            return min(100, int((self.usos_actuales or 0) * 100 / self.max_usos))
+        return None
 
 class Prestamo(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -343,34 +365,99 @@ def crear_pañoleros_por_especialidad():
     db.session.commit()
 
 def _migrar_columnas_seguridad():
-    """Añade las columnas de hardening (failed_attempts, locked_until, must_change_password)
-    si la BD ya existía antes del fix de seguridad. Idempotente — seguro de correr en cada arranque.
+    """Añade columnas nuevas a usuario, especialidad e item si la BD ya existía.
+    Idempotente — seguro de correr en cada arranque.
     """
     from sqlalchemy import inspect, text
     try:
         insp = inspect(db.engine)
-        if 'usuario' not in insp.get_table_names():
-            return  # tabla aún no existe, db.create_all() la creará con todas las columnas
-        cols = {c['name'] for c in insp.get_columns('usuario')}
-        dialect = db.engine.dialect.name  # 'postgresql' o 'sqlite'
+        tablas = set(insp.get_table_names())
+        dialect = db.engine.dialect.name
         ts_type = 'TIMESTAMP' if dialect == 'postgresql' else 'DATETIME'
+        date_type = 'DATE' if dialect == 'postgresql' else 'DATE'
         bool_default = 'FALSE' if dialect == 'postgresql' else '0'
         statements = []
-        if 'failed_attempts' not in cols:
-            statements.append("ALTER TABLE usuario ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0")
-        if 'locked_until' not in cols:
-            statements.append(f"ALTER TABLE usuario ADD COLUMN locked_until {ts_type} NULL")
-        if 'must_change_password' not in cols:
-            statements.append(
-                f"ALTER TABLE usuario ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT {bool_default}"
-            )
+
+        # === usuario: hardening de seguridad ===
+        if 'usuario' in tablas:
+            cols = {c['name'] for c in insp.get_columns('usuario')}
+            if 'failed_attempts' not in cols:
+                statements.append("ALTER TABLE usuario ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0")
+            if 'locked_until' not in cols:
+                statements.append(f"ALTER TABLE usuario ADD COLUMN locked_until {ts_type} NULL")
+            if 'must_change_password' not in cols:
+                statements.append(
+                    f"ALTER TABLE usuario ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT {bool_default}"
+                )
+
+        # === especialidad: tipo_area ===
+        if 'especialidad' in tablas:
+            cols = {c['name'] for c in insp.get_columns('especialidad')}
+            if 'tipo_area' not in cols:
+                statements.append(
+                    "ALTER TABLE especialidad ADD COLUMN tipo_area VARCHAR(20) NOT NULL DEFAULT 'GENERAL'"
+                )
+
+        # === item: campos por tipo de área ===
+        if 'item' in tablas:
+            cols = {c['name'] for c in insp.get_columns('item')}
+            if 'marca' not in cols:
+                statements.append("ALTER TABLE item ADD COLUMN marca VARCHAR(100) NULL")
+            if 'modelo' not in cols:
+                statements.append("ALTER TABLE item ADD COLUMN modelo VARCHAR(100) NULL")
+            if 'numero_serie' not in cols:
+                statements.append("ALTER TABLE item ADD COLUMN numero_serie VARCHAR(100) NULL")
+            if 'estado' not in cols:
+                statements.append("ALTER TABLE item ADD COLUMN estado VARCHAR(50) NULL")
+            if 'fecha_adquisicion' not in cols:
+                statements.append(f"ALTER TABLE item ADD COLUMN fecha_adquisicion {date_type} NULL")
+            if 'max_usos' not in cols:
+                statements.append("ALTER TABLE item ADD COLUMN max_usos INTEGER NULL")
+            if 'usos_actuales' not in cols:
+                statements.append("ALTER TABLE item ADD COLUMN usos_actuales INTEGER NOT NULL DEFAULT 0")
+
         if statements:
             with db.engine.begin() as conn:
                 for s in statements:
                     conn.execute(text(s))
-            print(f"[MIGRACION] Aplicadas {len(statements)} columnas nuevas a usuario")
+            print(f"[MIGRACION] Aplicadas {len(statements)} columnas nuevas")
     except Exception as e:
         print(f"[MIGRACION] Aviso: {e}")
+
+
+# Mapeo de especialidad → tipo de área (se usa en seeders y en _asignar_tipo_area)
+TIPO_AREA_POR_NOMBRE = {
+    'Electrónica':                     'PANOL_TP',
+    'Mecánica Automotriz':             'PANOL_TP',
+    'Mecánica Industrial':             'PANOL_TP',
+    'Electricidad':                    'PANOL_TP',
+    'Gráfica':                         'PANOL_TP',
+    'Biblioteca Sede Norte':           'BIBLIOTECA',
+    'Biblioteca Sede Sur':             'BIBLIOTECA',
+    'Educación Física Sede Norte':     'DEPORTIVO',
+    'Educación Física Sede Sur':       'DEPORTIVO',
+    'Informática Sede Norte':          'INFORMATICA',
+    'Informática Sede Sur':            'INFORMATICA',
+    'ACLE Sede Norte':                 'GENERAL',
+    'ACLE Sede Sur':                   'GENERAL',
+    'Salas de Clase Sede Norte':       'GENERAL',
+    'Salas de Clase Sede Sur':         'GENERAL',
+    'Oficina Sede Norte':              'GENERAL',
+    'Oficina Sede Sur':                'GENERAL',
+}
+
+
+def _asignar_tipo_area():
+    """Garantiza que cada especialidad tenga su tipo_area correcto. Idempotente."""
+    cambios = 0
+    for esp in Especialidad.query.all():
+        tipo_esperado = TIPO_AREA_POR_NOMBRE.get(esp.nombre, 'GENERAL')
+        if (esp.tipo_area or 'GENERAL') != tipo_esperado:
+            esp.tipo_area = tipo_esperado
+            cambios += 1
+    if cambios:
+        db.session.commit()
+        print(f"[TIPO_AREA] {cambios} especialidades actualizadas")
 
 
 def _flag_passwords_default():
@@ -399,6 +486,7 @@ with app.app_context():
     db.create_all()
     _migrar_columnas_seguridad()
     crear_especialidades_por_defecto()
+    _asignar_tipo_area()
     crear_admin_central()
     crear_pañoleros_por_especialidad()
     _flag_passwords_default()
@@ -728,6 +816,9 @@ def ver_inventario():
     prestamos_activos = Prestamo.query.join(Item).filter(
         Item.especialidad_id == especialidad_id, Prestamo.estado == 'Pendiente'
     ).count()
+    # Tipo de área: define qué campos del formulario y columnas de la lista se muestran
+    esp_obj_actual = Especialidad.query.get(especialidad_id)
+    tipo_area = (esp_obj_actual.tipo_area or 'GENERAL') if esp_obj_actual else 'GENERAL'
     return render_template('inventario.html',
                            items=items, estudiantes=estudiantes, prestamos=prestamos,
                            prestamos_externos=prestamos_externos,
@@ -737,6 +828,7 @@ def ver_inventario():
                            total_stock=total_stock,
                            prestamos_activos=prestamos_activos,
                            alertas=alertas,
+                           tipo_area=tipo_area,
                            especialidad=(session.get('admin_viendo_especialidad')
                                           if session.get('usuario_rol') == 'Admin'
                                           else session.get('usuario_especialidad')))
@@ -795,6 +887,24 @@ def agregar_item():
     nombre = request.form.get('nombre', '').strip()
     categoria = request.form.get('categoria', '').strip()
 
+    # Campos opcionales tipo-específicos
+    autor = request.form.get('autor', '').strip() or None
+    isbn = request.form.get('isbn', '').strip() or None
+    editorial = request.form.get('editorial', '').strip() or None
+    anio_pub = request.form.get('anio_publicacion', type=int)
+    marca = request.form.get('marca', '').strip() or None
+    modelo = request.form.get('modelo', '').strip() or None
+    numero_serie = request.form.get('numero_serie', '').strip() or None
+    estado = request.form.get('estado', '').strip() or None
+    max_usos = request.form.get('max_usos', type=int)
+    fecha_adq_raw = request.form.get('fecha_adquisicion', '').strip()
+    fecha_adq = None
+    if fecha_adq_raw:
+        try:
+            fecha_adq = datetime.fromisoformat(fecha_adq_raw).date()
+        except Exception:
+            fecha_adq = None
+
     item_existente = Item.query.filter_by(codigo_barras=codigo, especialidad_id=especialidad_id).first()
     nuevo_item = None
     if item_existente:
@@ -802,11 +912,27 @@ def agregar_item():
         item_existente.cantidad_disponible += cantidad
         if imagen: item_existente.imagen_url = imagen
         if ubicacion: item_existente.ubicacion = ubicacion
+        # Solo actualizar campos opcionales si vienen con valor (no sobreescribir con vacío)
+        if autor: item_existente.autor = autor
+        if isbn: item_existente.isbn = isbn
+        if editorial: item_existente.editorial = editorial
+        if anio_pub: item_existente.anio_publicacion = anio_pub
+        if marca: item_existente.marca = marca
+        if modelo: item_existente.modelo = modelo
+        if numero_serie: item_existente.numero_serie = numero_serie
+        if estado: item_existente.estado = estado
+        if max_usos: item_existente.max_usos = max_usos
+        if fecha_adq: item_existente.fecha_adquisicion = fecha_adq
     else:
         nuevo_item = Item(codigo_barras=codigo, nombre=nombre, categoria=categoria,
                           especialidad_id=especialidad_id,
                           cantidad_total=cantidad, cantidad_disponible=cantidad,
-                          imagen_url=imagen, ubicacion=ubicacion)
+                          imagen_url=imagen, ubicacion=ubicacion,
+                          autor=autor, isbn=isbn, editorial=editorial,
+                          anio_publicacion=anio_pub,
+                          marca=marca, modelo=modelo, numero_serie=numero_serie,
+                          estado=estado, fecha_adquisicion=fecha_adq,
+                          max_usos=max_usos)
         db.session.add(nuevo_item)
     db.session.commit()
     rid = item_existente.id if item_existente else nuevo_item.id
@@ -921,18 +1047,29 @@ def registrar_salida():
         flash("⚠️ No hay items en el carrito.")
         return redirect(url_for('ver_inventario'))
 
-    # Plazo opcional para biblioteca (días). Si viene, se calcula fecha límite.
+    # Plazo: obligatorio si todos los items son de BIBLIOTECA, opcional en otros.
     plazo_dias = request.form.get('plazo_dias', type=int)
-    fecha_limite = None
-    if plazo_dias and plazo_dias > 0:
-        fecha_limite = datetime.utcnow() + timedelta(days=plazo_dias)
 
     creados = 0
     for entry in carrito:
         item = Item.query.get(entry.get('item_id'))
         cantidad = int(entry.get('cantidad') or 1)
         if not item or item.cantidad_disponible < cantidad: continue
+
+        # Plazo de devolución: BIBLIOTECA forza 14 días por defecto si no vino otro valor.
+        tipo_area_item = (item.especialidad.tipo_area or 'GENERAL') if item.especialidad else 'GENERAL'
+        if plazo_dias and plazo_dias > 0:
+            fecha_limite = datetime.utcnow() + timedelta(days=plazo_dias)
+        elif tipo_area_item == 'BIBLIOTECA':
+            fecha_limite = datetime.utcnow() + timedelta(days=14)
+        else:
+            fecha_limite = None
+
         item.cantidad_disponible -= cantidad
+        # Incrementar usos_actuales si el ítem tiene max_usos configurado (desgaste por uso)
+        if item.max_usos:
+            item.usos_actuales = (item.usos_actuales or 0) + cantidad
+
         db.session.add(Prestamo(item_id=item.id, estudiante_id=estudiante.id,
                                 profesor_id=profesor_id,
                                 encargado=session.get('usuario_nombre'),
@@ -1000,6 +1137,9 @@ def agregar_prestamo_externo():
     if tipo_mov == 'consumo':
         # Consumo: descontar también del total (no vuelve nunca)
         item.cantidad_total -= cantidad
+    elif item.max_usos:
+        # Préstamo (no consumo) cuenta para desgaste si el ítem tiene max_usos
+        item.usos_actuales = (item.usos_actuales or 0) + cantidad
 
     p = PrestamoExterno(item_id=item.id, especialidad_id=especialidad_id,
                         cantidad=cantidad, es_alumno=(tipo_p == 'alumno'),

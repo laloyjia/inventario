@@ -179,10 +179,107 @@
             <button onclick="abrirModalDevolucion()" class="action-btn action-btn-warning"><i class="fas fa-arrow-circle-down"></i> Devolver Cosas</button>
         </div>
 
-        {% if session['usuario_rol'] in ['Administrador', 'Profesor', 'Pañolero'] %}
+        {% if session['usuario_rol'] in ['Administrador', 'Profesor', 'Pañolero', 'Admin'] %}
         <div class="card">
-            <h2 style="font-size: 0.95rem; margin-bottom: 10px;"><i class="fas fa-plus-circle"></i> Ingresar Nuevo Material al Taller</h2>
+            {% set ta = tipo_area | default('GENERAL') %}
+            <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
+                <i class="fas fa-plus-circle"></i>
+                {% if ta == 'BIBLIOTECA' %}Ingresar nuevo libro / recurso bibliográfico
+                {% elif ta == 'INFORMATICA' %}Ingresar nuevo equipo informático
+                {% elif ta == 'DEPORTIVO' %}Ingresar nuevo implemento deportivo
+                {% elif ta == 'PANOL_TP' %}Ingresar Nuevo Material al Taller
+                {% else %}Ingresar nuevo recurso
+                {% endif %}
+                <span style="font-size:0.7rem; background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:10px; margin-left:8px;">Tipo: {{ ta }}</span>
+            </h2>
             <form action="/agregar" method="POST" class="grid-form">
+
+                {# === BIBLIOTECA === #}
+                {% if ta == 'BIBLIOTECA' %}
+                <div><label>ISBN</label><input type="text" name="isbn" placeholder="978-..." ></div>
+                <div><label>Título</label><input type="text" name="nombre" required></div>
+                <div><label>Autor</label><input type="text" name="autor" placeholder="Apellido, Nombre"></div>
+                <div><label>Editorial</label><input type="text" name="editorial"></div>
+                <div><label>Año Pub.</label><input type="number" name="anio_publicacion" min="1500" max="2099"></div>
+                <div>
+                    <label>Categoría</label>
+                    <select name="categoria">
+                        <option value="Novela">Novela</option>
+                        <option value="Ensayo">Ensayo</option>
+                        <option value="Texto Escolar">Texto Escolar</option>
+                        <option value="Referencia">Referencia</option>
+                        <option value="Infantil">Infantil</option>
+                        <option value="Revista">Revista</option>
+                    </select>
+                </div>
+                <div><label>Ejemplares</label><input type="number" name="cantidad" min="1" value="1" required></div>
+                <div><label>Estantería</label><input type="text" name="ubicacion" placeholder="Ej: Estante B-3"></div>
+                <input type="hidden" name="codigo_barras" value="">
+
+                {# === INFORMATICA === #}
+                {% elif ta == 'INFORMATICA' %}
+                <div><label>Cód. Inventario</label><input type="text" name="codigo_barras" placeholder="Auto si vacío"></div>
+                <div><label>Nombre / Equipo</label><input type="text" name="nombre" required placeholder="Ej: PC Laboratorio 5"></div>
+                <div><label>Marca</label><input type="text" name="marca" placeholder="HP / Dell / Epson..."></div>
+                <div><label>Modelo</label><input type="text" name="modelo"></div>
+                <div><label>N° de Serie</label><input type="text" name="numero_serie"></div>
+                <div>
+                    <label>Categoría</label>
+                    <select name="categoria">
+                        <option value="PC">PC</option>
+                        <option value="Notebook">Notebook</option>
+                        <option value="Tablet">Tablet</option>
+                        <option value="Proyector">Proyector</option>
+                        <option value="Periférico">Periférico</option>
+                        <option value="Cable">Cable</option>
+                        <option value="Software">Software</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Estado</label>
+                    <select name="estado">
+                        <option value="Nuevo">Nuevo</option>
+                        <option value="Bueno" selected>Bueno</option>
+                        <option value="Regular">Regular</option>
+                        <option value="Reposición">Reposición</option>
+                    </select>
+                </div>
+                <div><label>Cant.</label><input type="number" name="cantidad" min="1" value="1" required></div>
+                <div><label>Ubicación</label><input type="text" name="ubicacion" placeholder="Ej: Sala 12"></div>
+                <div><label>Fecha adquisición</label><input type="date" name="fecha_adquisicion"></div>
+                <div><label>Máx. usos (desgaste)</label><input type="number" name="max_usos" min="0" placeholder="Opcional"></div>
+
+                {# === DEPORTIVO === #}
+                {% elif ta == 'DEPORTIVO' %}
+                <div><label>Código</label><input type="text" name="codigo_barras" placeholder="Auto si vacío"></div>
+                <div><label>Nombre / Implemento</label><input type="text" name="nombre" required placeholder="Ej: Balón fútbol Nº5"></div>
+                <div>
+                    <label>Categoría</label>
+                    <select name="categoria">
+                        <option value="Pelotas">Pelotas</option>
+                        <option value="Implementos">Implementos</option>
+                        <option value="Vestuario">Vestuario</option>
+                        <option value="Equipo">Equipo</option>
+                        <option value="Material Didáctico">Material Didáctico</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Estado</label>
+                    <select name="estado">
+                        <option value="Nuevo">Nuevo</option>
+                        <option value="Bueno" selected>Bueno</option>
+                        <option value="Regular">Regular</option>
+                        <option value="Reposición">Reposición</option>
+                    </select>
+                </div>
+                <div><label>Cant.</label><input type="number" name="cantidad" min="1" value="1" required></div>
+                <div><label>Ubicación</label><input type="text" name="ubicacion" placeholder="Ej: Bodega gimnasio"></div>
+                <div><label>Fecha adquisición</label><input type="date" name="fecha_adquisicion"></div>
+                <div><label>Máx. usos (desgaste)</label><input type="number" name="max_usos" min="0" placeholder="Opcional"></div>
+
+                {# === PANOL_TP (talleres técnicos) === #}
+                {% elif ta == 'PANOL_TP' %}
                 <div><label>Cód. Barras (Vacío=Auto)</label><input type="text" name="codigo_barras" placeholder="Escanear..."></div>
                 <div><label>Nombre</label><input type="text" name="nombre" required></div>
                 <div>
@@ -197,6 +294,30 @@
                 <div><label>Cant.</label><input type="number" name="cantidad" min="1" value="1" required></div>
                 <div><label>Ubicación</label><input type="text" name="ubicacion" placeholder="Ej: Estante A, Armario 1, etc."></div>
                 <div><label>URL Imagen (Opcional)</label><input type="url" name="imagen_url" placeholder="Pegar link..."></div>
+                <div><label>Fecha adquisición</label><input type="date" name="fecha_adquisicion"></div>
+                <div><label>Máx. usos (desgaste)</label><input type="number" name="max_usos" min="0" placeholder="Opcional"></div>
+
+                {# === GENERAL (ACLE, Salas, Oficina) === #}
+                {% else %}
+                <div><label>Código</label><input type="text" name="codigo_barras" placeholder="Auto si vacío"></div>
+                <div><label>Nombre</label><input type="text" name="nombre" required></div>
+                <div><label>Descripción breve</label><input type="text" name="descripcion"></div>
+                <div>
+                    <label>Categoría</label>
+                    <select name="categoria">
+                        <option value="Material Escritorio">Material Escritorio</option>
+                        <option value="Material Didáctico">Material Didáctico</option>
+                        <option value="Mobiliario">Mobiliario</option>
+                        <option value="Consumible">Consumible</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+                <div><label>Cant.</label><input type="number" name="cantidad" min="1" value="1" required></div>
+                <div><label>Stock mínimo</label><input type="number" name="cantidad_minima" min="0" value="5"></div>
+                <div><label>Ubicación</label><input type="text" name="ubicacion"></div>
+                <div><label>Fecha adquisición</label><input type="date" name="fecha_adquisicion"></div>
+                {% endif %}
+
                 <button type="submit" class="btn-add"><i class="fas fa-save"></i> Guardar</button>
             </form>
         </div>
@@ -208,55 +329,175 @@
                 <input type="text" id="buscadorInventario" onkeyup="filtrarInventario()" placeholder="🔍 Buscar equipo..." style="width: auto; min-width: 200px;">
             </h2>
 
-            <!-- Filtros rápidos por categoría -->
+            <!-- Filtros rápidos por categoría (adaptativos por tipo de área) -->
             <div class="cat-filters">
                 <button class="cat-btn active" onclick="filtrarCategoria(this, 'TODOS')">Todos</button>
-                <button class="cat-btn" onclick="filtrarCategoria(this, 'Herramienta')"><i class="fas fa-wrench"></i> Herramienta</button>
-                <button class="cat-btn" onclick="filtrarCategoria(this, 'Componente')"><i class="fas fa-microchip"></i> Componente</button>
-                <button class="cat-btn" onclick="filtrarCategoria(this, 'Material')"><i class="fas fa-layer-group"></i> Material</button>
-                <button class="cat-btn" onclick="filtrarCategoria(this, 'Fungible')"><i class="fas fa-flask"></i> Fungible</button>
+                {% if tipo_area == 'BIBLIOTECA' %}
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Novela')"><i class="fas fa-book"></i> Novela</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Ensayo')"><i class="fas fa-book-open"></i> Ensayo</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Texto Escolar')"><i class="fas fa-graduation-cap"></i> Texto Escolar</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Referencia')"><i class="fas fa-bookmark"></i> Referencia</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Infantil')"><i class="fas fa-child"></i> Infantil</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Revista')"><i class="fas fa-newspaper"></i> Revista</button>
+                {% elif tipo_area == 'INFORMATICA' %}
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'PC')"><i class="fas fa-desktop"></i> PC</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Notebook')"><i class="fas fa-laptop"></i> Notebook</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Tablet')"><i class="fas fa-tablet-alt"></i> Tablet</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Proyector')"><i class="fas fa-video"></i> Proyector</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Periférico')"><i class="fas fa-keyboard"></i> Periférico</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Cable')"><i class="fas fa-plug"></i> Cable</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Software')"><i class="fas fa-compact-disc"></i> Software</button>
+                {% elif tipo_area == 'DEPORTIVO' %}
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Pelotas')"><i class="fas fa-futbol"></i> Pelotas</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Implementos')"><i class="fas fa-running"></i> Implementos</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Vestuario')"><i class="fas fa-tshirt"></i> Vestuario</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Equipo')"><i class="fas fa-dumbbell"></i> Equipo</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Material Didáctico')"><i class="fas fa-clipboard"></i> Mat. Didáctico</button>
+                {% elif tipo_area == 'PANOL_TP' %}
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Herramienta')"><i class="fas fa-wrench"></i> Herramienta</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Componente')"><i class="fas fa-microchip"></i> Componente</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Material')"><i class="fas fa-layer-group"></i> Material</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Fungible')"><i class="fas fa-flask"></i> Fungible</button>
+                {% else %}
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Material Escritorio')"><i class="fas fa-pen"></i> Mat. Escritorio</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Material Didáctico')"><i class="fas fa-clipboard"></i> Mat. Didáctico</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Mobiliario')"><i class="fas fa-chair"></i> Mobiliario</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Consumible')"><i class="fas fa-box"></i> Consumible</button>
+                {% endif %}
             </div>
 
             <div class="table-responsive">
+                {% set ta = tipo_area | default('GENERAL') %}
                 <table id="tablaInventario">
                     <thead>
                         <tr>
-                            <th>Código</th>
-                            <th>Nombre</th>
-                            <th>Ubicación</th>
-                            <th style="text-align: center;">Disponible</th>
-                            <th style="text-align: center;">En uso</th>
-                            <th style="text-align: center;">Merma</th>
+                            {% if ta == 'BIBLIOTECA' %}
+                                <th>ISBN</th>
+                                <th>Título</th>
+                                <th>Autor</th>
+                                <th>Editorial / Año</th>
+                                <th style="text-align: center;">Disponible</th>
+                                <th style="text-align: center;">Total</th>
+                                <th>Estantería</th>
+                            {% elif ta == 'INFORMATICA' %}
+                                <th>Código</th>
+                                <th>Nombre / Marca / Modelo</th>
+                                <th>N° Serie</th>
+                                <th>Categoría</th>
+                                <th style="text-align: center;">Estado</th>
+                                <th style="text-align: center;">Disponible</th>
+                                <th style="text-align: center;">Desgaste</th>
+                            {% elif ta == 'DEPORTIVO' %}
+                                <th>Código</th>
+                                <th>Nombre</th>
+                                <th>Categoría</th>
+                                <th style="text-align: center;">Estado</th>
+                                <th style="text-align: center;">Disponible</th>
+                                <th style="text-align: center;">Total</th>
+                                <th style="text-align: center;">Desgaste</th>
+                            {% elif ta == 'PANOL_TP' %}
+                                <th>Código</th>
+                                <th>Nombre</th>
+                                <th>Ubicación</th>
+                                <th style="text-align: center;">Disponible</th>
+                                <th style="text-align: center;">En uso</th>
+                                <th style="text-align: center;">Merma</th>
+                                <th style="text-align: center;">Desgaste</th>
+                            {% else %}
+                                <th>Nombre</th>
+                                <th>Categoría</th>
+                                <th>Ubicación</th>
+                                <th style="text-align: center;">Disponible</th>
+                                <th style="text-align: center;">Total</th>
+                                <th style="text-align: center;">Mínima</th>
+                            {% endif %}
                             {% if session['usuario_rol'] not in ['Estudiante'] %}<th>Acción</th>{% endif %}
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in items %}
+                        {% set d = item.porcentaje_desgaste %}
+                        {% set d_color = '#10b981' if d is not none and d < 50 else ('#eab308' if d is not none and d < 80 else '#dc2626') %}
                         <tr class="fila-item" data-categoria="{{ item.categoria }}">
-                            <td>
-                                <div style="display:flex; flex-direction:column; gap:3px;">
-                                    <span style="font-family: monospace; background:#eee; padding:2px 4px; border-radius:3px; font-size:0.75rem;">{{ item.codigo_barras }}</span>
-                                    <svg class="barcode-mini" data-code="{{ item.codigo_barras }}" style="width:120px; height:30px;"></svg>
-                                </div>
-                            </td>
-                            <td style="display: flex; align-items: center; gap: 10px;">
-                                {% if item.imagen_url %}
-                                    <img src="{{ item.imagen_url }}" class="thumb-img"
-                                         onmouseover="iniciarHoverImagen('{{ item.imagen_url }}')"
-                                         onmouseout="cancelarHoverImagen()"
-                                         onclick="mostrarImagenGrande('{{ item.imagen_url }}')">
-                                {% else %}
-                                    <div class="thumb-placeholder"><i class="fas fa-image"></i></div>
-                                {% endif %}
-                                <div>
-                                    <strong>{{ item.nombre }}</strong> <br>
-                                    <span style="font-size: 0.7rem; color:var(--secondary);">{{ item.categoria }}</span>
-                                </div>
-                            </td>
-                            <td><span style="font-size: 0.85rem; background:#f0fdf4; padding:4px 8px; border-radius:4px; color:#166534;"><i class="fas fa-map-marker-alt"></i> {{ item.ubicacion or 'Sin especificar' }}</span></td>
-                            <td style="color: var(--success); font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_disponible }}</td>
-                            <td style="color: #ca8a04; font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_total - item.cantidad_disponible }}</td>
-                            <td style="color: var(--danger); font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_mermada | default(0, true) }}</td>
+                            {% if ta == 'BIBLIOTECA' %}
+                                <td><span style="font-family:monospace; font-size:0.8rem;">{{ item.isbn or '—' }}</span></td>
+                                <td><strong>{{ item.nombre }}</strong>{% if item.categoria %}<br><span style="font-size:0.7rem; color:var(--secondary);">{{ item.categoria }}</span>{% endif %}</td>
+                                <td>{{ item.autor or '—' }}</td>
+                                <td style="font-size:0.85rem;">{{ item.editorial or '—' }}{% if item.anio_publicacion %} · {{ item.anio_publicacion }}{% endif %}</td>
+                                <td style="color:var(--success); font-weight:bold; text-align:center;">{{ item.cantidad_disponible }}</td>
+                                <td style="text-align:center;">{{ item.cantidad_total }}</td>
+                                <td><i class="fas fa-map-marker-alt"></i> {{ item.ubicacion or 'Sin especificar' }}</td>
+                            {% elif ta == 'INFORMATICA' %}
+                                <td><span style="font-family:monospace; font-size:0.75rem; background:#eee; padding:2px 4px; border-radius:3px;">{{ item.codigo_barras }}</span></td>
+                                <td><strong>{{ item.nombre }}</strong>{% if item.marca or item.modelo %}<br><span style="font-size:0.75rem; color:var(--secondary);">{{ item.marca or '' }} {{ item.modelo or '' }}</span>{% endif %}</td>
+                                <td><span style="font-family:monospace; font-size:0.8rem;">{{ item.numero_serie or '—' }}</span></td>
+                                <td>{{ item.categoria or '—' }}</td>
+                                <td style="text-align:center;"><span style="background:#eff6ff; color:#1e40af; padding:2px 8px; border-radius:10px; font-size:0.75rem;">{{ item.estado or '—' }}</span></td>
+                                <td style="color:var(--success); font-weight:bold; text-align:center;">{{ item.cantidad_disponible }}/{{ item.cantidad_total }}</td>
+                                <td style="text-align:center;">
+                                    {% if d is not none %}
+                                        <div style="background:#f3f4f6; border-radius:8px; height:10px; width:60px; margin:0 auto; overflow:hidden;">
+                                            <div style="background:{{ d_color }}; height:100%; width:{{ d }}%;"></div>
+                                        </div>
+                                        <span style="font-size:0.7rem; color:{{ d_color }};">{{ d }}%</span>
+                                    {% else %}<span style="color:#9ca3af; font-size:0.75rem;">—</span>{% endif %}
+                                </td>
+                            {% elif ta == 'DEPORTIVO' %}
+                                <td><span style="font-family:monospace; font-size:0.75rem; background:#eee; padding:2px 4px; border-radius:3px;">{{ item.codigo_barras }}</span></td>
+                                <td><strong>{{ item.nombre }}</strong></td>
+                                <td>{{ item.categoria or '—' }}</td>
+                                <td style="text-align:center;"><span style="background:#fff7ed; color:#9a3412; padding:2px 8px; border-radius:10px; font-size:0.75rem;">{{ item.estado or '—' }}</span></td>
+                                <td style="color:var(--success); font-weight:bold; text-align:center;">{{ item.cantidad_disponible }}</td>
+                                <td style="text-align:center;">{{ item.cantidad_total }}</td>
+                                <td style="text-align:center;">
+                                    {% if d is not none %}
+                                        <div style="background:#f3f4f6; border-radius:8px; height:10px; width:60px; margin:0 auto; overflow:hidden;">
+                                            <div style="background:{{ d_color }}; height:100%; width:{{ d }}%;"></div>
+                                        </div>
+                                        <span style="font-size:0.7rem; color:{{ d_color }};">{{ d }}%</span>
+                                    {% else %}<span style="color:#9ca3af; font-size:0.75rem;">—</span>{% endif %}
+                                </td>
+                            {% elif ta == 'PANOL_TP' %}
+                                <td>
+                                    <div style="display:flex; flex-direction:column; gap:3px;">
+                                        <span style="font-family: monospace; background:#eee; padding:2px 4px; border-radius:3px; font-size:0.75rem;">{{ item.codigo_barras }}</span>
+                                        <svg class="barcode-mini" data-code="{{ item.codigo_barras }}" style="width:120px; height:30px;"></svg>
+                                    </div>
+                                </td>
+                                <td style="display: flex; align-items: center; gap: 10px;">
+                                    {% if item.imagen_url %}
+                                        <img src="{{ item.imagen_url }}" class="thumb-img"
+                                             onmouseover="iniciarHoverImagen('{{ item.imagen_url }}')"
+                                             onmouseout="cancelarHoverImagen()"
+                                             onclick="mostrarImagenGrande('{{ item.imagen_url }}')">
+                                    {% else %}
+                                        <div class="thumb-placeholder"><i class="fas fa-image"></i></div>
+                                    {% endif %}
+                                    <div>
+                                        <strong>{{ item.nombre }}</strong> <br>
+                                        <span style="font-size: 0.7rem; color:var(--secondary);">{{ item.categoria }}</span>
+                                    </div>
+                                </td>
+                                <td><span style="font-size: 0.85rem; background:#f0fdf4; padding:4px 8px; border-radius:4px; color:#166534;"><i class="fas fa-map-marker-alt"></i> {{ item.ubicacion or 'Sin especificar' }}</span></td>
+                                <td style="color: var(--success); font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_disponible }}</td>
+                                <td style="color: #ca8a04; font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_total - item.cantidad_disponible }}</td>
+                                <td style="color: var(--danger); font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_mermada | default(0, true) }}</td>
+                                <td style="text-align:center;">
+                                    {% if d is not none %}
+                                        <div style="background:#f3f4f6; border-radius:8px; height:10px; width:60px; margin:0 auto; overflow:hidden;">
+                                            <div style="background:{{ d_color }}; height:100%; width:{{ d }}%;"></div>
+                                        </div>
+                                        <span style="font-size:0.7rem; color:{{ d_color }};">{{ d }}%</span>
+                                    {% else %}<span style="color:#9ca3af; font-size:0.75rem;">—</span>{% endif %}
+                                </td>
+                            {% else %}
+                                <td><strong>{{ item.nombre }}</strong></td>
+                                <td>{{ item.categoria or '—' }}</td>
+                                <td><i class="fas fa-map-marker-alt"></i> {{ item.ubicacion or 'Sin especificar' }}</td>
+                                <td style="color:var(--success); font-weight:bold; text-align:center;">{{ item.cantidad_disponible }}</td>
+                                <td style="text-align:center;">{{ item.cantidad_total }}</td>
+                                <td style="text-align:center; color:{% if item.cantidad_disponible <= item.cantidad_minima %}var(--danger){% else %}#6b7280{% endif %};">{{ item.cantidad_minima }}</td>
+                            {% endif %}
                             {% if session['usuario_rol'] not in ['Estudiante'] %}
                             <td>
                                 <div style="display:flex; gap:5px; flex-wrap:wrap;">
