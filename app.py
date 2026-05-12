@@ -219,7 +219,12 @@ class Prestamo(db.Model):
     fecha_devolucion = db.Column(db.DateTime, nullable=True)
     estado = db.Column(db.String(20), default='Pendiente')
     item = db.relationship('Item', backref='prestamos_historial', lazy=True)
-    estudiante = db.relationship('Estudiante', backref='historial_solicitudes', lazy=True)
+    # Como hay 2 FKs a estudiante (estudiante_id y panolero_dia_id), hay que
+    # especificar explícitamente foreign_keys para evitar AmbiguousForeignKeysError.
+    estudiante = db.relationship('Estudiante', backref='historial_solicitudes',
+                                 foreign_keys=[estudiante_id], lazy=True)
+    panolero_dia = db.relationship('Estudiante', backref='prestamos_atendidos',
+                                   foreign_keys=[panolero_dia_id], lazy=True)
     profesor = db.relationship('Usuario', backref='prestamos_supervisados', lazy=True)
     # Campos específicos Biblioteca / préstamos con plazo
     fecha_devolucion_esperada = db.Column(db.DateTime, nullable=True)
@@ -476,7 +481,7 @@ def _migrar_columnas_seguridad():
             if 'panolero_dia_id' not in cols:
                 statements.append("ALTER TABLE prestamo ADD COLUMN panolero_dia_id INTEGER NULL")
             if 'desgaste' not in cols:
-                statements.append("ALTER TABLE item ADD COLUMN desgaste FLOAT NOT NULL DEFAULT 0")
+                statements.append("ALTER TABLE item ADD COLUMN IF NOT EXISTS desgaste FLOAT NOT NULL DEFAULT 0")
 
         if statements:
             with db.engine.begin() as conn:
