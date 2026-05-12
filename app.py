@@ -2242,13 +2242,16 @@ def descargar_plantilla():
     aqui = os.path.dirname(os.path.abspath(__file__))
     plantilla = os.path.join(aqui, 'inventario_muestra.xlsx')
     if not os.path.exists(plantilla):
-        # Si no está, generamos una plantilla mínima al vuelo
+        # Si no está, generamos una plantilla mínima al vuelo (mismo orden que /cargar_excel)
         from openpyxl import Workbook
         wb = Workbook()
         ws = wb.active
         ws.title = 'Inventario'
-        for c, h in enumerate(['Codigo', 'Nombre', 'Categoria', 'Cantidad',
-                                'Ubicacion', 'URL Imagen'], 1):
+        headers = ['Código de barra', 'Nombre', 'Descripción', 'Categoría',
+                   'Cantidad', 'Ubicación', 'Fecha adquisición',
+                   'Desgaste ($)', 'Costo unitario ($)', 'Costo total ($)',
+                   'Imagen de referencia']
+        for c, h in enumerate(headers, 1):
             ws.cell(row=1, column=c, value=h)
         buf = io.BytesIO()
         wb.save(buf)
