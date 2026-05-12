@@ -529,10 +529,19 @@ def _migrar_columnas_seguridad():
         if statements:
             with db.engine.begin() as conn:
                 for s in statements:
-                    conn.execute(text(s))
-            print(f"[MIGRACION] Aplicadas {len(statements)} columnas nuevas")
+                    try:
+                        conn.execute(text(s))
+                        print(f"[MIGRACION OK] {s}")
+                    except Exception as exc:
+                        # Loggear pero seguir con el resto. Asi no se aborta toda la migracion
+                        # si una sola sentencia falla (ej: columna ya existe en otro orden).
+                        print(f"[MIGRACION FALLO] {s}  ->  {exc}")
+            print(f"[MIGRACION] Procesadas {len(statements)} sentencias")
     except Exception as e:
-        print(f"[MIGRACION] Aviso: {e}")
+        # Esto SI es grave: imprimirlo con traceback para diagnosticar en logs
+        import traceback
+        print(f"[MIGRACION FATAL] {e}")
+        traceback.print_exc()
 
 
 # Mapeo de especialidad → tipo de área (se usa en seeders y en _asignar_tipo_area)
