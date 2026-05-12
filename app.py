@@ -2346,6 +2346,72 @@ def admin_reporte_mermas():
     return redirect(url_for('ver_inventario'))
 
 
+@app.route('/admin/cambiar_password', methods=['GET', 'POST'])
+@login_requerido
+def admin_cambiar_password():
+    """Permite al usuario logueado (admin o pañolero) cambiar su propia contraseña.
+    Se invoca tanto desde el flujo de primer login (forzado) como manualmente."""
+    usuario_id = session.get('usuario_id')
+    rol = session.get('usuario_rol')
+
+    # Estudiantes no pasan por aquí (su login es por RUT)
+    if rol == 'Estudiante':
+        flash("❌ Los estudiantes no pueden cambiar contraseña por aquí.")
+        return redirect(url_for('index'))
+
+    user = Usuario.query.get(usuario_id)
+    if not user:
+        flash("❌ Usuario no encontrado en la sesión.")
+        return redirect(url_for('logout'))
+
+    if request.method == 'POST':
+        actual = request.form.get('actual', '')
+        nueva = request.form.get('nueva', '')
+        confirmar = request.form.get('confirmar', '')
+
+        if not check_password_hash(user.password_hash, actual):
+            flash("❌ La contraseña actual es incorrecta.")
+            return redirect(url_for('admin_cambiar_password'))
+
+        if not nueva or len(nueva) < 8:
+            flash("❌ La nueva contraseña debe tener al menos 8 caracteres.")
+            return redirect(url_for('admin_cambiar_password'))
+
+        if nueva != confirmar:
+            flash("❌ La confirmación no coincide con la nueva contraseña.")
+            return redirect(url_for('admin_cambiar_password'))
+
+        if nueva == actual:
+            flash("⚠️ La nueva contraseña debe ser distinta de la actual.")
+            return redirect(url_for('admin_cambiar_password'))
+
+        # Fortaleza mínima: mayúscula + minúscula + número
+        tiene_mayus = any(c.isupper() for c in nueva)
+        tiene_minus = any(c.islower() for c in nueva)
+        tiene_num = any(c.isdigit() for c in nueva)
+        if not (tiene_mayus and tiene_minus and tiene_num):
+            flash("⚠️ La contraseña debe tener al menos una mayúscula, una minúscula y un número.")
+            return redirect(url_for('admin_cambiar_password'))
+
+        user.password_hash = generate_password_hash(nueva)
+        # Limpiar flag de cambio obligatorio (primer login completado)
+        user.must_change_password = False
+        # Limpiar contador de fallos por las dudas
+        user.failed_attempts = 0
+        user.locked_until = None
+        db.session.commit()
+        session.pop('forzar_cambio_password', None)
+        try:
+            registrar_auditoria('actualizar', 'Usuario', user.id,
+                                valores_nuevos={'accion': 'cambio_password_propio'})
+        except Exception:
+            pass  # auditoría no debería bloquear el cambio si falla
+        flash("✅ Contraseña actualizada correctamente. Tu próxima sesión usará la nueva clave.")
+        return redirect(url_for('index'))
+
+    return render_template('cambiar_password.html', usuario=user)
+
+
 if __name__ == '__main__':
     import threading, webbrowser, sys
     es_exe = getattr(sys, 'frozen', False)
