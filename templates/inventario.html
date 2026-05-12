@@ -154,13 +154,16 @@
                 <div class="stat-label">Merma total</div>
             </div>
         </div>
-        <div class="stat-card">
+        <a href="/cursos" class="stat-card" style="text-decoration:none; color:inherit; cursor:pointer;" title="Ver cursos y alumnos cargados">
             <div class="stat-icon" style="background:#f5f3ff;"><i class="fas fa-user-graduate" style="color:#8b5cf6;"></i></div>
             <div class="stat-info">
                 <div class="stat-num" style="color:#8b5cf6;">{{ estudiantes | length }}</div>
-                <div class="stat-label">Estudiantes</div>
+                <div class="stat-label" style="display:flex; align-items:center; gap:6px;">
+                    Estudiantes
+                    <i class="fas fa-external-link-alt" style="font-size:0.65rem; opacity:0.6;"></i>
+                </div>
             </div>
-        </div>
+        </a>
     </div>
 
     <div class="tab-menu">

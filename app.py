@@ -1805,6 +1805,28 @@ def procesar_hoja_vida():
     flash(f"✅ {procesados} préstamo(s) procesado(s).")
     return redirect(url_for('ver_inventario'))
 
+@app.route('/cursos')
+@login_requerido
+def ver_cursos():
+    """Vista de cursos: un panel por curso con sus alumnos.
+    El pañolero ve los cursos de SU especialidad. Admin ve todos."""
+    if session.get('usuario_rol') == 'Admin':
+        cursos = Curso.query.filter_by(activo=True).order_by(Curso.nombre.asc()).all()
+        alumnos_sin_curso = Estudiante.query.filter_by(curso_id=None, activo=True).all()
+    else:
+        especialidad_id = session.get('usuario_especialidad_id')
+        cursos = (Curso.query.filter_by(especialidad_id=especialidad_id, activo=True)
+                  .order_by(Curso.nombre.asc()).all())
+        alumnos_sin_curso = (Estudiante.query
+                             .filter_by(especialidad_id=especialidad_id,
+                                        curso_id=None, activo=True).all())
+    total_alumnos = sum(c.total_alumnos for c in cursos) + len(alumnos_sin_curso)
+    return render_template('cursos.html',
+                           cursos=cursos,
+                           alumnos_sin_curso=alumnos_sin_curso,
+                           total_alumnos=total_alumnos)
+
+
 @app.route('/credenciales')
 @login_requerido
 def credenciales():
@@ -2701,6 +2723,7 @@ def admin_reporte_mermas():
     """Reporte de mermas (placeholder). Reescribir cuando se necesite."""
     flash("Reporte de mermas: funcion en construccion.")
     return redirect(url_for('ver_inventario'))
+
 
 
 @app.route('/admin/exportar_completo')
