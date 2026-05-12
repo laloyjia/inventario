@@ -1436,22 +1436,24 @@ def credenciales():
 def cargar_excel():
     """Carga masiva desde Excel.
 
-    Formato esperado (11 columnas, en orden FIJO; las extras son opcionales):
-      Col 1  → código de barras (si está vacía, se autogenera)
-      Col 2  → nombre del ítem (obligatorio)
-      Col 3  → descripción (opcional)
-      Col 4  → categoría (si está vacía → 'General')
-      Col 5  → cantidad (numérico)
-      Col 6  → ubicación (puede ir vacía y se completa después)
-      Col 7  → fecha adquisición (YYYY-MM-DD u opcional)
-      Col 8  → desgaste $ (numérico, opcional)
-      Col 9  → costo unitario $ (numérico, opcional)
-      Col 10 → costo total (IGNORADO — se calcula automáticamente)
-      Col 11 → URL de imagen (puede ir vacía)
+    Formato esperado (13 columnas A–M, orden FIJO; las extras son opcionales):
+      A (1)  → Código de barra (si está vacía, se autogenera)
+      B (2)  → Nombre del ítem (OBLIGATORIO)
+      C (3)  → Descripción
+      D (4)  → Marca
+      E (5)  → Modelo
+      F (6)  → Categoría (si está vacía → 'General')
+      G (7)  → Cantidad (numérico, OBLIGATORIO)
+      H (8)  → Ubicación
+      I (9)  → Fecha adquisición (YYYY-MM-DD)
+      J (10) → Desgaste ($) (numérico)
+      K (11) → Costo unitario ($) (numérico)
+      L (12) → Costo total ($) — IGNORADO (lo calcula la app: costo_unit × cantidad)
+      M (13) → URL/ruta de imagen de referencia
 
     Si el código ya existe en esta especialidad, SUMA al stock existente.
     Si es nuevo, lo crea. La primera fila se detecta como cabecera si la
-    columna de cantidad no es numérica.
+    columna G (Cantidad) no es numérica.
     """
     archivo = request.files.get('archivo_excel')
     if not archivo or archivo.filename == '':
@@ -1468,11 +1470,11 @@ def cargar_excel():
         flash("⚠️ El Excel está vacío.")
         return redirect(url_for('ver_inventario'))
 
-    # Detectar si la primera fila es cabecera (columna 5 = cantidad, no numérica)
+    # Detectar si la primera fila es cabecera (columna G = índice 6 = Cantidad, no numérica)
     inicio = 0
     primera = df.iloc[0]
     try:
-        int(float(str(primera[4]).strip()))
+        int(float(str(primera[6]).strip()))
     except (ValueError, TypeError, IndexError):
         inicio = 1  # primera fila es cabecera, saltarla
 
@@ -1501,20 +1503,22 @@ def cargar_excel():
 
     for idx in range(inicio, len(df)):
         fila = df.iloc[idx]
-        nombre = col(fila, 1)
+        nombre = col(fila, 1)  # B
         if not nombre:
             continue  # filas vacías al final del Excel
 
-        codigo = col(fila, 0)
+        codigo = col(fila, 0)  # A
         if not codigo:
             # Autogenerar único: timestamp + idx para evitar colisiones
             codigo = datetime.now().strftime('%y%m%d%H%M%S') + f"{idx:04d}"
 
-        descripcion = col(fila, 2, '') or None
-        categoria = col(fila, 3, 'General')
+        descripcion = col(fila, 2, '') or None  # C
+        marca = col(fila, 3, '') or None        # D — NUEVO
+        modelo = col(fila, 4, '') or None       # E — NUEVO
+        categoria = col(fila, 5, 'General')     # F
 
         try:
-            cantidad = int(float(col(fila, 4, '0')))
+            cantidad = int(float(col(fila, 6, '0')))  # G
         except Exception:
             errores.append(f"Fila {idx + 1}: cantidad inválida")
             continue
@@ -1522,14 +1526,13 @@ def cargar_excel():
             errores.append(f"Fila {idx + 1}: cantidad negativa")
             continue
 
-        ubicacion = col(fila, 5, '')
+        ubicacion = col(fila, 7, '')  # H
 
-        # Fecha adquisición (col 7) — opcional
-        fecha_raw = col(fila, 6, '')
+        # Fecha adquisición (I) — opcional
+        fecha_raw = col(fila, 8, '')
         fecha_adq = None
         if fecha_raw:
             try:
-                # Excel a veces devuelve datetime, otras string
                 if hasattr(fecha_raw, 'date'):
                     fecha_adq = fecha_raw.date()
                 else:
@@ -1537,18 +1540,18 @@ def cargar_excel():
             except Exception:
                 fecha_adq = None
 
-        # Desgaste $ (col 8) y costo unitario $ (col 9) — opcionales
+        # Desgaste $ (J) y costo unitario $ (K) — opcionales
         try:
-            desgaste_val = float(col(fila, 7, '0') or 0)
+            desgaste_val = float(col(fila, 9, '0') or 0)
         except Exception:
             desgaste_val = 0.0
         try:
-            precio_val = float(col(fila, 8, '0') or 0)
+            precio_val = float(col(fila, 10, '0') or 0)
         except Exception:
             precio_val = 0.0
 
-        # Col 10 (costo total) se ignora: lo calcula la app
-        imagen = col(fila, 10, '')
+        # Col L (costo total) se ignora: lo calcula la app
+        imagen = col(fila, 12, '')  # M
 
         existente = Item.query.filter_by(
             codigo_barras=codigo, especialidad_id=especialidad_id
@@ -1559,6 +1562,10 @@ def cargar_excel():
             # Solo sobrescribir si el Excel trae valor
             if descripcion:
                 existente.descripcion = descripcion
+            if marca:
+                existente.marca = marca
+            if modelo:
+                existente.modelo = modelo
             if categoria and categoria != 'General':
                 existente.categoria = categoria
             if ubicacion:
@@ -1576,7 +1583,8 @@ def cargar_excel():
         else:
             nuevo = Item(
                 codigo_barras=codigo, nombre=nombre,
-                descripcion=descripcion, categoria=categoria,
+                descripcion=descripcion, marca=marca, modelo=modelo,
+                categoria=categoria,
                 especialidad_id=especialidad_id,
                 cantidad_total=cantidad, cantidad_disponible=cantidad,
                 ubicacion=ubicacion, imagen_url=imagen,
@@ -1611,19 +1619,23 @@ def exportar_excel():
         items = Item.query.filter_by(
             especialidad_id=session.get('usuario_especialidad_id')
         ).order_by(Item.categoria.asc(), Item.nombre.asc()).all()
+    # Formato estándar A–M (13 columnas) — coincide con cargar_excel para roundtrip exacto
     df = pd.DataFrame([{
-        'Código de barra': i.codigo_barras,
-        'Nombre': i.nombre,
-        'Descripción': i.descripcion or '',
-        'Categoría': i.categoria,
-        'Cantidad': i.cantidad_total,
-        'Ubicación': i.ubicacion,
-        'Fecha adquisición': i.fecha_adquisicion.isoformat() if i.fecha_adquisicion else '',
-        'Desgaste ($)': i.desgaste or 0,
-        'Costo unitario ($)': i.precio_unitario or 0,
-        'Costo total ($)': (i.precio_unitario or 0) * (i.cantidad_total or 0),
-        'Imagen de referencia': i.imagen_url or '',
-        # Columnas auxiliares informativas (no se reimportan en orden fijo)
+        'Código de barra': i.codigo_barras,                                      # A
+        'Nombre': i.nombre,                                                       # B
+        'Descripción': i.descripcion or '',                                       # C
+        'Marca': i.marca or '',                                                   # D
+        'Modelo': i.modelo or '',                                                 # E
+        'Categoría': i.categoria,                                                 # F
+        'Cantidad': i.cantidad_total,                                             # G
+        'Ubicación': i.ubicacion,                                                 # H
+        'Fecha adquisición': i.fecha_adquisicion.isoformat() if i.fecha_adquisicion else '',  # I
+        'Desgaste ($)': i.desgaste or 0,                                          # J
+        'Costo unitario ($)': i.precio_unitario or 0,                             # K
+        'Costo total ($)': (i.precio_unitario or 0) * (i.cantidad_total or 0),    # L
+        'Imagen de referencia': i.imagen_url or '',                               # M
+        # Columnas auxiliares (informativas; el importador las ignora porque
+        # solo lee las primeras 13 columnas en orden)
         'Especialidad': i.especialidad.nombre if i.especialidad else '',
         'Disponible': i.cantidad_disponible,
         'Mermada': i.cantidad_mermada,
@@ -2297,17 +2309,23 @@ def descargar_plantilla():
     aqui = os.path.dirname(os.path.abspath(__file__))
     plantilla = os.path.join(aqui, 'inventario_muestra.xlsx')
     if not os.path.exists(plantilla):
-        # Si no está, generamos una plantilla mínima al vuelo (mismo orden que /cargar_excel)
+        # Si no está, generamos una plantilla mínima al vuelo (13 columnas A–M, mismo orden que /cargar_excel)
         from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
         wb = Workbook()
         ws = wb.active
         ws.title = 'Inventario'
-        headers = ['Código de barra', 'Nombre', 'Descripción', 'Categoría',
-                   'Cantidad', 'Ubicación', 'Fecha adquisición',
+        headers = ['Código de barra', 'Nombre', 'Descripción', 'Marca', 'Modelo',
+                   'Categoría', 'Cantidad', 'Ubicación', 'Fecha adquisición',
                    'Desgaste ($)', 'Costo unitario ($)', 'Costo total ($)',
                    'Imagen de referencia']
         for c, h in enumerate(headers, 1):
-            ws.cell(row=1, column=c, value=h)
+            cell = ws.cell(row=1, column=c, value=h)
+            cell.font = Font(bold=True, color='FFFFFF')
+            cell.fill = PatternFill(start_color='1E3A8A', end_color='1E3A8A', fill_type='solid')
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        ws.row_dimensions[1].height = 30
+        ws.freeze_panes = 'A2'
         buf = io.BytesIO()
         wb.save(buf)
         buf.seek(0)
