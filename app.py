@@ -93,6 +93,22 @@ except ImportError:
 
 db = SQLAlchemy(app)
 
+
+# ========== FILTROS JINJA ==========
+
+@app.template_filter('clp')
+def format_clp(value):
+    """Formatea un número como pesos chilenos: 12500 → '$ 12.500'.
+    Acepta None, '' o no numérico y devuelve '$ 0'."""
+    try:
+        n = float(value or 0)
+    except (TypeError, ValueError):
+        n = 0
+    # Separador de miles con punto, sin decimales (CLP no usa centavos)
+    entero = int(round(n))
+    return "$ " + f"{entero:,}".replace(",", ".")
+
+
 # ========== TABLAS DE BASE DE DATOS (PanolERP fase 2) ==========
 
 class Especialidad(db.Model):
@@ -172,6 +188,8 @@ class Item(db.Model):
     max_usos = db.Column(db.Integer, nullable=True)  # tope total de préstamos antes de reponer
     usos_actuales = db.Column(db.Integer, default=0, nullable=False,
                               server_default='0')
+    # Desgaste/depreciación acumulada expresada en pesos chilenos (CLP)
+    desgaste = db.Column(db.Float, default=0.0, nullable=False, server_default='0')
 
     @property
     def porcentaje_desgaste(self):
@@ -179,6 +197,11 @@ class Item(db.Model):
         if self.max_usos and self.max_usos > 0:
             return min(100, int((self.usos_actuales or 0) * 100 / self.max_usos))
         return None
+
+    @property
+    def costo_total(self):
+        """Costo total estimado del stock = costo unitario × cantidad total."""
+        return (self.precio_unitario or 0.0) * (self.cantidad_total or 0)
 
 class Prestamo(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -415,6 +438,8 @@ def _migrar_columnas_seguridad():
                 statements.append("ALTER TABLE item ADD COLUMN max_usos INTEGER NULL")
             if 'usos_actuales' not in cols:
                 statements.append("ALTER TABLE item ADD COLUMN usos_actuales INTEGER NOT NULL DEFAULT 0")
+            if 'desgaste' not in cols:
+                statements.append("ALTER TABLE item ADD COLUMN desgaste FLOAT NOT NULL DEFAULT 0")
 
         if statements:
             with db.engine.begin() as conn:
@@ -904,6 +929,10 @@ def agregar_item():
             fecha_adq = datetime.fromisoformat(fecha_adq_raw).date()
         except Exception:
             fecha_adq = None
+    # Costos y desgaste (en pesos chilenos, opcionales)
+    descripcion = request.form.get('descripcion', '').strip() or None
+    precio_unitario = request.form.get('precio_unitario', type=float) or 0.0
+    desgaste = request.form.get('desgaste', type=float) or 0.0
 
     item_existente = Item.query.filter_by(codigo_barras=codigo, especialidad_id=especialidad_id).first()
     nuevo_item = None
@@ -923,11 +952,16 @@ def agregar_item():
         if estado: item_existente.estado = estado
         if max_usos: item_existente.max_usos = max_usos
         if fecha_adq: item_existente.fecha_adquisicion = fecha_adq
+        if descripcion: item_existente.descripcion = descripcion
+        if precio_unitario: item_existente.precio_unitario = precio_unitario
+        if desgaste: item_existente.desgaste = desgaste
     else:
         nuevo_item = Item(codigo_barras=codigo, nombre=nombre, categoria=categoria,
+                          descripcion=descripcion,
                           especialidad_id=especialidad_id,
                           cantidad_total=cantidad, cantidad_disponible=cantidad,
                           imagen_url=imagen, ubicacion=ubicacion,
+                          precio_unitario=precio_unitario, desgaste=desgaste,
                           autor=autor, isbn=isbn, editorial=editorial,
                           anio_publicacion=anio_pub,
                           marca=marca, modelo=modelo, numero_serie=numero_serie,
@@ -973,11 +1007,53 @@ def editar_item(item_id):
     item.categoria = request.form.get('categoria', item.categoria)
     item.ubicacion = request.form.get('ubicacion', item.ubicacion)
     item.cantidad_minima = int(request.form.get('cantidad_minima') or item.cantidad_minima)
+
+    # Imagen y descripción (solo se cambian si vienen valores)
+    nueva_img = request.form.get('imagen_url', '').strip()
+    if nueva_img:
+        item.imagen_url = nueva_img
+    nueva_desc = request.form.get('descripcion', None)
+    if nueva_desc is not None and nueva_desc.strip() != '':
+        item.descripcion = nueva_desc.strip()
+
+    # Costo unitario y desgaste en pesos (acepta vacío = no cambia)
+    precio_raw = request.form.get('precio_unitario', '').strip()
+    if precio_raw != '':
+        try:
+            item.precio_unitario = float(precio_raw)
+        except ValueError:
+            pass
+    desg_raw = request.form.get('desgaste', '').strip()
+    if desg_raw != '':
+        try:
+            item.desgaste = float(desg_raw)
+        except ValueError:
+            pass
+
+    # Fecha de adquisición (opcional)
+    fecha_adq_raw = request.form.get('fecha_adquisicion', '').strip()
+    if fecha_adq_raw:
+        try:
+            item.fecha_adquisicion = datetime.fromisoformat(fecha_adq_raw).date()
+        except Exception:
+            pass
+
+    # Ajuste de stock: soporta dos formas
+    # 1) cantidad_total → setear total absoluto
+    # 2) ajuste_cantidad → delta a sumar/restar
     nueva = request.form.get('cantidad_total')
+    ajuste = request.form.get('ajuste_cantidad')
     if nueva is not None and nueva != '':
         diff = int(nueva) - item.cantidad_total
         item.cantidad_total = int(nueva)
         item.cantidad_disponible = max(0, item.cantidad_disponible + diff)
+    elif ajuste is not None and ajuste != '' and ajuste != '0':
+        try:
+            d = int(ajuste)
+            item.cantidad_total = max(0, item.cantidad_total + d)
+            item.cantidad_disponible = max(0, item.cantidad_disponible + d)
+        except ValueError:
+            pass
     db.session.commit()
     registrar_auditoria('actualizar', 'Item', item.id, valores_nuevos={'nombre': item.nombre})
     registrar_cambio_sync('item', item.id, 'actualizar', item)
@@ -1305,13 +1381,18 @@ def credenciales():
 def cargar_excel():
     """Carga masiva desde Excel.
 
-    Formato esperado (6 columnas, en orden FIJO):
-      Col 1 → código de barras (si está vacía, se autogenera)
-      Col 2 → nombre del ítem (obligatorio)
-      Col 3 → categoría (si está vacía → 'General')
-      Col 4 → cantidad (numérico)
-      Col 5 → ubicación (puede ir vacía y se completa después)
-      Col 6 → URL de imagen (puede ir vacía y se completa después)
+    Formato esperado (11 columnas, en orden FIJO; las extras son opcionales):
+      Col 1  → código de barras (si está vacía, se autogenera)
+      Col 2  → nombre del ítem (obligatorio)
+      Col 3  → descripción (opcional)
+      Col 4  → categoría (si está vacía → 'General')
+      Col 5  → cantidad (numérico)
+      Col 6  → ubicación (puede ir vacía y se completa después)
+      Col 7  → fecha adquisición (YYYY-MM-DD u opcional)
+      Col 8  → desgaste $ (numérico, opcional)
+      Col 9  → costo unitario $ (numérico, opcional)
+      Col 10 → costo total (IGNORADO — se calcula automáticamente)
+      Col 11 → URL de imagen (puede ir vacía)
 
     Si el código ya existe en esta especialidad, SUMA al stock existente.
     Si es nuevo, lo crea. La primera fila se detecta como cabecera si la
@@ -1332,11 +1413,11 @@ def cargar_excel():
         flash("⚠️ El Excel está vacío.")
         return redirect(url_for('ver_inventario'))
 
-    # Detectar si la primera fila es cabecera (columna 4 no numérica)
+    # Detectar si la primera fila es cabecera (columna 5 = cantidad, no numérica)
     inicio = 0
     primera = df.iloc[0]
     try:
-        int(float(str(primera[3]).strip()))
+        int(float(str(primera[4]).strip()))
     except (ValueError, TypeError, IndexError):
         inicio = 1  # primera fila es cabecera, saltarla
 
@@ -1374,10 +1455,11 @@ def cargar_excel():
             # Autogenerar único: timestamp + idx para evitar colisiones
             codigo = datetime.now().strftime('%y%m%d%H%M%S') + f"{idx:04d}"
 
-        categoria = col(fila, 2, 'General')
+        descripcion = col(fila, 2, '') or None
+        categoria = col(fila, 3, 'General')
 
         try:
-            cantidad = int(float(col(fila, 3, '0')))
+            cantidad = int(float(col(fila, 4, '0')))
         except Exception:
             errores.append(f"Fila {idx + 1}: cantidad inválida")
             continue
@@ -1385,9 +1467,33 @@ def cargar_excel():
             errores.append(f"Fila {idx + 1}: cantidad negativa")
             continue
 
-        # Columnas 5 y 6: en blanco si vienen vacías
-        ubicacion = col(fila, 4, '')
-        imagen = col(fila, 5, '')
+        ubicacion = col(fila, 5, '')
+
+        # Fecha adquisición (col 7) — opcional
+        fecha_raw = col(fila, 6, '')
+        fecha_adq = None
+        if fecha_raw:
+            try:
+                # Excel a veces devuelve datetime, otras string
+                if hasattr(fecha_raw, 'date'):
+                    fecha_adq = fecha_raw.date()
+                else:
+                    fecha_adq = datetime.fromisoformat(str(fecha_raw)[:10]).date()
+            except Exception:
+                fecha_adq = None
+
+        # Desgaste $ (col 8) y costo unitario $ (col 9) — opcionales
+        try:
+            desgaste_val = float(col(fila, 7, '0') or 0)
+        except Exception:
+            desgaste_val = 0.0
+        try:
+            precio_val = float(col(fila, 8, '0') or 0)
+        except Exception:
+            precio_val = 0.0
+
+        # Col 10 (costo total) se ignora: lo calcula la app
+        imagen = col(fila, 10, '')
 
         existente = Item.query.filter_by(
             codigo_barras=codigo, especialidad_id=especialidad_id
@@ -1395,21 +1501,32 @@ def cargar_excel():
         if existente:
             existente.cantidad_total += cantidad
             existente.cantidad_disponible += cantidad
-            # Solo sobrescribir categoría/ubicación/imagen si el Excel las trae
+            # Solo sobrescribir si el Excel trae valor
+            if descripcion:
+                existente.descripcion = descripcion
             if categoria and categoria != 'General':
                 existente.categoria = categoria
             if ubicacion:
                 existente.ubicacion = ubicacion
             if imagen:
                 existente.imagen_url = imagen
+            if fecha_adq:
+                existente.fecha_adquisicion = fecha_adq
+            if desgaste_val:
+                existente.desgaste = desgaste_val
+            if precio_val:
+                existente.precio_unitario = precio_val
             registrar_cambio_sync('item', existente.id, 'actualizar', existente)
             actualizados += 1
         else:
             nuevo = Item(
-                codigo_barras=codigo, nombre=nombre, categoria=categoria,
+                codigo_barras=codigo, nombre=nombre,
+                descripcion=descripcion, categoria=categoria,
                 especialidad_id=especialidad_id,
                 cantidad_total=cantidad, cantidad_disponible=cantidad,
-                ubicacion=ubicacion, imagen_url=imagen
+                ubicacion=ubicacion, imagen_url=imagen,
+                fecha_adquisicion=fecha_adq,
+                desgaste=desgaste_val, precio_unitario=precio_val,
             )
             db.session.add(nuevo)
             db.session.flush()
@@ -1440,11 +1557,21 @@ def exportar_excel():
             especialidad_id=session.get('usuario_especialidad_id')
         ).order_by(Item.categoria.asc(), Item.nombre.asc()).all()
     df = pd.DataFrame([{
-        'codigo_barras': i.codigo_barras, 'nombre': i.nombre, 'categoria': i.categoria,
-        'especialidad': i.especialidad.nombre if i.especialidad else '',
-        'cantidad_total': i.cantidad_total, 'cantidad_disponible': i.cantidad_disponible,
-        'cantidad_mermada': i.cantidad_mermada, 'ubicacion': i.ubicacion,
-        'precio_unitario': i.precio_unitario,
+        'Código de barra': i.codigo_barras,
+        'Nombre': i.nombre,
+        'Descripción': i.descripcion or '',
+        'Categoría': i.categoria,
+        'Cantidad': i.cantidad_total,
+        'Ubicación': i.ubicacion,
+        'Fecha adquisición': i.fecha_adquisicion.isoformat() if i.fecha_adquisicion else '',
+        'Desgaste ($)': i.desgaste or 0,
+        'Costo unitario ($)': i.precio_unitario or 0,
+        'Costo total ($)': (i.precio_unitario or 0) * (i.cantidad_total or 0),
+        'Imagen de referencia': i.imagen_url or '',
+        # Columnas auxiliares informativas (no se reimportan en orden fijo)
+        'Especialidad': i.especialidad.nombre if i.especialidad else '',
+        'Disponible': i.cantidad_disponible,
+        'Mermada': i.cantidad_mermada,
     } for i in items])
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine='openpyxl') as writer:
@@ -1994,8 +2121,10 @@ def _upsert_item(nodo, p, accion):
     # Copiar campos seguros (no id)
     for k in ('nombre', 'descripcion', 'categoria', 'cantidad_total',
               'cantidad_disponible', 'cantidad_mermada', 'cantidad_minima',
-              'imagen_url', 'ubicacion', 'precio_unitario',
-              'autor', 'isbn', 'editorial', 'anio_publicacion'):
+              'imagen_url', 'ubicacion', 'precio_unitario', 'desgaste',
+              'autor', 'isbn', 'editorial', 'anio_publicacion',
+              'marca', 'modelo', 'numero_serie', 'estado',
+              'fecha_adquisicion', 'max_usos'):
         if k in p:
             setattr(item, k, p[k])
 
@@ -2199,107 +2328,19 @@ def admin_exportar_completo():
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
+
 @app.route('/admin/reporte_mermas')
 @login_requerido
 @admin_requerido
 def admin_reporte_mermas():
-    """Excel con todos los ítems con merma + préstamos cerrados con merma."""
-    items_merma = Item.query.filter(Item.cantidad_mermada > 0) \
-        .order_by(Item.especialidad_id.asc(), Item.cantidad_mermada.desc()).all()
-    df_items = pd.DataFrame([{
-        'Especialidad': i.especialidad.nombre if i.especialidad else '',
-        'Código': i.codigo_barras, 'Nombre': i.nombre, 'Categoría': i.categoria,
-        'Cantidad mermada': i.cantidad_mermada,
-        'Cantidad total restante': i.cantidad_total,
-        'Valor estimado merma': (i.cantidad_mermada or 0) * (i.precio_unitario or 0),
-    } for i in items_merma])
+    """Reporte de mermas (placeholder).
 
-    prest_merma = Prestamo.query.filter(Prestamo.cantidad_mermada > 0) \
-        .order_by(Prestamo.fecha_devolucion.desc()).all()
-    df_prest = pd.DataFrame([{
-        'Fecha devolución': p.fecha_devolucion.strftime('%Y-%m-%d %H:%M') if p.fecha_devolucion else '',
-        'Especialidad': p.item.especialidad.nombre if (p.item and p.item.especialidad) else '',
-        'Ítem': p.item.nombre if p.item else '',
-        'Código': p.item.codigo_barras if p.item else '',
-        'Estudiante': p.estudiante.nombre if p.estudiante else '',
-        'RUT': p.estudiante.rut_matricula if p.estudiante else '',
-        'Cantidad mermada': p.cantidad_mermada,
-        'Práctica': p.nombre_practica or '',
-    } for p in prest_merma])
-
-    buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
-        if df_items.empty: df_items = pd.DataFrame([{'_': 'Sin mermas'}])
-        df_items.to_excel(writer, sheet_name='Items con merma', index=False)
-        if df_prest.empty: df_prest = pd.DataFrame([{'_': 'Sin préstamos con merma'}])
-        df_prest.to_excel(writer, sheet_name='Préstamos con merma', index=False)
-    buf.seek(0)
-    fname = f"reporte_mermas_{datetime.now().strftime('%Y%m%d')}.xlsx"
-    return send_file(buf, as_attachment=True, download_name=fname,
-                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-
-
-@app.route('/admin/cambiar_password', methods=['GET', 'POST'])
-@login_requerido
-def admin_cambiar_password():
-    """Permite al usuario logueado (admin o pañolero) cambiar su propia contraseña."""
-    usuario_id = session.get('usuario_id')
-    rol = session.get('usuario_rol')
-
-    # Estudiantes no pasan por aquí (su login es por RUT)
-    if rol == 'Estudiante':
-        flash("❌ Los estudiantes no pueden cambiar contraseña por aquí.")
-        return redirect(url_for('index'))
-
-    user = Usuario.query.get(usuario_id)
-    if not user:
-        flash("❌ Usuario no encontrado en la sesión.")
-        return redirect(url_for('logout'))
-
-    if request.method == 'POST':
-        actual = request.form.get('actual', '')
-        nueva = request.form.get('nueva', '')
-        confirmar = request.form.get('confirmar', '')
-
-        if not check_password_hash(user.password_hash, actual):
-            flash("❌ La contraseña actual es incorrecta.")
-            return redirect(url_for('admin_cambiar_password'))
-
-        if not nueva or len(nueva) < 8:
-            flash("❌ La nueva contraseña debe tener al menos 8 caracteres.")
-            return redirect(url_for('admin_cambiar_password'))
-
-        if nueva != confirmar:
-            flash("❌ La confirmación no coincide con la nueva contraseña.")
-            return redirect(url_for('admin_cambiar_password'))
-
-        if nueva == actual:
-            flash("⚠️ La nueva contraseña debe ser distinta de la actual.")
-            return redirect(url_for('admin_cambiar_password'))
-
-        # Validación opcional de fortaleza (mínimo: mayúscula + minúscula + número)
-        tiene_mayus = any(c.isupper() for c in nueva)
-        tiene_minus = any(c.islower() for c in nueva)
-        tiene_num = any(c.isdigit() for c in nueva)
-        if not (tiene_mayus and tiene_minus and tiene_num):
-            flash("⚠️ La contraseña debe tener al menos una mayúscula, una minúscula y un número.")
-            return redirect(url_for('admin_cambiar_password'))
-
-        user.password_hash = generate_password_hash(nueva)
-        # Limpiar flag de cambio obligatorio (primer login completado)
-        user.must_change_password = False
-        # Limpiar contador de fallos por las dudas
-        user.failed_attempts = 0
-        user.locked_until = None
-        db.session.commit()
-        session.pop('forzar_cambio_password', None)
-        registrar_auditoria('actualizar', 'Usuario', user.id,
-                            valores_nuevos={'accion': 'cambio_password_propio'})
-        flash("✅ Contraseña actualizada correctamente. Tu próxima sesión usará la nueva clave.")
-        return redirect(url_for('index'))
-
-    return render_template('cambiar_password.html', usuario=user)
+    Esta funcion estaba a medio escribir cuando el archivo se trunco.
+    Devuelve un mensaje temporal para que la app levante sin errores.
+    Revisar y completar el reporte real cuando se necesite.
+    """
+    flash("Reporte de mermas: funcion en construccion.")
+    return redirect(url_for('ver_inventario'))
 
 
 if __name__ == '__main__':

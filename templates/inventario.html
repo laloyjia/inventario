@@ -316,7 +316,12 @@
                 <div><label>Stock mínimo</label><input type="number" name="cantidad_minima" min="0" value="5"></div>
                 <div><label>Ubicación</label><input type="text" name="ubicacion"></div>
                 <div><label>Fecha adquisición</label><input type="date" name="fecha_adquisicion"></div>
+                <div><label>URL Imagen (Opcional)</label><input type="url" name="imagen_url" placeholder="Pegar link..."></div>
                 {% endif %}
+
+                {# === CAMPOS COMUNES: costos y desgaste (todos los tipos) === #}
+                <div><label>Costo unitario ($)</label><input type="number" name="precio_unitario" min="0" step="1" value="0" placeholder="Ej: 12500"></div>
+                <div><label>Desgaste ($)</label><input type="number" name="desgaste" min="0" step="1" value="0" placeholder="Depreciación acumulada"></div>
 
                 <button type="submit" class="btn-add"><i class="fas fa-save"></i> Guardar</button>
             </form>
@@ -379,6 +384,8 @@
                                 <th style="text-align: center;">Disponible</th>
                                 <th style="text-align: center;">Total</th>
                                 <th>Estantería</th>
+                                <th style="text-align: center;">Desgaste ($)</th>
+                                <th style="text-align: center;">Costo Total</th>
                             {% elif ta == 'INFORMATICA' %}
                                 <th>Código</th>
                                 <th>Nombre / Marca / Modelo</th>
@@ -386,7 +393,9 @@
                                 <th>Categoría</th>
                                 <th style="text-align: center;">Estado</th>
                                 <th style="text-align: center;">Disponible</th>
-                                <th style="text-align: center;">Desgaste</th>
+                                <th style="text-align: center;">Uso</th>
+                                <th style="text-align: center;">Desgaste ($)</th>
+                                <th style="text-align: center;">Costo Total</th>
                             {% elif ta == 'DEPORTIVO' %}
                                 <th>Código</th>
                                 <th>Nombre</th>
@@ -394,7 +403,9 @@
                                 <th style="text-align: center;">Estado</th>
                                 <th style="text-align: center;">Disponible</th>
                                 <th style="text-align: center;">Total</th>
-                                <th style="text-align: center;">Desgaste</th>
+                                <th style="text-align: center;">Uso</th>
+                                <th style="text-align: center;">Desgaste ($)</th>
+                                <th style="text-align: center;">Costo Total</th>
                             {% elif ta == 'PANOL_TP' %}
                                 <th>Código</th>
                                 <th>Nombre</th>
@@ -402,7 +413,9 @@
                                 <th style="text-align: center;">Disponible</th>
                                 <th style="text-align: center;">En uso</th>
                                 <th style="text-align: center;">Merma</th>
-                                <th style="text-align: center;">Desgaste</th>
+                                <th style="text-align: center;">Uso</th>
+                                <th style="text-align: center;">Desgaste ($)</th>
+                                <th style="text-align: center;">Costo Total</th>
                             {% else %}
                                 <th>Nombre</th>
                                 <th>Categoría</th>
@@ -410,6 +423,8 @@
                                 <th style="text-align: center;">Disponible</th>
                                 <th style="text-align: center;">Total</th>
                                 <th style="text-align: center;">Mínima</th>
+                                <th style="text-align: center;">Desgaste ($)</th>
+                                <th style="text-align: center;">Costo Total</th>
                             {% endif %}
                             {% if session['usuario_rol'] not in ['Estudiante'] %}<th>Acción</th>{% endif %}
                         </tr>
@@ -419,6 +434,14 @@
                         {% set d = item.porcentaje_desgaste %}
                         {% set d_color = '#10b981' if d is not none and d < 50 else ('#eab308' if d is not none and d < 80 else '#dc2626') %}
                         <tr class="fila-item" data-categoria="{{ item.categoria }}">
+                            {% set _uso_cell %}
+                                {% if d is not none %}
+                                    <div style="background:#f3f4f6; border-radius:8px; height:10px; width:60px; margin:0 auto; overflow:hidden;">
+                                        <div style="background:{{ d_color }}; height:100%; width:{{ d }}%;"></div>
+                                    </div>
+                                    <span style="font-size:0.7rem; color:{{ d_color }};">{{ d }}%</span>
+                                {% else %}<span style="color:#9ca3af; font-size:0.75rem;">—</span>{% endif %}
+                            {% endset %}
                             {% if ta == 'BIBLIOTECA' %}
                                 <td><span style="font-family:monospace; font-size:0.8rem;">{{ item.isbn or '—' }}</span></td>
                                 <td><strong>{{ item.nombre }}</strong>{% if item.categoria %}<br><span style="font-size:0.7rem; color:var(--secondary);">{{ item.categoria }}</span>{% endif %}</td>
@@ -427,6 +450,8 @@
                                 <td style="color:var(--success); font-weight:bold; text-align:center;">{{ item.cantidad_disponible }}</td>
                                 <td style="text-align:center;">{{ item.cantidad_total }}</td>
                                 <td><i class="fas fa-map-marker-alt"></i> {{ item.ubicacion or 'Sin especificar' }}</td>
+                                <td style="text-align:center; color:#b45309; font-weight:600;">{{ item.desgaste | clp }}</td>
+                                <td style="text-align:center; color:#0f766e; font-weight:bold;">{{ item.costo_total | clp }}</td>
                             {% elif ta == 'INFORMATICA' %}
                                 <td><span style="font-family:monospace; font-size:0.75rem; background:#eee; padding:2px 4px; border-radius:3px;">{{ item.codigo_barras }}</span></td>
                                 <td><strong>{{ item.nombre }}</strong>{% if item.marca or item.modelo %}<br><span style="font-size:0.75rem; color:var(--secondary);">{{ item.marca or '' }} {{ item.modelo or '' }}</span>{% endif %}</td>
@@ -434,14 +459,9 @@
                                 <td>{{ item.categoria or '—' }}</td>
                                 <td style="text-align:center;"><span style="background:#eff6ff; color:#1e40af; padding:2px 8px; border-radius:10px; font-size:0.75rem;">{{ item.estado or '—' }}</span></td>
                                 <td style="color:var(--success); font-weight:bold; text-align:center;">{{ item.cantidad_disponible }}/{{ item.cantidad_total }}</td>
-                                <td style="text-align:center;">
-                                    {% if d is not none %}
-                                        <div style="background:#f3f4f6; border-radius:8px; height:10px; width:60px; margin:0 auto; overflow:hidden;">
-                                            <div style="background:{{ d_color }}; height:100%; width:{{ d }}%;"></div>
-                                        </div>
-                                        <span style="font-size:0.7rem; color:{{ d_color }};">{{ d }}%</span>
-                                    {% else %}<span style="color:#9ca3af; font-size:0.75rem;">—</span>{% endif %}
-                                </td>
+                                <td style="text-align:center;">{{ _uso_cell }}</td>
+                                <td style="text-align:center; color:#b45309; font-weight:600;">{{ item.desgaste | clp }}</td>
+                                <td style="text-align:center; color:#0f766e; font-weight:bold;">{{ item.costo_total | clp }}</td>
                             {% elif ta == 'DEPORTIVO' %}
                                 <td><span style="font-family:monospace; font-size:0.75rem; background:#eee; padding:2px 4px; border-radius:3px;">{{ item.codigo_barras }}</span></td>
                                 <td><strong>{{ item.nombre }}</strong></td>
@@ -449,14 +469,9 @@
                                 <td style="text-align:center;"><span style="background:#fff7ed; color:#9a3412; padding:2px 8px; border-radius:10px; font-size:0.75rem;">{{ item.estado or '—' }}</span></td>
                                 <td style="color:var(--success); font-weight:bold; text-align:center;">{{ item.cantidad_disponible }}</td>
                                 <td style="text-align:center;">{{ item.cantidad_total }}</td>
-                                <td style="text-align:center;">
-                                    {% if d is not none %}
-                                        <div style="background:#f3f4f6; border-radius:8px; height:10px; width:60px; margin:0 auto; overflow:hidden;">
-                                            <div style="background:{{ d_color }}; height:100%; width:{{ d }}%;"></div>
-                                        </div>
-                                        <span style="font-size:0.7rem; color:{{ d_color }};">{{ d }}%</span>
-                                    {% else %}<span style="color:#9ca3af; font-size:0.75rem;">—</span>{% endif %}
-                                </td>
+                                <td style="text-align:center;">{{ _uso_cell }}</td>
+                                <td style="text-align:center; color:#b45309; font-weight:600;">{{ item.desgaste | clp }}</td>
+                                <td style="text-align:center; color:#0f766e; font-weight:bold;">{{ item.costo_total | clp }}</td>
                             {% elif ta == 'PANOL_TP' %}
                                 <td>
                                     <div style="display:flex; flex-direction:column; gap:3px;">
@@ -482,14 +497,9 @@
                                 <td style="color: var(--success); font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_disponible }}</td>
                                 <td style="color: #ca8a04; font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_total - item.cantidad_disponible }}</td>
                                 <td style="color: var(--danger); font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_mermada | default(0, true) }}</td>
-                                <td style="text-align:center;">
-                                    {% if d is not none %}
-                                        <div style="background:#f3f4f6; border-radius:8px; height:10px; width:60px; margin:0 auto; overflow:hidden;">
-                                            <div style="background:{{ d_color }}; height:100%; width:{{ d }}%;"></div>
-                                        </div>
-                                        <span style="font-size:0.7rem; color:{{ d_color }};">{{ d }}%</span>
-                                    {% else %}<span style="color:#9ca3af; font-size:0.75rem;">—</span>{% endif %}
-                                </td>
+                                <td style="text-align:center;">{{ _uso_cell }}</td>
+                                <td style="text-align:center; color:#b45309; font-weight:600;">{{ item.desgaste | clp }}</td>
+                                <td style="text-align:center; color:#0f766e; font-weight:bold;">{{ item.costo_total | clp }}</td>
                             {% else %}
                                 <td><strong>{{ item.nombre }}</strong></td>
                                 <td>{{ item.categoria or '—' }}</td>
@@ -497,12 +507,14 @@
                                 <td style="color:var(--success); font-weight:bold; text-align:center;">{{ item.cantidad_disponible }}</td>
                                 <td style="text-align:center;">{{ item.cantidad_total }}</td>
                                 <td style="text-align:center; color:{% if item.cantidad_disponible <= item.cantidad_minima %}var(--danger){% else %}#6b7280{% endif %};">{{ item.cantidad_minima }}</td>
+                                <td style="text-align:center; color:#b45309; font-weight:600;">{{ item.desgaste | clp }}</td>
+                                <td style="text-align:center; color:#0f766e; font-weight:bold;">{{ item.costo_total | clp }}</td>
                             {% endif %}
                             {% if session['usuario_rol'] not in ['Estudiante'] %}
                             <td>
                                 <div style="display:flex; gap:5px; flex-wrap:wrap;">
                                     <button type="button" class="btn-edit" title="Editar"
-                                        onclick="abrirModalEditar({{ item.id }}, '{{ item.nombre | replace("'", "\\'") }}', '{{ item.categoria }}', '{{ item.imagen_url or '' }}', '{{ item.ubicacion or '' }}')">
+                                        onclick="abrirModalEditar({{ item.id }}, '{{ item.nombre | replace("'", "\\'") }}', '{{ item.categoria }}', '{{ item.imagen_url or '' }}', '{{ item.ubicacion or '' }}', '{{ (item.descripcion or '') | replace("'", "\\'") | replace('\n', ' ') }}', {{ item.precio_unitario or 0 }}, {{ item.desgaste or 0 }}, '{{ item.fecha_adquisicion.isoformat() if item.fecha_adquisicion else '' }}')">
                                         <i class="fas fa-pencil-alt"></i>
                                     </button>
                                     <a href="/etiqueta/{{ item.id }}" target="_blank" title="Imprimir etiqueta con código de barras"
@@ -988,11 +1000,28 @@
                 <option value="Fungible">Fungible</option>
             </select>
 
+            <label>Descripción</label>
+            <input type="text" name="descripcion" id="edit_descripcion" placeholder="Descripción breve del ítem" style="margin-bottom: 12px;">
+
             <label>URL de Imagen (dejar vacío para no cambiar)</label>
             <input type="url" name="imagen_url" id="edit_imagen" placeholder="https://..." style="margin-bottom: 12px;">
 
             <label>Ubicación</label>
             <input type="text" name="ubicacion" id="edit_ubicacion" placeholder="Ej: Estante A, Armario 1, etc." style="margin-bottom: 12px;">
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                <div>
+                    <label>Costo unitario ($)</label>
+                    <input type="number" name="precio_unitario" id="edit_precio" min="0" step="1" placeholder="0">
+                </div>
+                <div>
+                    <label>Desgaste ($)</label>
+                    <input type="number" name="desgaste" id="edit_desgaste" min="0" step="1" placeholder="0">
+                </div>
+            </div>
+
+            <label>Fecha de adquisición</label>
+            <input type="date" name="fecha_adquisicion" id="edit_fecha_adq" style="margin-bottom: 12px;">
 
             <label>Ajuste de stock (+ para agregar, - para restar)</label>
             <input type="number" name="ajuste_cantidad" id="edit_ajuste" value="0" style="margin-bottom: 20px;">
@@ -1226,12 +1255,21 @@
     }
 
     // --- MODAL DE EDICION DE ITEM ---
-    function abrirModalEditar(id, nombre, categoria, imagen, ubicacion) {
+    function abrirModalEditar(id, nombre, categoria, imagen, ubicacion, descripcion, precio, desgaste, fechaAdq) {
         document.getElementById('formEditar').action = '/editar_item/' + id;
         document.getElementById('edit_nombre').value = nombre;
         document.getElementById('edit_imagen').value = imagen;
         document.getElementById('edit_ubicacion').value = ubicacion || '';
         document.getElementById('edit_ajuste').value = 0;
+        // Campos nuevos
+        const elDesc = document.getElementById('edit_descripcion');
+        if (elDesc) elDesc.value = descripcion || '';
+        const elPrecio = document.getElementById('edit_precio');
+        if (elPrecio) elPrecio.value = precio !== undefined && precio !== null ? Math.round(precio) : 0;
+        const elDesg = document.getElementById('edit_desgaste');
+        if (elDesg) elDesg.value = desgaste !== undefined && desgaste !== null ? Math.round(desgaste) : 0;
+        const elFecha = document.getElementById('edit_fecha_adq');
+        if (elFecha) elFecha.value = fechaAdq || '';
         const sel = document.getElementById('edit_categoria');
         for (let i = 0; i < sel.options.length; i++) {
             if (sel.options[i].value === categoria) { sel.selectedIndex = i; break; }
