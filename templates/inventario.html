@@ -965,9 +965,9 @@
                 <button type="button" onclick="agregarAlPedido()" class="btn-add"><i class="fas fa-plus"></i></button>
             </div>
         </div>
-        <div class="table-responsive" style="max-height: 150px; overflow-y: auto; margin-bottom: 15px;">
+        <div class="table-responsive" style="max-height: 180px; overflow-y: auto; margin-bottom: 15px;">
             <table style="min-width: 100%;">
-                <thead><tr><th>Cód</th><th style="width:50px;">Cant.</th><th>X</th></tr></thead>
+                <thead><tr><th style="width:120px;">Código</th><th>Nombre</th><th style="width:55px;">Cant.</th><th style="width:30px;">X</th></tr></thead>
                 <tbody id="lista_pedido_cuerpo"></tbody>
             </table>
         </div>
@@ -1219,6 +1219,20 @@
 
     // --- LOGICA CARRITO DE SALIDA STANDARD ---
     let carrito = [];
+
+    // Diccionario de items disponibles, indexado por código de barras.
+    // Se construye desde el contexto Jinja al renderizar la página.
+    const ITEMS_POR_CODIGO = {
+        {% for item in items %}
+        {{ (item.codigo_barras or '')|tojson }}: {
+            id: {{ item.id }},
+            nombre: {{ (item.nombre or '')|tojson }},
+            disponible: {{ item.cantidad_disponible|default(0) }},
+            categoria: {{ (item.categoria or '')|tojson }}
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    };
+
     function abrirModalSalida() { document.getElementById('modalSalida').style.display = 'block'; setTimeout(() => document.getElementById('inputScanSalida').focus(), 100); }
     function cerrarModalSalida() { document.getElementById('modalSalida').style.display = 'none'; carrito = []; document.getElementById('inputCantSalida').value = 1; actualizarTablaVisual(); }
     function manejarEnterScan(e) { if (e.key === 'Enter') { e.preventDefault(); agregarAlPedido(); } }
@@ -1228,9 +1242,42 @@
         const codigo = input.value.trim();
         const cantidad = parseInt(document.getElementById('inputCantSalida').value) || 1;
         if (codigo === "") return;
-        let encontrado = carrito.find(p => p.codigo === codigo);
-        if (encontrado) encontrado.cantidad += cantidad;
-        else carrito.push({ codigo: codigo, cantidad: cantidad });
+
+        // Buscar el ítem por código (case-sensitive primero, después flexible)
+        let info = ITEMS_POR_CODIGO[codigo];
+        if (!info) {
+            // Búsqueda flexible: ignorar mayúsculas/minúsculas y espacios
+            const normalizado = codigo.toLowerCase().trim();
+            for (const [k, v] of Object.entries(ITEMS_POR_CODIGO)) {
+                if (k.toLowerCase().trim() === normalizado) { info = v; break; }
+            }
+        }
+        if (!info) {
+            alert("❌ No se encontró ningún ítem con el código: " + codigo);
+            input.value = ""; input.focus();
+            return;
+        }
+
+        // Verificar stock disponible
+        const yaEnCarrito = carrito.find(p => p.item_id === info.id);
+        const totalPedido = (yaEnCarrito ? yaEnCarrito.cantidad : 0) + cantidad;
+        if (totalPedido > info.disponible) {
+            alert("⚠️ Stock insuficiente para '" + info.nombre + "'. Disponible: " + info.disponible);
+            input.value = ""; input.focus();
+            return;
+        }
+
+        if (yaEnCarrito) {
+            yaEnCarrito.cantidad += cantidad;
+        } else {
+            carrito.push({
+                item_id: info.id,
+                codigo: codigo,
+                nombre: info.nombre,
+                cantidad: cantidad,
+                disponible: info.disponible
+            });
+        }
         input.value = ""; document.getElementById('inputCantSalida').value = 1; input.focus();
         actualizarTablaVisual();
     }
@@ -1239,9 +1286,14 @@
         const cuerpo = document.getElementById('lista_pedido_cuerpo');
         cuerpo.innerHTML = "";
         carrito.forEach((prod, index) => {
-            cuerpo.innerHTML += `<tr><td><span style="font-family:monospace; background:#eee; padding:2px; font-size:0.8rem;">${prod.codigo}</span></td>
-                    <td><input type="number" value="${prod.cantidad}" min="1" onchange="carrito[${index}].cantidad=parseInt(this.value)||1" style="width:45px; padding:2px;"></td>
-                    <td><button onclick="carrito.splice(${index}, 1); actualizarTablaVisual();" type="button" class="btn-delete"><i class="fas fa-times"></i></button></td></tr>`;
+            const codigoEscapado = (prod.codigo || '').replace(/'/g, "&#39;");
+            const nombreEscapado = (prod.nombre || '').replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            cuerpo.innerHTML += `<tr>
+                <td><span style="font-family:monospace; background:#eee; padding:2px 4px; font-size:0.75rem; border-radius:3px;">${codigoEscapado}</span></td>
+                <td><strong style="font-size:0.85rem;">${nombreEscapado}</strong></td>
+                <td><input type="number" value="${prod.cantidad}" min="1" max="${prod.disponible}" onchange="carrito[${index}].cantidad=Math.min(${prod.disponible}, parseInt(this.value)||1); actualizarTablaVisual();" style="width:50px; padding:2px;"></td>
+                <td><button onclick="carrito.splice(${index}, 1); actualizarTablaVisual();" type="button" class="btn-delete" style="padding:4px 8px;"><i class="fas fa-times"></i></button></td>
+            </tr>`;
         });
     }
 
