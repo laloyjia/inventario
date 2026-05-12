@@ -364,6 +364,24 @@ class PanoleroDesignado(db.Model):
     designado_por = db.relationship('Usuario', foreign_keys=[designado_por_id], lazy=True)
 
 
+def _panoleros_dia_activos(especialidad_id):
+    """Devuelve la lista de Estudiantes activos como pañoleros del día
+    para una especialidad. Tolerante: si la tabla aún no existe, retorna []."""
+    if not especialidad_id:
+        return []
+    try:
+        designaciones = (PanoleroDesignado.query
+                         .filter_by(especialidad_id=especialidad_id, activo=True)
+                         .order_by(PanoleroDesignado.fecha_designacion.desc())
+                         .limit(MAX_PANOLEROS_DIA)
+                         .all())
+        return [d.estudiante for d in designaciones if d.estudiante is not None]
+    except Exception as e:
+        # Si la tabla no existe aún (migración pendiente), no romper la vista
+        print(f"[WARN] _panoleros_dia_activos: {e}")
+        return []
+
+
 # 11. SYNC LOG (registro de cambios para sincronización entre nodos y admin central)
 class SyncLog(db.Model):
     __tablename__ = 'sync_log'
@@ -2624,11 +2642,13 @@ def admin_buscar_items():
 # necesiten.
 # ------------------------------------------------------------------
 
+
+
 @app.route('/admin/exportar_completo')
 @login_requerido
 @admin_requerido
 def admin_exportar_completo():
-    """Exporta TODO el inventario consolidado por area (placeholder)."""
+    """Exporta TODO el inventario consolidado por area."""
     items = Item.query.order_by(Item.especialidad_id.asc(),
                                 Item.categoria.asc(), Item.nombre.asc()).all()
     df = pd.DataFrame([{
@@ -2641,7 +2661,7 @@ def admin_exportar_completo():
         'Mermada':        i.cantidad_mermada,
         'Ubicacion':      i.ubicacion,
         'Costo unitario': i.precio_unitario or 0,
-        'Desgaste $':     i.desgaste or 0,
+        'Desgaste':       i.desgaste if hasattr(i, 'desgaste') else 0,
         'Costo total':    (i.precio_unitario or 0) * (i.cantidad_total or 0),
     } for i in items])
     buf = io.BytesIO()
@@ -2657,7 +2677,7 @@ def admin_exportar_completo():
 @login_requerido
 @admin_requerido
 def admin_reporte_mermas():
-    """Reporte de mermas (placeholder). Reescribir cuando se necesite."""
+    """Reporte de mermas (placeholder)."""
     flash("Reporte de mermas: funcion en construccion.")
     return redirect(url_for('ver_inventario'))
 
