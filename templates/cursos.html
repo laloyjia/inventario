@@ -5,7 +5,8 @@
     <title>Cursos y Alumnos — PanolERP</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <style>
-        :root { --primary: #6366f1; --dark: #0f172a; --secondary: #64748b; --danger: #dc2626; }
+        :root { --primary: #6366f1; --dark: #0f172a; --secondary: #64748b;
+                --danger: #dc2626; --warn: #f59e0b; --ok: #10b981; }
         * { box-sizing: border-box; }
         body { font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 20px;
                background: #f8fafc; color: var(--dark); }
@@ -27,9 +28,15 @@
         .resumen .stat-num { font-size: 1.8rem; font-weight: 800; color: var(--primary); }
         .resumen .stat-lbl { color: var(--secondary); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; }
 
+        .flash-area { margin-bottom: 16px; }
+        .flash {
+            padding: 10px 14px; background: #ecfdf5; border-left: 4px solid var(--ok);
+            border-radius: 6px; margin-bottom: 8px; color: #065f46;
+        }
+
         .cursos-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
             gap: 16px;
         }
         .curso-card {
@@ -37,8 +44,9 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.06);
             overflow: hidden;
             border-top: 4px solid var(--primary);
+            display: flex; flex-direction: column;
         }
-        .curso-card.sin-curso { border-top-color: #f59e0b; }
+        .curso-card.sin-curso { border-top-color: var(--warn); }
         .curso-head {
             padding: 14px 16px; background: #eef2ff;
             display: flex; justify-content: space-between; align-items: center; gap: 10px;
@@ -51,15 +59,31 @@
             background: var(--primary); color: white;
             padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 700;
         }
-        .curso-card.sin-curso .badge-cant { background: #f59e0b; }
+        .curso-card.sin-curso .badge-cant { background: var(--warn); }
+
+        .curso-actions {
+            display: flex; gap: 6px; padding: 8px 14px;
+            background: #f8fafc; border-bottom: 1px solid #f1f5f9;
+            flex-wrap: wrap;
+        }
+        .btn-mini {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 5px 10px; border: none; border-radius: 5px;
+            font-size: 0.78rem; font-weight: 600; cursor: pointer;
+            text-decoration: none; color: white;
+        }
+        .btn-edit { background: #0ea5e9; }
+        .btn-del  { background: var(--danger); }
+        .btn-del:disabled, .btn-del[disabled] { background: #cbd5e1; cursor: not-allowed; }
+        .btn-assign { background: var(--warn); }
 
         .alumnos-lista {
             list-style: none; margin: 0; padding: 0;
-            max-height: 320px; overflow-y: auto;
+            max-height: 320px; overflow-y: auto; flex: 1;
         }
         .alumnos-lista li {
             display: grid;
-            grid-template-columns: 36px 1fr auto;
+            grid-template-columns: 36px 1fr auto auto;
             align-items: center; gap: 10px;
             padding: 8px 14px;
             border-bottom: 1px solid #f1f5f9;
@@ -73,16 +97,23 @@
             font-weight: 700; font-size: 0.8rem;
             text-align: center; line-height: 28px;
         }
-        .alumno-nombre { font-weight: 500; color: var(--dark); }
+        .alumno-nombre { font-weight: 500; color: var(--dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .alumno-codigo {
             font-family: monospace; font-size: 0.7rem;
             background: #f3f4f6; color: #475569;
             padding: 2px 6px; border-radius: 4px;
         }
-        .vacio {
-            padding: 24px 14px; text-align: center;
-            color: var(--secondary); font-size: 0.9rem;
+        .alumno-acciones { display: flex; gap: 4px; }
+        .btn-icon {
+            background: none; border: none; cursor: pointer;
+            padding: 4px 6px; border-radius: 4px;
+            color: var(--secondary);
         }
+        .btn-icon:hover { background: #e2e8f0; }
+        .btn-icon.del:hover { background: #fee2e2; color: var(--danger); }
+        .btn-icon.assign:hover { background: #fef3c7; color: #92400e; }
+
+        .vacio { padding: 24px 14px; text-align: center; color: var(--secondary); font-size: 0.9rem; }
         .empty-state {
             grid-column: 1 / -1;
             background: white; border-radius: 10px;
@@ -90,12 +121,63 @@
             box-shadow: 0 2px 6px rgba(0,0,0,0.05);
         }
         .empty-state i { font-size: 3rem; color: #cbd5e1; margin-bottom: 12px; }
-        .empty-state h3 { margin: 8px 0; color: var(--dark); }
-        .empty-state p { color: var(--secondary); margin: 4px 0 16px; }
         .btn-primary {
             display: inline-block; background: var(--primary); color: white;
             padding: 10px 20px; border-radius: 6px;
             text-decoration: none; font-weight: 600;
+        }
+
+        /* Bloque asignación masiva */
+        .asignar-bloque {
+            background: white; padding: 12px 14px;
+            border-top: 1px solid #fbbf24;
+        }
+        .asignar-bloque h4 { margin: 0 0 8px 0; font-size: 0.9rem; color: #92400e; }
+        .asignar-bloque .row {
+            display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+        }
+        .asignar-bloque input[type=text] {
+            flex: 1; min-width: 160px; padding: 6px 10px;
+            border: 1px solid #fbbf24; border-radius: 5px; font-size: 0.85rem;
+        }
+        .selector-bar {
+            padding: 6px 14px; background: #fffbeb;
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 0.78rem; color: #92400e;
+        }
+        .selector-bar a { color: #b45309; text-decoration: underline; cursor: pointer; font-weight: 600; }
+
+        /* Modal */
+        .modal {
+            display: none; position: fixed; z-index: 999;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.5);
+            align-items: center; justify-content: center;
+        }
+        .modal.show { display: flex; }
+        .modal-card {
+            background: white; padding: 24px; border-radius: 10px;
+            width: 90%; max-width: 420px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .modal-card h3 { margin: 0 0 16px 0; color: #3730a3; }
+        .modal-card label { display: block; font-size: 0.85rem; font-weight: 600; margin-top: 10px; color: var(--dark); }
+        .modal-card input {
+            width: 100%; padding: 8px 10px; margin-top: 4px;
+            border: 1px solid #cbd5e1; border-radius: 5px; font-size: 0.9rem;
+        }
+        .modal-actions {
+            display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;
+        }
+        .btn-modal-save {
+            background: var(--primary); color: white;
+            padding: 9px 16px; border: none; border-radius: 5px;
+            font-weight: 600; cursor: pointer;
+        }
+        .btn-modal-cancel {
+            background: #e2e8f0; color: var(--dark);
+            padding: 9px 16px; border: none; border-radius: 5px;
+            font-weight: 600; cursor: pointer;
         }
     </style>
 </head>
@@ -104,6 +186,12 @@
 <div class="header">
     <h1><i class="fas fa-user-graduate"></i> Cursos y Alumnos</h1>
     <a href="/inventario" class="btn-volver"><i class="fas fa-arrow-left"></i> Volver al pañol</a>
+</div>
+
+<div class="flash-area">
+    {% with msgs = get_flashed_messages() %}
+        {% for m in msgs %}<div class="flash">{{ m }}</div>{% endfor %}
+    {% endwith %}
 </div>
 
 <div class="resumen">
@@ -133,16 +221,45 @@
             </div>
             <span class="badge-cant">{{ curso.total_alumnos }} alumno{% if curso.total_alumnos != 1 %}s{% endif %}</span>
         </div>
+
+        <div class="curso-actions">
+            <button class="btn-mini btn-edit" type="button"
+                    onclick="abrirEditarCurso({{ curso.id }}, '{{ curso.nombre | replace("'", "\\'") }}', '{{ curso.nivel or '' }}', '{{ curso.letra or '' }}', '{{ curso.anio or '' }}')">
+                <i class="fas fa-pencil-alt"></i> Editar curso
+            </button>
+            <form action="/curso/eliminar/{{ curso.id }}" method="POST"
+                  onsubmit="return confirm('¿Eliminar el curso «{{ curso.nombre }}»? Solo se puede si no tiene alumnos.');"
+                  style="display:inline; margin:0;">
+                <button class="btn-mini btn-del" type="submit"
+                        {% if curso.total_alumnos > 0 %}disabled title="Tiene alumnos asignados — no se puede eliminar"{% endif %}>
+                    <i class="fas fa-trash"></i> Eliminar curso
+                </button>
+            </form>
+        </div>
+
         {% if curso.alumnos %}
         <ul class="alumnos-lista">
             {% for est in curso.alumnos | sort(attribute='numero_lista') %}
             {% if est.activo %}
             <li>
                 <span class="alumno-num">{{ est.numero_lista if est.numero_lista is not none else '—' }}</span>
-                <div class="alumno-nombre">{{ est.nombre }}</div>
+                <div class="alumno-nombre" title="{{ est.nombre }}">{{ est.nombre }}</div>
                 {% if est.codigo_barras %}
                 <span class="alumno-codigo">{{ est.codigo_barras }}</span>
-                {% endif %}
+                {% else %}<span></span>{% endif %}
+                <div class="alumno-acciones">
+                    <button class="btn-icon" type="button" title="Editar alumno"
+                            onclick="abrirEditarAlumno({{ est.id }}, '{{ est.nombre | replace("'", "\\'") }}', '{{ est.numero_lista or '' }}', '{{ curso.nombre | replace("'", "\\'") }}')">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>
+                    <a class="btn-icon" href="/etiqueta_alumno/{{ est.id }}" target="_blank" title="Carnet">
+                        <i class="fas fa-id-card"></i>
+                    </a>
+                    <form action="/eliminar_estudiante/{{ est.id }}" method="POST"
+                          onsubmit="return confirm('¿Dar de baja a {{ est.nombre }}?');" style="display:inline; margin:0;">
+                        <button class="btn-icon del" type="submit" title="Dar de baja"><i class="fas fa-trash"></i></button>
+                    </form>
+                </div>
             </li>
             {% endif %}
             {% endfor %}
@@ -162,17 +279,47 @@
             </div>
             <span class="badge-cant">{{ alumnos_sin_curso | length }}</span>
         </div>
-        <ul class="alumnos-lista">
-            {% for est in alumnos_sin_curso %}
-            <li>
-                <span class="alumno-num">{{ est.numero_lista if est.numero_lista is not none else '—' }}</span>
-                <div class="alumno-nombre">{{ est.nombre }}</div>
-                {% if est.codigo_barras %}
-                <span class="alumno-codigo">{{ est.codigo_barras }}</span>
-                {% endif %}
-            </li>
-            {% endfor %}
-        </ul>
+
+        <form id="formAsignarMasivo" action="/curso/asignar_alumnos" method="POST">
+            <div class="selector-bar">
+                <span><input type="checkbox" id="selectAllSin" onchange="toggleSeleccionarTodos(this)"> Seleccionar todos</span>
+                <span><span id="contadorSel">0</span> seleccionado(s)</span>
+            </div>
+
+            <ul class="alumnos-lista">
+                {% for est in alumnos_sin_curso %}
+                <li>
+                    <span class="alumno-num">
+                        <input type="checkbox" name="alumno_ids" value="{{ est.id }}" class="chk-alumno" onchange="actualizarContador()">
+                    </span>
+                    <div class="alumno-nombre" title="{{ est.nombre }}">{{ est.nombre }}</div>
+                    {% if est.codigo_barras %}<span class="alumno-codigo">{{ est.codigo_barras }}</span>{% else %}<span></span>{% endif %}
+                    <div class="alumno-acciones">
+                        <button class="btn-icon" type="button" title="Editar alumno"
+                                onclick="abrirEditarAlumno({{ est.id }}, '{{ est.nombre | replace("'", "\\'") }}', '{{ est.numero_lista or '' }}', '')">
+                            <i class="fas fa-pencil-alt"></i>
+                        </button>
+                        <a class="btn-icon" href="/etiqueta_alumno/{{ est.id }}" target="_blank" title="Carnet"><i class="fas fa-id-card"></i></a>
+                        <form action="/eliminar_estudiante/{{ est.id }}" method="POST"
+                              onsubmit="event.stopPropagation(); return confirm('¿Dar de baja a {{ est.nombre }}?');" style="display:inline; margin:0;">
+                            <button class="btn-icon del" type="submit" title="Dar de baja"><i class="fas fa-trash"></i></button>
+                        </form>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+
+            <div class="asignar-bloque">
+                <h4><i class="fas fa-arrow-right"></i> Asignar seleccionados a un curso</h4>
+                <div class="row">
+                    <input type="text" name="curso_destino" required placeholder="Ej: 3°A Electrónica" list="cursos_lista">
+                    <datalist id="cursos_lista">
+                        {% for c in cursos %}<option value="{{ c.nombre }}"></option>{% endfor %}
+                    </datalist>
+                    <button class="btn-mini btn-assign" type="submit"><i class="fas fa-check"></i> Asignar</button>
+                </div>
+            </div>
+        </form>
     </div>
     {% endif %}
 
@@ -185,6 +332,92 @@
     <a href="/inventario" class="btn-primary"><i class="fas fa-upload"></i> Ir a cargar alumnos</a>
 </div>
 {% endif %}
+
+
+<!-- Modal: editar curso -->
+<div class="modal" id="modalEditarCurso">
+    <div class="modal-card">
+        <h3><i class="fas fa-pencil-alt"></i> Editar curso</h3>
+        <form id="formEditarCurso" method="POST">
+            <label>Nombre del curso</label>
+            <input type="text" name="nombre" id="edit_curso_nombre" required>
+            <label>Nivel (ej: 3° Medio)</label>
+            <input type="text" name="nivel" id="edit_curso_nivel">
+            <label>Letra</label>
+            <input type="text" name="letra" id="edit_curso_letra" maxlength="3">
+            <label>Año lectivo</label>
+            <input type="number" name="anio" id="edit_curso_anio" min="2000" max="2099">
+            <div class="modal-actions">
+                <button type="button" class="btn-modal-cancel" onclick="cerrarModal('modalEditarCurso')">Cancelar</button>
+                <button type="submit" class="btn-modal-save"><i class="fas fa-save"></i> Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: editar alumno -->
+<div class="modal" id="modalEditarAlumno">
+    <div class="modal-card">
+        <h3><i class="fas fa-user-edit"></i> Editar alumno</h3>
+        <form id="formEditarAlumno" method="POST">
+            <label>Nombre completo</label>
+            <input type="text" name="nombre" id="edit_alumno_nombre" required>
+            <label>N° de lista</label>
+            <input type="number" name="numero_lista" id="edit_alumno_nlista" min="1">
+            <label>Curso (deja vacío para no cambiar)</label>
+            <input type="text" name="curso_destino" id="edit_alumno_curso" list="cursos_lista_2">
+            <datalist id="cursos_lista_2">
+                {% for c in cursos %}<option value="{{ c.nombre }}"></option>{% endfor %}
+            </datalist>
+            <label style="font-weight:normal; font-size:0.85rem;">
+                <input type="checkbox" name="activo" value="1" id="edit_alumno_activo" checked>
+                Alumno activo
+            </label>
+            <div class="modal-actions">
+                <button type="button" class="btn-modal-cancel" onclick="cerrarModal('modalEditarAlumno')">Cancelar</button>
+                <button type="submit" class="btn-modal-save"><i class="fas fa-save"></i> Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function abrirEditarCurso(id, nombre, nivel, letra, anio) {
+        const f = document.getElementById('formEditarCurso');
+        f.action = '/curso/editar/' + id;
+        document.getElementById('edit_curso_nombre').value = nombre || '';
+        document.getElementById('edit_curso_nivel').value = nivel || '';
+        document.getElementById('edit_curso_letra').value = letra || '';
+        document.getElementById('edit_curso_anio').value = anio || '';
+        document.getElementById('modalEditarCurso').classList.add('show');
+    }
+    function abrirEditarAlumno(id, nombre, nlista, curso) {
+        const f = document.getElementById('formEditarAlumno');
+        f.action = '/editar_alumno/' + id;
+        document.getElementById('edit_alumno_nombre').value = nombre || '';
+        document.getElementById('edit_alumno_nlista').value = nlista || '';
+        document.getElementById('edit_alumno_curso').value = (curso === '—' || !curso) ? '' : curso;
+        document.getElementById('edit_alumno_activo').checked = true;
+        document.getElementById('modalEditarAlumno').classList.add('show');
+    }
+    function cerrarModal(id) {
+        document.getElementById(id).classList.remove('show');
+    }
+    document.querySelectorAll('.modal').forEach(m => {
+        m.addEventListener('click', e => { if (e.target === m) m.classList.remove('show'); });
+    });
+
+    // Selección masiva
+    function toggleSeleccionarTodos(cb) {
+        document.querySelectorAll('.chk-alumno').forEach(c => c.checked = cb.checked);
+        actualizarContador();
+    }
+    function actualizarContador() {
+        const n = document.querySelectorAll('.chk-alumno:checked').length;
+        const el = document.getElementById('contadorSel');
+        if (el) el.textContent = n;
+    }
+</script>
 
 </body>
 </html>

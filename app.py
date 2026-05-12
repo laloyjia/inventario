@@ -1805,6 +1805,120 @@ def procesar_hoja_vida():
     flash(f"✅ {procesados} préstamo(s) procesado(s).")
     return redirect(url_for('ver_inventario'))
 
+def _validar_acceso_curso(curso):
+    """True si el usuario logueado puede manipular este curso."""
+    if session.get('usuario_rol') == 'Admin':
+        return True
+    return curso.especialidad_id == session.get('usuario_especialidad_id')
+
+
+@app.route('/curso/editar/<int:curso_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def editar_curso(curso_id):
+    """Cambia nombre, nivel, letra o año del curso."""
+    c = Curso.query.get_or_404(curso_id)
+    if not _validar_acceso_curso(c):
+        flash("❌ Sin permiso para editar este curso.")
+        return redirect(url_for('ver_cursos'))
+    nuevo_nombre = (request.form.get('nombre') or '').strip()
+    if nuevo_nombre and nuevo_nombre != c.nombre:
+        existe = Curso.query.filter_by(nombre=nuevo_nombre,
+                                       especialidad_id=c.especialidad_id).first()
+        if existe and existe.id != c.id:
+            flash(f"⚠️ Ya existe un curso llamado «{nuevo_nombre}» en tu pañol.")
+            return redirect(url_for('ver_cursos'))
+        c.nombre = nuevo_nombre
+    nivel = (request.form.get('nivel') or '').strip()
+    if nivel != '':
+        c.nivel = nivel or None
+    letra = (request.form.get('letra') or '').strip()
+    if letra != '':
+        c.letra = (letra or None) and letra.upper()[:5]
+    anio_raw = (request.form.get('anio') or '').strip()
+    if anio_raw:
+        try:
+            c.anio = int(anio_raw)
+        except ValueError:
+            pass
+    db.session.commit()
+    registrar_auditoria('actualizar', 'Curso', c.id,
+                        valores_nuevos={'nombre': c.nombre, 'nivel': c.nivel,
+                                        'letra': c.letra, 'anio': c.anio})
+    flash(f"✅ Curso «{c.nombre}» actualizado.")
+    return redirect(url_for('ver_cursos'))
+
+
+@app.route('/curso/eliminar/<int:curso_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def eliminar_curso(curso_id):
+    """Elimina un curso. Solo se puede borrar si NO tiene alumnos activos asociados."""
+    c = Curso.query.get_or_404(curso_id)
+    if not _validar_acceso_curso(c):
+        flash("❌ Sin permiso para eliminar este curso.")
+        return redirect(url_for('ver_cursos'))
+    alumnos_activos = Estudiante.query.filter_by(curso_id=c.id, activo=True).count()
+    if alumnos_activos > 0:
+        flash(f"⚠️ El curso «{c.nombre}» tiene {alumnos_activos} alumno(s). "
+              f"Reasigna o elimina los alumnos antes de borrar el curso.")
+        return redirect(url_for('ver_cursos'))
+    nombre = c.nombre
+    # Soft delete: marcar inactivo (mantiene historial si alguien tenía referencias)
+    c.activo = False
+    db.session.commit()
+    registrar_auditoria('eliminar', 'Curso', c.id, valores_anteriores={'nombre': nombre})
+    flash(f"✅ Curso «{nombre}» eliminado.")
+    return redirect(url_for('ver_cursos'))
+
+
+@app.route('/curso/asignar_alumnos', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def asignar_alumnos_a_curso():
+    """Asigna varios alumnos sin curso a un curso destino (creándolo si no existe)."""
+    especialidad_id = session.get('usuario_especialidad_id')
+    if not especialidad_id and session.get('usuario_rol') != 'Admin':
+        flash("❌ Cuenta sin especialidad.")
+        return redirect(url_for('ver_cursos'))
+
+    nombre_curso = (request.form.get('curso_destino') or '').strip()
+    alumno_ids = request.form.getlist('alumno_ids')
+    if not nombre_curso or not alumno_ids:
+        flash("❌ Debes elegir un curso y al menos un alumno.")
+        return redirect(url_for('ver_cursos'))
+
+    # Get-or-create curso
+    c = Curso.query.filter_by(nombre=nombre_curso, especialidad_id=especialidad_id).first()
+    if not c:
+        import re
+        m = re.match(r'^\s*(\d+)\s*[°º]?\s*([A-Za-z])?', nombre_curso)
+        nivel = f"{m.group(1)}° Medio" if (m and m.group(1)) else None
+        letra = m.group(2).upper() if (m and m.group(2)) else None
+        c = Curso(nombre=nombre_curso, nivel=nivel, letra=letra,
+                  anio=datetime.now().year,
+                  especialidad_id=especialidad_id, activo=True)
+        db.session.add(c)
+        db.session.flush()
+
+    asignados = 0
+    for aid in alumno_ids:
+        try:
+            est = Estudiante.query.get(int(aid))
+        except (ValueError, TypeError):
+            continue
+        if not est:
+            continue
+        if session.get('usuario_rol') != 'Admin' and est.especialidad_id != especialidad_id:
+            continue
+        est.curso_id = c.id
+        est.curso = nombre_curso
+        asignados += 1
+    db.session.commit()
+    flash(f"✅ {asignados} alumno(s) asignado(s) al curso «{nombre_curso}».")
+    return redirect(url_for('ver_cursos'))
+
+
 @app.route('/cursos')
 @login_requerido
 def ver_cursos():
@@ -2656,74 +2770,13 @@ def _upsert_prestamo(nodo, p, accion):
     pres.fecha_devolucion_esperada = _to_dt(p.get('fecha_devolucion_esperada'))
 
 
-def _upsert_prestamo_externo(nodo, p, accion):
-    marker = f"[{nodo}#{p.get('id')}]"
-    pe = PrestamoExterno.query.filter(PrestamoExterno.encargado.like(f"{marker}%")).first()
-    if not pe:
-        pe = PrestamoExterno(item_id=p.get('item_id') or 0,
-                             especialidad_id=p.get('especialidad_id') or 0,
-                             cantidad=p.get('cantidad') or 1,
-                             persona_retira=p.get('persona_retira') or '',
-                             encargado=f"{marker} {p.get('encargado') or ''}")
-        db.session.add(pe)
-    for k in ('cantidad', 'es_alumno', 'persona_retira', 'profesor_cargo',
-              'especialidad_destino', 'estado', 'tipo_movimiento'):
-        if k in p:
-            setattr(pe, k, p[k])
-    pe.fecha_prestamo = _to_dt(p.get('fecha_prestamo')) or pe.fecha_prestamo
-    pe.fecha_devolucion = _to_dt(p.get('fecha_devolucion'))
-
-
-def _upsert_orden_trabajo(nodo, p, accion):
-    marker = f"[{nodo}#{p.get('id')}]"
-    ot = OrdenTrabajo.query.filter(OrdenTrabajo.titulo.like(f"{marker}%")).first()
-    if not ot:
-        ot = OrdenTrabajo(titulo=f"{marker} {p.get('titulo') or ''}",
-                          especialidad_id=p.get('especialidad_id') or 0,
-                          profesional_cargo=p.get('profesional_cargo') or '',
-                          profesor_id=p.get('profesor_id') or 0)
-        db.session.add(ot)
-    for k in ('descripcion', 'alumnos_cargo', 'herramientas_utilizadas',
-              'repuestos_utilizados', 'estado'):
-        if k in p:
-            setattr(ot, k, p[k])
-
-
-@app.route('/api/sync/status')
-def api_sync_status():
-    """Estado del sistema de sync. Útil para que un nodo sepa si el admin está vivo."""
-    if not _verificar_token_sync():
-        return jsonify({'error': 'Token inválido'}), 401
-    info = {
-        'es_admin_central': ES_ADMIN_CENTRAL,
-        'nodo_id': NODO_ID,
-        'fecha_servidor': datetime.utcnow().isoformat(),
-    }
-    if ES_ADMIN_CENTRAL:
-        info['cambios_recibidos'] = SyncLog.query.filter_by(push_status='aplicado').count()
-    else:
-        info['cambios_pendientes'] = SyncLog.query.filter_by(push_status='pendiente').count()
-        info['cambios_enviados'] = SyncLog.query.filter_by(push_status='enviado').count()
-        info['cambios_error'] = SyncLog.query.filter_by(push_status='error').count()
-    return jsonify(info)
-
-
-# Alias para mantener compatibilidad con la plantilla
-@app.route('/exportar_inventario')
-@login_requerido
-def exportar_inventario():
-    return exportar_excel()
-
-
-
 @app.route('/admin/reporte_mermas')
 @login_requerido
 @admin_requerido
 def admin_reporte_mermas():
-    """Reporte de mermas (placeholder). Reescribir cuando se necesite."""
+    """Reporte de mermas (placeholder)."""
     flash("Reporte de mermas: funcion en construccion.")
     return redirect(url_for('ver_inventario'))
-
 
 
 @app.route('/admin/exportar_completo')
