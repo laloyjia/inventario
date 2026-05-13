@@ -402,8 +402,10 @@ class PanoleroDesignado(db.Model):
 
 
 def _panoleros_dia_activos(especialidad_id):
-    """Devuelve la lista de Estudiantes activos como pañoleros del día
-    para una especialidad. Tolerante: si la tabla aún no existe, retorna []."""
+    """Devuelve las designaciones activas (objetos PanoleroDesignado COMPLETOS,
+    no solo Estudiantes) para una especialidad. El template usa pd.estudiante.nombre
+    y pd.id (para el form de quitar), así que necesita el PanoleroDesignado.
+    Tolerante: si la tabla aún no existe, retorna []."""
     if not especialidad_id:
         return []
     try:
@@ -412,9 +414,9 @@ def _panoleros_dia_activos(especialidad_id):
                          .order_by(PanoleroDesignado.fecha_designacion.desc())
                          .limit(MAX_PANOLEROS_DIA)
                          .all())
-        return [d.estudiante for d in designaciones if d.estudiante is not None]
+        # Filtrar designaciones cuyo estudiante fue borrado (FK rota) para no romper la vista
+        return [d for d in designaciones if d.estudiante is not None]
     except Exception as e:
-        # Si la tabla no existe aún (migración pendiente), no romper la vista
         print(f"[WARN] _panoleros_dia_activos: {e}")
         return []
 
