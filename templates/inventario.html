@@ -1192,9 +1192,25 @@
                 {% endif %}
             </select>
             <label>3. Estudiante Solicitante <span style="color:red;">*</span></label>
+            <div style="margin-bottom: 6px; display:flex; gap:6px; align-items:center;">
+                <i class="fas fa-barcode" style="color:#6366f1;"></i>
+                <input type="text" id="scan_alumno_modal" placeholder="🔍 Escanear código o digitar RUT del alumno..."
+                       onkeypress="if(event.key==='Enter'){event.preventDefault(); buscarAlumnoPorCodigo();}"
+                       onblur="buscarAlumnoPorCodigo()"
+                       style="flex:1; padding:8px; border:2px dashed #6366f1; background:#eef2ff; font-family:monospace;">
+                <button type="button" onclick="buscarAlumnoPorCodigo()" class="btn-add" style="background:#6366f1; padding:8px 12px;" title="Buscar">
+                    <i class="fas fa-search"></i>
+                </button>
+            </div>
+            <small style="color:#6b7280; display:block; margin-bottom:4px;">— o selecciónalo de la lista —</small>
             <select id="estudiante_id_modal" required onchange="mostrarInfoEstudiante()">
                 <option value="" disabled selected>-- Seleccione al Estudiante --</option>
-                {% for est in estudiantes %}<option value="{{ est.id }}" class="opt-alumno" data-curso="{{ est.curso_display }}" data-nombre="{{ est.nombre }}" data-rut="{{ est.rut_matricula }}" data-numlista="{{ est.numero_lista or '' }}">{% if est.numero_lista %}N°{{ est.numero_lista }} · {% endif %}{{ est.nombre }}{% if est.curso_display and est.curso_display != '—' %} · {{ est.curso_display }}{% endif %}</option>{% endfor %}
+                {% for est in estudiantes %}<option value="{{ est.id }}" class="opt-alumno"
+                    data-curso="{{ est.curso_display }}"
+                    data-nombre="{{ est.nombre }}"
+                    data-rut="{{ est.rut_matricula }}"
+                    data-codigo="{{ est.codigo_barras or '' }}"
+                    data-numlista="{{ est.numero_lista or '' }}">{% if est.numero_lista %}N°{{ est.numero_lista }} · {% endif %}{{ est.nombre }}{% if est.curso_display and est.curso_display != '—' %} · {{ est.curso_display }}{% endif %}</option>{% endfor %}
             </select>
             <div id="info_estudiante_sel" style="display:none; margin-top:8px; padding:10px; background:#ecfdf5; border:1px solid #10b981; border-radius:6px; font-size:0.9rem;">
                 <i class="fas fa-user-check" style="color:#047857;"></i>
@@ -1484,6 +1500,42 @@
         info.style.display = 'block';
     }
 
+    // Buscar alumno por código de barras o RUT (case-insensitive, trim)
+    function buscarAlumnoPorCodigo() {
+        const input = document.getElementById('scan_alumno_modal');
+        if (!input) return;
+        const raw = (input.value || '').trim();
+        if (!raw) return;
+        const norm = raw.toLowerCase();
+        const sel = document.getElementById('estudiante_id_modal');
+        let matched = null;
+        for (let i = 0; i < sel.options.length; i++) {
+            const o = sel.options[i];
+            if (!o.value) continue;
+            const codigo = (o.getAttribute('data-codigo') || '').toLowerCase().trim();
+            const rut = (o.getAttribute('data-rut') || '').toLowerCase().trim();
+            if (codigo && codigo === norm) { matched = o; break; }
+            if (rut === norm) { matched = o; break; }
+        }
+        if (!matched) {
+            alert("❌ No se encontró ningún alumno con código/RUT: " + raw);
+            input.value = "";
+            input.focus();
+            return;
+        }
+        // Si hay filtro de curso activo y el alumno no coincide, resetearlo a TODOS
+        const filtro = document.getElementById('curso_salida');
+        if (filtro && filtro.value !== 'ALL' &&
+            filtro.value !== matched.getAttribute('data-curso')) {
+            filtro.value = 'ALL';
+            // Mostrar todos otra vez (no llamamos a filtrarAlumnosModalSalida porque borra el value)
+            document.querySelectorAll('.opt-alumno').forEach(o => o.style.display = '');
+        }
+        sel.value = matched.value;
+        mostrarInfoEstudiante();
+        input.value = "";
+    }
+
     function filtrarTabla(inputId, tablaId) {
         let input = document.getElementById(inputId).value.toLowerCase();
         let tr = document.getElementById(tablaId).getElementsByTagName("tr");
@@ -1636,8 +1688,23 @@
         }
     }
 
-    function abrirModalSalida() { document.getElementById('modalSalida').style.display = 'block'; setTimeout(() => document.getElementById('inputScanSalida').focus(), 100); }
-    function cerrarModalSalida() { document.getElementById('modalSalida').style.display = 'none'; carrito = []; document.getElementById('inputCantSalida').value = 1; actualizarTablaVisual(); }
+    function abrirModalSalida() {
+        document.getElementById('modalSalida').style.display = 'block';
+        // Foco prioritario en el escáner de alumno
+        const scanAl = document.getElementById('scan_alumno_modal');
+        setTimeout(() => (scanAl || document.getElementById('inputScanSalida')).focus(), 100);
+    }
+    function cerrarModalSalida() {
+        document.getElementById('modalSalida').style.display = 'none';
+        carrito = [];
+        document.getElementById('inputCantSalida').value = 1;
+        // Limpiar campo de scan alumno e info verde
+        const scanAl = document.getElementById('scan_alumno_modal');
+        if (scanAl) scanAl.value = '';
+        const info = document.getElementById('info_estudiante_sel');
+        if (info) info.style.display = 'none';
+        actualizarTablaVisual();
+    }
     function manejarEnterScan(e) { if (e.key === 'Enter') { e.preventDefault(); agregarAlPedido(); } }
 
     function agregarAlPedido() {
