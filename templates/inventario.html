@@ -1174,13 +1174,38 @@
             </select>
             <label>2. Filtro de Curso</label>
             <select id="curso_salida" onchange="filtrarAlumnosModalSalida()" style="margin-bottom: 10px;">
-                <option value="ALL">Mostrar Todos los Cursos</option>
+                <option value="ALL">📚 Mostrar Todos los Cursos</option>
+                {% if cursos_a_cargo %}
+                <optgroup label="── Cursos a mi cargo ──">
+                    {% for c in cursos_a_cargo %}
+                    <option value="{{ c.nombre }}">⭐ {{ c.nombre }} ({{ c.total_alumnos }} alumnos)</option>
+                    {% endfor %}
+                </optgroup>
+                {% endif %}
+                {% set cursos_otros = cursos_disponibles | rejectattr('a_cargo') | list %}
+                {% if cursos_otros %}
+                <optgroup label="── Otros cursos de mi área ──">
+                    {% for c in cursos_otros %}
+                    <option value="{{ c.nombre }}">{{ c.nombre }} ({{ c.total_alumnos }} alumnos)</option>
+                    {% endfor %}
+                </optgroup>
+                {% endif %}
             </select>
             <label>3. Estudiante Solicitante <span style="color:red;">*</span></label>
-            <select id="estudiante_id_modal" required>
+            <select id="estudiante_id_modal" required onchange="mostrarInfoEstudiante()">
                 <option value="" disabled selected>-- Seleccione al Estudiante --</option>
-                {% for est in estudiantes %}<option value="{{ est.id }}" class="opt-alumno" data-curso="{{ est.curso_display }}">{{ est.etiqueta_display }}</option>{% endfor %}
+                {% for est in estudiantes %}<option value="{{ est.id }}" class="opt-alumno" data-curso="{{ est.curso_display }}" data-nombre="{{ est.nombre }}" data-rut="{{ est.rut_matricula }}" data-numlista="{{ est.numero_lista or '' }}">{% if est.numero_lista %}N°{{ est.numero_lista }} · {% endif %}{{ est.nombre }}{% if est.curso_display and est.curso_display != '—' %} · {{ est.curso_display }}{% endif %}</option>{% endfor %}
             </select>
+            <div id="info_estudiante_sel" style="display:none; margin-top:8px; padding:10px; background:#ecfdf5; border:1px solid #10b981; border-radius:6px; font-size:0.9rem;">
+                <i class="fas fa-user-check" style="color:#047857;"></i>
+                <strong>Le estás entregando a:</strong>
+                <span id="info_est_nombre" style="color:#065f46; font-weight:600;"></span>
+                <br><span style="font-size:0.8rem; color:#047857;">
+                    RUT: <span id="info_est_rut"></span> ·
+                    Curso: <strong id="info_est_curso"></strong>
+                    <span id="info_est_numlista_wrap" style="display:none;">· N° lista: <strong id="info_est_numlista"></strong></span>
+                </span>
+            </div>
         </div>
         <div style="border: 1px dashed var(--secondary); padding: 10px; border-radius: 6px; margin-bottom: 15px;">
             <label>Pistolear Código y Cantidad</label>
@@ -1434,6 +1459,29 @@
             opt.style.display = (c === "ALL" || opt.getAttribute('data-curso') === c) ? "" : "none";
         });
         document.getElementById('estudiante_id_modal').value = "";
+        // Ocultar info de estudiante previo al cambiar filtro
+        const info = document.getElementById('info_estudiante_sel');
+        if (info) info.style.display = 'none';
+    }
+
+    // Cuando se selecciona un estudiante en el modal de Salida, mostrar su info en una tarjeta
+    function mostrarInfoEstudiante() {
+        const sel = document.getElementById('estudiante_id_modal');
+        const opt = sel.options[sel.selectedIndex];
+        const info = document.getElementById('info_estudiante_sel');
+        if (!opt || !opt.value) { info.style.display = 'none'; return; }
+        document.getElementById('info_est_nombre').textContent  = opt.getAttribute('data-nombre') || '';
+        document.getElementById('info_est_rut').textContent     = opt.getAttribute('data-rut') || '—';
+        document.getElementById('info_est_curso').textContent   = opt.getAttribute('data-curso') || '—';
+        const numLista = opt.getAttribute('data-numlista');
+        const wrap = document.getElementById('info_est_numlista_wrap');
+        if (numLista && numLista.trim()) {
+            document.getElementById('info_est_numlista').textContent = numLista;
+            wrap.style.display = 'inline';
+        } else {
+            wrap.style.display = 'none';
+        }
+        info.style.display = 'block';
     }
 
     function filtrarTabla(inputId, tablaId) {
