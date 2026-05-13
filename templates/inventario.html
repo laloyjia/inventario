@@ -182,9 +182,11 @@
             <button onclick="abrirModalDevolucion()" class="action-btn action-btn-warning"><i class="fas fa-arrow-circle-down"></i> Devolver Cosas</button>
         </div>
 
+        {# ===== GRID: CURSOS A CARGO + PAÑOLEROS DEL DÍA ===== #}
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; margin-bottom: 20px;">
         {# ===== CARD: CURSOS A CARGO DEL PAÑOL ===== #}
         {% if session['usuario_rol'] in ['Pañolero', 'Admin'] %}
-        <div class="card" style="border-left: 4px solid #6366f1; margin-bottom: 20px;">
+        <div class="card" style="border-left: 4px solid #6366f1;">
             <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
                 <i class="fas fa-chalkboard-teacher"></i> Mis Cursos a Cargo
                 <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
@@ -261,43 +263,9 @@
         </div>
         {% endif %}
 
-        {# ===== CARD: ALUMNOS VISITANTES (de otras especialidades) ===== #}
-        {% if session['usuario_rol'] in ['Pañolero', 'Admin'] and alumnos_visitantes %}
-        <div class="card" style="border-left: 4px solid #14b8a6; margin-bottom: 20px;">
-            <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
-                <i class="fas fa-user-friends"></i> Alumnos Visitantes
-                <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
-                    ({{ alumnos_visitantes|length }})
-                </span>
-            </h2>
-            <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 12px 0;">
-                Alumnos de otras especialidades que han hecho préstamos en este pañol. Se actualiza automáticamente con cada préstamo.
-            </p>
-            <div class="table-responsive" style="max-height: 220px; overflow-y: auto;">
-                <table style="font-size:0.85rem;">
-                    <thead style="background:#f0fdfa;"><tr>
-                        <th>Alumno</th><th>RUT</th><th>Curso / Especialidad</th>
-                        <th style="text-align:center;">Préstamos</th><th>Última visita</th>
-                    </tr></thead>
-                    <tbody>
-                        {% for v in alumnos_visitantes %}
-                        <tr>
-                            <td><strong>{{ v.estudiante.nombre }}</strong></td>
-                            <td style="font-family:monospace; font-size:0.8rem;">{{ v.estudiante.rut_matricula }}</td>
-                            <td>{{ v.estudiante.curso_display }} · <span style="color:#0f766e;">{{ v.estudiante.especialidad.nombre if v.estudiante.especialidad else '—' }}</span></td>
-                            <td style="text-align:center; font-weight:bold; color:#0f766e;">{{ v.num_prestamos }}</td>
-                            <td style="font-size:0.8rem; color:#6b7280;">{{ v.ultima_fecha.strftime('%d-%m-%Y %H:%M') if v.ultima_fecha else '—' }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        {% endif %}
-
         {# ===== CARD: PAÑOLEROS DEL DÍA ===== #}
         {% if session['usuario_rol'] in ['Pañolero', 'Admin'] %}
-        <div class="card" style="border-left: 4px solid #f59e0b; margin-bottom: 20px;">
+        <div class="card" style="border-left: 4px solid #f59e0b;">
             <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
                 <i class="fas fa-user-shield"></i> Pañoleros del Día designados
                 <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
@@ -359,6 +327,41 @@
                 </button>
             </form>
             {% endif %}
+        </div>
+        {% endif %}
+        </div>
+
+        {# ===== CARD: ALUMNOS VISITANTES (de otras especialidades) ===== #}
+        {% if session['usuario_rol'] in ['Pañolero', 'Admin'] and alumnos_visitantes %}
+        <div class="card" style="border-left: 4px solid #14b8a6; margin-bottom: 20px;">
+            <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
+                <i class="fas fa-user-friends"></i> Alumnos Visitantes
+                <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
+                    ({{ alumnos_visitantes|length }})
+                </span>
+            </h2>
+            <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 12px 0;">
+                Alumnos de otras especialidades que han hecho préstamos en este pañol. Se actualiza automáticamente con cada préstamo.
+            </p>
+            <div class="table-responsive" style="max-height: 220px; overflow-y: auto;">
+                <table style="font-size:0.85rem;">
+                    <thead style="background:#f0fdfa;"><tr>
+                        <th>Alumno</th><th>RUT</th><th>Curso / Especialidad</th>
+                        <th style="text-align:center;">Préstamos</th><th>Última visita</th>
+                    </tr></thead>
+                    <tbody>
+                        {% for v in alumnos_visitantes %}
+                        <tr>
+                            <td><strong>{{ v.estudiante.nombre }}</strong></td>
+                            <td style="font-family:monospace; font-size:0.8rem;">{{ v.estudiante.rut_matricula }}</td>
+                            <td>{{ v.estudiante.curso_display }} · <span style="color:#0f766e;">{{ v.estudiante.especialidad.nombre if v.estudiante.especialidad else '—' }}</span></td>
+                            <td style="text-align:center; font-weight:bold; color:#0f766e;">{{ v.num_prestamos }}</td>
+                            <td style="font-size:0.8rem; color:#6b7280;">{{ v.ultima_fecha.strftime('%d-%m-%Y %H:%M') if v.ultima_fecha else '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
         {% endif %}
 
