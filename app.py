@@ -2925,6 +2925,134 @@ def admin_exportar_completo():
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
+
+@app.route('/exportar_inventario')
+@login_requerido
+def exportar_inventario():
+    """Alias de /exportar_excel para mantener compatibilidad con la plantilla."""
+    return exportar_excel()
+
+
+@app.route('/panoleros_dia/agregar', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def panoleros_dia_agregar():
+    """Designa un estudiante como panolero del dia. Maximo MAX_PANOLEROS_DIA por especialidad."""
+    especialidad_id = session.get('usuario_especialidad_id')
+    if not especialidad_id:
+        flash("Cuenta sin especialidad.")
+        return redirect(url_for('ver_inventario'))
+    estudiante_id = request.form.get('estudiante_id', type=int)
+    if not estudiante_id:
+        flash("Selecciona un estudiante.")
+        return redirect(url_for('ver_inventario'))
+    activos = PanoleroDesignado.query.filter_by(
+        especialidad_id=especialidad_id, activo=True).count()
+    if activos >= MAX_PANOLEROS_DIA:
+        flash(f"Ya hay {MAX_PANOLEROS_DIA} panoleros del dia activos. Quita alguno antes.")
+        return redirect(url_for('ver_inventario'))
+    existe = PanoleroDesignado.query.filter_by(
+        estudiante_id=estudiante_id, especialidad_id=especialidad_id, activo=True).first()
+    if existe:
+        flash("Ese estudiante ya esta designado.")
+        return redirect(url_for('ver_inventario'))
+    nuevo = PanoleroDesignado(
+        estudiante_id=estudiante_id,
+        especialidad_id=especialidad_id,
+        designado_por_id=session.get('usuario_id'),
+        activo=True)
+    db.session.add(nuevo)
+    db.session.commit()
+    flash("Panolero del dia agregado.")
+    return redirect(url_for('ver_inventario'))
+
+
+@app.route('/panoleros_dia/quitar/<int:pd_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def panoleros_dia_quitar(pd_id):
+    """Da de baja a un panolero del dia."""
+    pd = PanoleroDesignado.query.get_or_404(pd_id)
+    if session.get('usuario_rol') != 'Admin' and pd.especialidad_id != session.get('usuario_especialidad_id'):
+        flash("Sin permiso.")
+        return redirect(url_for('ver_inventario'))
+    pd.activo = False
+    pd.fecha_baja = datetime.utcnow()
+    db.session.commit()
+    flash("Panolero del dia quitado.")
+    return redirect(url_for('ver_inventario'))
+
+
+@app.route('/panoleros_dia/limpiar', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def panoleros_dia_limpiar():
+    """Da de baja a TODOS los panoleros del dia de la especialidad."""
+    especialidad_id = session.get('usuario_especialidad_id')
+    if not especialidad_id:
+        flash("Cuenta sin especialidad.")
+        return redirect(url_for('ver_inventario'))
+    n = 0
+    for pd in PanoleroDesignado.query.filter_by(
+            especialidad_id=especialidad_id, activo=True).all():
+        pd.activo = False
+        pd.fecha_baja = datetime.utcnow()
+        n += 1
+    db.session.commit()
+    flash(f"{n} panolero(s) del dia removido(s).")
+    return redirect(url_for('ver_inventario'))
+
+
+@app.route('/admin/buscar')
+@login_requerido
+@admin_requerido
+def admin_buscar():
+    """Busqueda global de items para admin."""
+    q = (request.args.get('q') or '').strip()
+    if not q:
+        return render_template('admin_buscar.html', items=[], q='')
+    like = f"%{q}%"
+    items = Item.query.filter(
+        db.or_(
+            Item.nombre.ilike(like),
+            Item.codigo_barras.ilike(like),
+            Item.autor.ilike(like) if hasattr(Item, 'autor') else False,
+            Item.isbn.ilike(like) if hasattr(Item, 'isbn') else False,
+        )
+    ).order_by(Item.especialidad_id.asc(), Item.nombre.asc()).limit(200).all()
+    return render_template('admin_buscar.html', items=items, q=q)
+
+
+@app.route('/admin/cambiar_password', methods=['GET', 'POST'])
+@login_requerido
+def admin_cambiar_password():
+    """Cambiar contrasena del usuario logueado."""
+    user = Usuario.query.get(session.get('usuario_id'))
+    if not user:
+        flash("Sesion invalida.")
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        actual = request.form.get('password_actual', '')
+        nueva = request.form.get('password_nueva', '')
+        confirm = request.form.get('password_confirm', '')
+        if not check_password_hash(user.password_hash, actual):
+            flash("Contrasena actual incorrecta.")
+            return redirect(url_for('admin_cambiar_password'))
+        if len(nueva) < 8:
+            flash("La nueva contrasena debe tener al menos 8 caracteres.")
+            return redirect(url_for('admin_cambiar_password'))
+        if nueva != confirm:
+            flash("Las contrasenas no coinciden.")
+            return redirect(url_for('admin_cambiar_password'))
+        user.password_hash = generate_password_hash(nueva)
+        user.must_change_password = False
+        db.session.commit()
+        flash("Contrasena actualizada.")
+        return redirect(url_for('index'))
+    return render_template('cambiar_password.html', usuario=user)
+
+
+
 if __name__ == '__main__':
     import threading, webbrowser, sys
     es_exe = getattr(sys, 'frozen', False)
