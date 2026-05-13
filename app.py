@@ -151,6 +151,9 @@ class Curso(db.Model):
     anio = db.Column(db.Integer, nullable=True)         # año lectivo
     especialidad_id = db.Column(db.Integer, db.ForeignKey('especialidad.id'), nullable=False)
     activo = db.Column(db.Boolean, default=True, nullable=False, server_default='1')
+    # Cursos a cargo del pañol: máx. 2 con a_cargo=True por especialidad.
+    # Identifican los grupos "propios" del pañol; el resto de alumnos son visitantes.
+    a_cargo = db.Column(db.Boolean, default=False, nullable=False, server_default='0')
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
     especialidad = db.relationship('Especialidad', backref='cursos', lazy=True)
 
@@ -373,6 +376,7 @@ class PrestamoExterno(db.Model):
 # PAÑOLEROS DEL DÍA — estudiantes designados que pueden entregar insumos
 # ========================================================================
 MAX_PANOLEROS_DIA = 6   # tope de pañoleros activos por especialidad
+MAX_CURSOS_A_CARGO = 2  # tope de cursos a cargo por pañol (especialidad)
 
 
 class PanoleroDesignado(db.Model):
@@ -580,6 +584,14 @@ def _migrar_columnas_seguridad():
                 statements.append("ALTER TABLE estudiante ADD COLUMN numero_lista INTEGER NULL")
             if 'codigo_barras' not in cols:
                 statements.append("ALTER TABLE estudiante ADD COLUMN codigo_barras VARCHAR(50) NULL")
+
+        # === curso: a_cargo (flag de cursos a cargo del pañol, máx. 2 por especialidad) ===
+        if 'curso' in tablas:
+            cols = {c['name'] for c in insp.get_columns('curso')}
+            if 'a_cargo' not in cols:
+                statements.append(
+                    f"ALTER TABLE curso ADD COLUMN a_cargo BOOLEAN NOT NULL DEFAULT {bool_default}"
+                )
 
         if statements:
             with db.engine.begin() as conn:
@@ -1002,6 +1014,9 @@ def ver_inventario():
         ).order_by(Curso.nombre.asc()).all()
     except Exception:
         cursos_disponibles = []
+    # Cursos a cargo del pañol (máx. 2) y alumnos visitantes de otras especialidades
+    cursos_a_cargo = _cursos_a_cargo(especialidad_id) if especialidad_id else []
+    alumnos_visitantes = _alumnos_visitantes(especialidad_id) if especialidad_id else []
     return render_template('inventario.html',
                            items=items, estudiantes=estudiantes, prestamos=prestamos,
                            prestamos_externos=prestamos_externos,
@@ -1014,7 +1029,10 @@ def ver_inventario():
                            tipo_area=tipo_area,
                            panoleros_dia=panoleros_dia,
                            cursos_disponibles=cursos_disponibles,
+                           cursos_a_cargo=cursos_a_cargo,
+                           alumnos_visitantes=alumnos_visitantes,
                            max_panoleros_dia=MAX_PANOLEROS_DIA,
+                           max_cursos_a_cargo=MAX_CURSOS_A_CARGO,
                            especialidad=(session.get('admin_viendo_especialidad')
                                           if session.get('usuario_rol') == 'Admin'
                                           else session.get('usuario_especialidad')))
@@ -1330,6 +1348,18 @@ def cargar_alumnos_excel():
         db.session.add(curso_obj)
         db.session.flush()
         curso_nuevo = True
+
+    # Auto-marcar como a_cargo si todavía hay slot libre (máx 2)
+    if not curso_obj.a_cargo:
+        try:
+            ya_a_cargo = Curso.query.filter_by(
+                especialidad_id=especialidad_id, activo=True, a_cargo=True
+            ).count()
+            if ya_a_cargo < MAX_CURSOS_A_CARGO:
+                curso_obj.a_cargo = True
+                db.session.flush()
+        except Exception as e:
+            print(f"[WARN] auto-marcar a_cargo: {e}")
 
     creados = actualizados = 0
     errores = []
@@ -2931,6 +2961,104 @@ def admin_exportar_completo():
 def exportar_inventario():
     """Alias de /exportar_excel para mantener compatibilidad con la plantilla."""
     return exportar_excel()
+
+
+# ========================================================================
+# CURSOS A CARGO — máx. 2 cursos "propios" por pañol
+# ========================================================================
+
+def _cursos_a_cargo(especialidad_id):
+    """Lista de cursos marcados como a_cargo=True para una especialidad (máx. 2)."""
+    if not especialidad_id:
+        return []
+    try:
+        return Curso.query.filter_by(
+            especialidad_id=especialidad_id, activo=True, a_cargo=True
+        ).order_by(Curso.nombre.asc()).all()
+    except Exception as e:
+        print(f"[WARN] _cursos_a_cargo: {e}")
+        return []
+
+
+def _alumnos_visitantes(especialidad_id):
+    """Alumnos de OTRAS especialidades que han hecho préstamos en este pañol.
+    Devuelve lista de dicts: {'estudiante': Estudiante, 'num_prestamos', 'ultima_fecha'}.
+    """
+    if not especialidad_id:
+        return []
+    try:
+        rows = db.session.query(
+            Estudiante,
+            db.func.count(Prestamo.id).label('num_prestamos'),
+            db.func.max(Prestamo.fecha_prestamo).label('ultima_fecha')
+        ).join(Prestamo, Prestamo.estudiante_id == Estudiante.id) \
+         .join(Item, Item.id == Prestamo.item_id) \
+         .filter(Item.especialidad_id == especialidad_id,
+                 Estudiante.especialidad_id != especialidad_id) \
+         .group_by(Estudiante.id) \
+         .order_by(db.func.count(Prestamo.id).desc(),
+                   db.func.max(Prestamo.fecha_prestamo).desc()) \
+         .limit(50).all()
+        return [{'estudiante': r[0], 'num_prestamos': r[1], 'ultima_fecha': r[2]} for r in rows]
+    except Exception as e:
+        print(f"[WARN] _alumnos_visitantes: {e}")
+        return []
+
+
+@app.route('/pañol/curso/marcar_a_cargo/<int:curso_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def marcar_curso_a_cargo(curso_id):
+    """Marca un curso como 'a cargo' del pañol. Máx. MAX_CURSOS_A_CARGO activos por especialidad."""
+    especialidad_id = session.get('usuario_especialidad_id')
+    if not especialidad_id:
+        flash("❌ No tienes una especialidad activa.")
+        return redirect(url_for('ver_inventario'))
+    curso = Curso.query.get_or_404(curso_id)
+    if curso.especialidad_id != especialidad_id and session.get('usuario_rol') != 'Admin':
+        flash("❌ Ese curso no pertenece a tu especialidad.")
+        return redirect(url_for('ver_inventario'))
+    if curso.a_cargo:
+        flash(f"ℹ️ '{curso.nombre}' ya está marcado como a cargo.")
+        return redirect(url_for('ver_inventario'))
+    actuales = _cursos_a_cargo(especialidad_id)
+    if len(actuales) >= MAX_CURSOS_A_CARGO:
+        nombres = ', '.join(c.nombre for c in actuales)
+        flash(f"⚠️ Ya tienes {MAX_CURSOS_A_CARGO} cursos a cargo ({nombres}). Quita uno antes.")
+        return redirect(url_for('ver_inventario'))
+    curso.a_cargo = True
+    db.session.commit()
+    try:
+        registrar_auditoria('actualizar', 'Curso', curso.id,
+                            valores_nuevos={'a_cargo': True, 'curso': curso.nombre})
+    except Exception:
+        pass
+    flash(f"✅ '{curso.nombre}' marcado como curso a cargo.")
+    return redirect(url_for('ver_inventario'))
+
+
+@app.route('/pañol/curso/quitar_a_cargo/<int:curso_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def quitar_curso_a_cargo(curso_id):
+    """Quita el flag 'a cargo' de un curso. Los alumnos no se borran."""
+    especialidad_id = session.get('usuario_especialidad_id')
+    curso = Curso.query.get_or_404(curso_id)
+    if curso.especialidad_id != especialidad_id and session.get('usuario_rol') != 'Admin':
+        flash("❌ Sin permiso.")
+        return redirect(url_for('ver_inventario'))
+    if not curso.a_cargo:
+        flash(f"ℹ️ '{curso.nombre}' no estaba marcado como a cargo.")
+        return redirect(url_for('ver_inventario'))
+    curso.a_cargo = False
+    db.session.commit()
+    try:
+        registrar_auditoria('actualizar', 'Curso', curso.id,
+                            valores_nuevos={'a_cargo': False, 'curso': curso.nombre})
+    except Exception:
+        pass
+    flash(f"✅ '{curso.nombre}' dado de baja como curso a cargo (los alumnos siguen en la BD).")
+    return redirect(url_for('ver_inventario'))
 
 
 @app.route('/panoleros_dia/agregar', methods=['POST'])

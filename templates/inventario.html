@@ -182,6 +182,119 @@
             <button onclick="abrirModalDevolucion()" class="action-btn action-btn-warning"><i class="fas fa-arrow-circle-down"></i> Devolver Cosas</button>
         </div>
 
+        {# ===== CARD: CURSOS A CARGO DEL PAÑOL ===== #}
+        {% if session['usuario_rol'] in ['Pañolero', 'Admin'] %}
+        <div class="card" style="border-left: 4px solid #6366f1; margin-bottom: 20px;">
+            <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
+                <i class="fas fa-chalkboard-teacher"></i> Mis Cursos a Cargo
+                <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
+                    ({{ cursos_a_cargo|length }} / {{ max_cursos_a_cargo }})
+                </span>
+            </h2>
+            <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 12px 0;">
+                Los cursos "propios" del pañol. Sus alumnos son los principales receptores de tus préstamos. Alumnos de otras especialidades aparecerán abajo como visitantes.
+            </p>
+
+            {% if cursos_a_cargo %}
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                {% for c in cursos_a_cargo %}
+                <div style="background: #e0e7ff; border: 1px solid #818cf8; border-radius: 20px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem;">
+                    <i class="fas fa-users" style="color: #4338ca;"></i>
+                    <strong style="color: #3730a3;">{{ c.nombre }}</strong>
+                    <span style="color: #6366f1; font-size: 0.75rem;">{{ c.total_alumnos }} alumno(s)</span>
+                    <form action="/pa%C3%B1ol/curso/quitar_a_cargo/{{ c.id }}" method="POST" style="display:inline; margin:0;"
+                          onsubmit="return confirm('¿Quitar a {{ c.nombre }} de tus cursos a cargo? Los alumnos no se borran.');">
+                        <button type="submit" style="background:none; border:none; color:#b91c1c; cursor:pointer; padding:0;" title="Quitar de a cargo">
+                            <i class="fas fa-times-circle"></i>
+                        </button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p style="font-size: 0.85rem; color: #b91c1c; background: #fee2e2; padding: 8px 12px; border-radius: 4px; margin: 0 0 12px 0;">
+                <i class="fas fa-info-circle"></i> Aún no tienes cursos a cargo. Sube una lista o marca uno existente como "a cargo".
+            </p>
+            {% endif %}
+
+            {# Cursos disponibles de esta especialidad que NO están a cargo todavía #}
+            {% set disponibles_no_a_cargo = cursos_disponibles | rejectattr('a_cargo') | list %}
+            {% if cursos_a_cargo|length < max_cursos_a_cargo and disponibles_no_a_cargo %}
+            <div style="margin-bottom: 10px;">
+                <label style="font-size:0.85rem; font-weight:600; color:#374151;">Marcar un curso existente como a cargo:</label>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+                    {% for c in disponibles_no_a_cargo %}
+                    <form action="/pa%C3%B1ol/curso/marcar_a_cargo/{{ c.id }}" method="POST" style="display:inline; margin:0;">
+                        <button type="submit" style="background:#eef2ff; border:1px dashed #6366f1; color:#3730a3; padding:4px 10px; border-radius:14px; cursor:pointer; font-size:0.8rem;" title="Marcar a cargo">
+                            <i class="fas fa-plus"></i> {{ c.nombre }} ({{ c.total_alumnos }})
+                        </button>
+                    </form>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if cursos_a_cargo|length < max_cursos_a_cargo %}
+            <details style="margin-top: 10px;">
+                <summary style="cursor:pointer; font-size:0.85rem; color:#4338ca; font-weight:600;">
+                    <i class="fas fa-file-excel"></i> Subir lista de un curso nuevo desde Excel
+                </summary>
+                <form action="/cargar_alumnos_excel" method="POST" enctype="multipart/form-data"
+                      style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-top: 8px; background:#f5f3ff; padding:10px; border-radius:6px;">
+                    <div>
+                        <label style="font-size:0.8rem; display:block;">Nombre del curso *</label>
+                        <input type="text" name="curso_destino" required placeholder="Ej: 3°A" style="padding:6px; width:140px;">
+                    </div>
+                    <div>
+                        <label style="font-size:0.8rem; display:block;">Archivo Excel (N° lista + Nombre) *</label>
+                        <input type="file" name="archivo_excel" accept=".xlsx,.xls" required style="font-size:0.85rem;">
+                    </div>
+                    <button type="submit" class="btn-add" style="background:#6366f1;">
+                        <i class="fas fa-upload"></i> Cargar y marcar a cargo
+                    </button>
+                </form>
+                <p style="font-size:0.75rem; color:#6b7280; margin-top:6px;">
+                    Si el curso es nuevo y aún te queda slot libre, se marcará automáticamente como "a cargo".
+                </p>
+            </details>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {# ===== CARD: ALUMNOS VISITANTES (de otras especialidades) ===== #}
+        {% if session['usuario_rol'] in ['Pañolero', 'Admin'] and alumnos_visitantes %}
+        <div class="card" style="border-left: 4px solid #14b8a6; margin-bottom: 20px;">
+            <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
+                <i class="fas fa-user-friends"></i> Alumnos Visitantes
+                <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
+                    ({{ alumnos_visitantes|length }})
+                </span>
+            </h2>
+            <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 12px 0;">
+                Alumnos de otras especialidades que han hecho préstamos en este pañol. Se actualiza automáticamente con cada préstamo.
+            </p>
+            <div class="table-responsive" style="max-height: 220px; overflow-y: auto;">
+                <table style="font-size:0.85rem;">
+                    <thead style="background:#f0fdfa;"><tr>
+                        <th>Alumno</th><th>RUT</th><th>Curso / Especialidad</th>
+                        <th style="text-align:center;">Préstamos</th><th>Última visita</th>
+                    </tr></thead>
+                    <tbody>
+                        {% for v in alumnos_visitantes %}
+                        <tr>
+                            <td><strong>{{ v.estudiante.nombre }}</strong></td>
+                            <td style="font-family:monospace; font-size:0.8rem;">{{ v.estudiante.rut_matricula }}</td>
+                            <td>{{ v.estudiante.curso_display }} · <span style="color:#0f766e;">{{ v.estudiante.especialidad.nombre if v.estudiante.especialidad else '—' }}</span></td>
+                            <td style="text-align:center; font-weight:bold; color:#0f766e;">{{ v.num_prestamos }}</td>
+                            <td style="font-size:0.8rem; color:#6b7280;">{{ v.ultima_fecha.strftime('%d-%m-%Y %H:%M') if v.ultima_fecha else '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
         {# ===== CARD: PAÑOLEROS DEL DÍA ===== #}
         {% if session['usuario_rol'] in ['Pañolero', 'Admin'] %}
         <div class="card" style="border-left: 4px solid #f59e0b; margin-bottom: 20px;">
