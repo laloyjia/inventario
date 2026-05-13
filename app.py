@@ -2834,6 +2834,59 @@ def _upsert_prestamo(nodo, p, accion):
     pres.fecha_devolucion_esperada = _to_dt(p.get('fecha_devolucion_esperada'))
 
 
+
+@app.route('/descargar_plantilla')
+@login_requerido
+def descargar_plantilla():
+    """Descarga el archivo inventario_muestra.xlsx como plantilla."""
+    aqui = os.path.dirname(os.path.abspath(__file__))
+    plantilla = os.path.join(aqui, 'inventario_muestra.xlsx')
+    if os.path.exists(plantilla):
+        return send_file(plantilla, as_attachment=True,
+                         download_name='plantilla_inventario.xlsx')
+    # Fallback: generar al vuelo con las 11 columnas
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Inventario'
+    headers = ['Codigo de barra', 'Nombre', 'Descripcion', 'Categoria',
+               'Cantidad', 'Ubicacion', 'Fecha adquisicion',
+               'Desgaste ($)', 'Costo unitario ($)', 'Costo total ($)',
+               'Imagen de referencia']
+    for c, h in enumerate(headers, 1):
+        ws.cell(row=1, column=c, value=h)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True,
+                     download_name='plantilla_inventario.xlsx',
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/descargar_plantilla_alumnos')
+@login_requerido
+def descargar_plantilla_alumnos():
+    """Descarga la plantilla Excel para carga masiva de alumnos (2 columnas)."""
+    aqui = os.path.dirname(os.path.abspath(__file__))
+    plantilla = os.path.join(aqui, 'alumnos_muestra.xlsx')
+    if os.path.exists(plantilla):
+        return send_file(plantilla, as_attachment=True,
+                         download_name='plantilla_alumnos.xlsx')
+    # Fallback: 2 columnas
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Alumnos'
+    ws.cell(row=1, column=1, value='N de lista')
+    ws.cell(row=1, column=2, value='Nombre completo')
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True,
+                     download_name='plantilla_alumnos.xlsx',
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
 @app.route('/admin/reporte_mermas')
 @login_requerido
 @admin_requerido
