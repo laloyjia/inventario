@@ -1794,10 +1794,31 @@ def imprimir_externo(ext_id):
 @app.route('/buscar_hoja_vida', methods=['POST'])
 @login_requerido
 def buscar_hoja_vida():
-    rut = (request.form.get('scan_estudiante') or '').strip()
-    est = Estudiante.query.filter_by(rut_matricula=rut).first()
+    """Acepta código de barras del alumno O RUT/matrícula.
+    Si el lector físico escanea el código de barras, busca por esa columna.
+    Si el operador digita el RUT, busca por matrícula. Sin distinción.
+    """
+    raw = (request.form.get('scan_estudiante') or '').strip()
+    if not raw:
+        flash("⚠️ Debes escanear o digitar el código del alumno.")
+        return redirect(url_for('ver_inventario'))
+
+    # 1) Buscar por código de barras (exact match, sin case)
+    est = Estudiante.query.filter(
+        db.func.lower(Estudiante.codigo_barras) == raw.lower()
+    ).first()
+    # 2) Si no, buscar por RUT/matrícula
     if not est:
-        flash(f"❌ RUT {rut} no encontrado.")
+        est = Estudiante.query.filter(
+            db.func.lower(Estudiante.rut_matricula) == raw.lower()
+        ).first()
+    # 3) Si no, búsqueda parcial por RUT (ej: "21345678" cuando el RUT está como "21345678-9")
+    if not est:
+        like = f"%{raw}%"
+        est = Estudiante.query.filter(Estudiante.rut_matricula.ilike(like)).first()
+
+    if not est:
+        flash(f"❌ No se encontró ningún alumno con código/RUT: {raw}")
         return redirect(url_for('ver_inventario'))
     return redirect(url_for('hoja_vida', est_id=est.id))
 
@@ -3180,6 +3201,46 @@ def admin_cambiar_password():
         flash("Contrasena actualizada.")
         return redirect(url_for('index'))
     return render_template('cambiar_password.html', usuario=user)
+
+
+
+
+@app.route('/etiqueta/<int:item_id>')
+@login_requerido
+def etiqueta(item_id):
+    """Imprime una etiqueta con código de barras + nombre + ubicación de un ítem.
+    Esta ruta faltaba — el template inventario.html ya tenía un link a /etiqueta/<id>
+    para el botón de impresión por fila, pero el endpoint no existía y daba 404."""
+    item = Item.query.get_or_404(item_id)
+    # Permitir solo a admin o al pañolero del área del ítem
+    if (session.get('usuario_rol') != 'Admin'
+            and item.especialidad_id != session.get('usuario_especialidad_id')):
+        flash("❌ Sin permiso para ver esta etiqueta.")
+        return redirect(url_for('ver_inventario'))
+    return render_template('etiqueta.html', item=item)
+
+
+@app.route('/etiquetas_lote')
+@login_requerido
+def etiquetas_lote():
+    """Imprime TODAS las etiquetas del inventario de la especialidad actual,
+    una por ítem, para corte rápido. Útil al inicio del año lectivo."""
+    if session.get('usuario_rol') == 'Admin':
+        esp_id = request.args.get('especialidad_id', type=int)
+        if not esp_id:
+            flash("⚠️ Como admin, indica ?especialidad_id=X.")
+            return redirect(url_for('dashboard_admin'))
+    else:
+        esp_id = session.get('usuario_especialidad_id')
+    if not esp_id:
+        flash("❌ Sin especialidad activa.")
+        return redirect(url_for('ver_inventario'))
+    items = Item.query.filter_by(especialidad_id=esp_id).order_by(
+        Item.categoria.asc(), Item.nombre.asc()).all()
+    if not items:
+        flash("⚠️ No hay ítems para imprimir.")
+        return redirect(url_for('ver_inventario'))
+    return render_template('etiquetas_lote.html', items=items)
 
 
 

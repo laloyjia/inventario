@@ -530,9 +530,19 @@
         {% endif %}
 
         <div class="card">
-            <h2>
+            <h2 style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <span><i class="fas fa-cubes"></i> Existencias Físicas en Taller</span>
-                <input type="text" id="buscadorInventario" onkeyup="filtrarInventario()" placeholder="🔍 Buscar equipo..." style="width: auto; min-width: 200px;">
+                <span style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <input type="text" id="buscadorInventario" onkeyup="filtrarInventario()" placeholder="🔍 Buscar equipo..." style="width: auto; min-width: 200px;">
+                    {% if session['usuario_rol'] in ['Pañolero', 'Admin'] and items %}
+                    <a href="/etiquetas_lote{% if session['usuario_rol'] == 'Admin' %}?especialidad_id={{ session.get('usuario_especialidad_id') }}{% endif %}"
+                       target="_blank"
+                       style="background:#6366f1; color:white; padding:8px 14px; border-radius:6px; text-decoration:none; font-size:0.85rem; font-weight:600;"
+                       title="Imprimir códigos de barras de todos los ítems">
+                        <i class="fas fa-print"></i> Imprimir Etiquetas ({{ items|length }})
+                    </a>
+                    {% endif %}
+                </span>
             </h2>
 
             <!-- Filtros rápidos por categoría (adaptativos por tipo de área) -->
@@ -1279,13 +1289,22 @@
 <div id="modalDevolucion" class="modal">
     <div class="modal-content" style="text-align: center;">
         <h2 style="margin-top:0; border-bottom: 2px solid var(--warning); padding-bottom: 10px;"><i class="fas fa-dolly-flatbed"></i> Recepción de Materiales</h2>
-        <p style="font-size: 0.85rem; color: var(--secondary); margin-bottom: 20px;">Ingrese el RUT o escanee la credencial del alumno para ver la lista completa de materiales prestados.</p>
+        <p style="font-size: 0.9rem; color: #475569; margin-bottom: 8px;">
+            <i class="fas fa-barcode" style="color:#6366f1;"></i>
+            <strong>Escanea el código de barras del carnet</strong> del alumno,
+            o digita su RUT manualmente.
+        </p>
+        <p style="font-size: 0.8rem; color: var(--secondary); margin-bottom: 20px;">
+            El sistema acepta ambos formatos y te muestra todos sus préstamos pendientes.
+        </p>
         <form action="/buscar_hoja_vida" method="POST">
             <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                <input type="text" name="scan_estudiante" placeholder="Escanear RUT..." required style="flex: 1; font-size: 1.1rem; text-align: center; border: 2px solid var(--warning); padding: 12px; border-radius: 6px;">
+                <input type="text" name="scan_estudiante" id="scan_estudiante_devolver"
+                       placeholder="🔍 Código del carnet o RUT..." required autocomplete="off"
+                       style="flex: 1; font-size: 1.2rem; text-align: center; border: 2px dashed var(--warning); padding: 14px; border-radius: 6px; font-family: monospace; background:#fef3c7;">
             </div>
             <div style="display: flex; gap: 10px;">
-                <button type="submit" style="flex:1; background: var(--warning); color: var(--dark); padding: 12px;"><i class="fas fa-search"></i> Ver Hoja de Vida</button>
+                <button type="submit" style="flex:1; background: var(--warning); color: var(--dark); padding: 12px;"><i class="fas fa-search"></i> Buscar Préstamos</button>
                 <button type="button" onclick="cerrarModalDevolucion()" style="background: #e2e8f0; color: var(--dark); padding: 12px;">Cancelar</button>
             </div>
         </form>
@@ -1498,6 +1517,21 @@
             wrap.style.display = 'none';
         }
         info.style.display = 'block';
+    }
+
+    // === MODAL DEVOLUCIÓN ===
+    function abrirModalDevolucion() {
+        document.getElementById('modalDevolucion').style.display = 'block';
+        // Foco al input de scan inmediatamente
+        setTimeout(() => {
+            const inp = document.getElementById('scan_estudiante_devolver');
+            if (inp) { inp.value = ''; inp.focus(); }
+        }, 100);
+    }
+    function cerrarModalDevolucion() {
+        document.getElementById('modalDevolucion').style.display = 'none';
+        const inp = document.getElementById('scan_estudiante_devolver');
+        if (inp) inp.value = '';
     }
 
     // Buscar alumno por código de barras o RUT (case-insensitive, trim)

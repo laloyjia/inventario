@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Etiquetas en lote — {{ items|length }} ítems</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <style>
+        @page { size: A4; margin: 8mm; }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            background: #f1f5f9;
+            margin: 0;
+            padding: 16px;
+        }
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 14px;
+            position: sticky;
+            top: 0;
+            background: #f1f5f9;
+            padding: 8px 0;
+            z-index: 10;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+            text-decoration: none;
+            color: white;
+        }
+        .btn-print { background: #10b981; }
+        .btn-back { background: #64748b; }
+        .info {
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+        }
+        .pagina {
+            background: white;
+            padding: 8mm;
+            margin: 0 auto 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            border-radius: 4px;
+            max-width: 210mm;
+        }
+        .etiquetas {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4mm;
+        }
+        .etiqueta {
+            border: 1px dashed #94a3b8;
+            border-radius: 4px;
+            padding: 6mm 4mm;
+            min-height: 28mm;
+            text-align: center;
+            page-break-inside: avoid;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 2px;
+        }
+        .etiqueta .nombre {
+            font-weight: bold;
+            font-size: 11pt;
+            color: #0f172a;
+            margin-bottom: 4px;
+            line-height: 1.15;
+        }
+        .etiqueta .marca {
+            font-size: 8pt;
+            color: #475569;
+            margin-bottom: 4px;
+        }
+        .etiqueta svg.bcd {
+            width: 100%;
+            height: 36px;
+            margin: 0 auto;
+        }
+        .etiqueta .codigo {
+            font-family: monospace;
+            font-size: 8pt;
+            color: #1e293b;
+            margin-top: 2px;
+        }
+        .etiqueta .ubic {
+            font-size: 7.5pt;
+            color: #16a34a;
+            margin-top: 3px;
+        }
+        @media print {
+            body { background: white; padding: 0; }
+            .toolbar { display: none !important; }
+            .pagina { box-shadow: none; margin: 0; padding: 0; max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <button class="btn btn-print" onclick="window.print()"><i></i> 🖨️ Imprimir</button>
+        <a class="btn btn-back" href="javascript:history.back()">← Volver</a>
+        <span class="info"><strong>{{ items|length }}</strong> ítem(s) — 3 etiquetas por fila</span>
+    </div>
+
+    <div class="pagina">
+        <div class="etiquetas">
+            {% for item in items %}
+            <div class="etiqueta">
+                <div class="nombre">{{ item.nombre }}</div>
+                {% if item.marca or item.modelo %}
+                <div class="marca">{{ item.marca or '' }} {{ item.modelo or '' }}</div>
+                {% endif %}
+                <svg class="bcd" data-code="{{ item.codigo_barras }}"></svg>
+                <div class="codigo">{{ item.codigo_barras }}</div>
+                {% if item.ubicacion %}
+                <div class="ubic">📍 {{ item.ubicacion }}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('svg.bcd').forEach(function(svg) {
+                var code = svg.getAttribute('data-code') || '';
+                if (!code) return;
+                try {
+                    JsBarcode(svg, code, {
+                        format: "CODE128",
+                        width: 1.6,
+                        height: 32,
+                        displayValue: false,
+                        margin: 0,
+                    });
+                } catch(e) { console.warn('Barcode error', code, e); }
+            });
+        });
+    </script>
+</body>
+</html>
