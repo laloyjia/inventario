@@ -308,7 +308,8 @@ class Prestamo(db.Model):
 class Auditoria(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=True)
-    especialidad_id = db.Column(db.Integer, db.ForeignKey('especialidad.id'), nullable=False)
+    # nullable=True porque el admin no tiene especialidad asignada (puede operar sobre toda la BD)
+    especialidad_id = db.Column(db.Integer, db.ForeignKey('especialidad.id'), nullable=True)
     accion = db.Column(db.String(100))
     tabla = db.Column(db.String(50))
     registro_id = db.Column(db.Integer)
@@ -505,7 +506,7 @@ def crear_pañoleros_por_especialidad():
         ).first()
         if not existe:
             db.session.add(Usuario(
-                nombre=f"Pañolero {esp.nombre}", username=username,
+                nombre=f"Instructor {esp.nombre}", username=username,
                 password_hash=generate_password_hash("pañol123"),
                 rol="Pañolero", email=email, especialidad_id=esp.id,
                 must_change_password=True,  # forzado a cambiar en primer login
@@ -2399,7 +2400,7 @@ def crear_panolero():
     registrar_auditoria('crear', 'Usuario', nuevo.id,
                         valores_nuevos={'nombre': nombre, 'username': username,
                                         'rol': 'Pañolero', 'especialidad': esp.nombre})
-    flash(f"✅ Pañolero '{nombre}' creado con usuario '{username}'.")
+    flash(f"✅ Instructor '{nombre}' creado con usuario '{username}'.")
     return redirect(url_for('gestionar_panoleros'))
 
 
@@ -2410,7 +2411,7 @@ def editar_panolero(panolero_id):
     """Edita datos de un pañolero existente."""
     p = Usuario.query.get(panolero_id)
     if not p or p.rol != 'Pañolero':
-        flash("❌ Pañolero no encontrado.")
+        flash("❌ Instructor no encontrado.")
         return redirect(url_for('gestionar_panoleros'))
 
     nuevo_nombre = (request.form.get('nombre') or '').strip()
@@ -2466,7 +2467,7 @@ def editar_panolero(panolero_id):
 
     db.session.commit()
     registrar_auditoria('actualizar', 'Usuario', p.id, valores_nuevos=cambios)
-    flash(f"✅ Pañolero '{p.nombre}' actualizado ({len(cambios)} cambio(s)).")
+    flash(f"✅ Instructor '{p.nombre}' actualizado ({len(cambios)} cambio(s)).")
     return redirect(url_for('gestionar_panoleros'))
 
 
@@ -2477,14 +2478,14 @@ def toggle_panolero(panolero_id):
     """Activar / desactivar pañolero (sin eliminar)."""
     p = Usuario.query.get(panolero_id)
     if not p or p.rol != 'Pañolero':
-        flash("❌ Pañolero no encontrado.")
+        flash("❌ Instructor no encontrado.")
         return redirect(url_for('gestionar_panoleros'))
     p.activo = not p.activo
     db.session.commit()
     estado = 'activado' if p.activo else 'desactivado'
     registrar_auditoria('actualizar', 'Usuario', p.id,
                         valores_nuevos={'estado': estado})
-    flash(f"✅ Pañolero '{p.nombre}' {estado}.")
+    flash(f"✅ Instructor '{p.nombre}' {estado}.")
     return redirect(url_for('gestionar_panoleros'))
 
 @app.route('/admin/panolero/<int:panolero_id>/eliminar', methods=['POST'])
@@ -2493,12 +2494,12 @@ def toggle_panolero(panolero_id):
 def eliminar_panolero(panolero_id):
     p = Usuario.query.get(panolero_id)
     if not p or p.rol != 'Pañolero':
-        flash("❌ Pañolero no encontrado.")
+        flash("❌ Instructor no encontrado.")
         return redirect(url_for('gestionar_panoleros'))
     registrar_auditoria('eliminar', 'Usuario', panolero_id,
                         valores_anteriores={'nombre': p.nombre, 'username': p.username})
     db.session.delete(p); db.session.commit()
-    flash(f"✅ Pañolero eliminado.")
+    flash(f"✅ Instructor eliminado.")
     return redirect(url_for('gestionar_panoleros'))
 
 @app.route('/admin/panolero/<int:panolero_id>/resetear-contrasena', methods=['POST'])
@@ -2507,7 +2508,7 @@ def eliminar_panolero(panolero_id):
 def resetear_contrasena_panolero(panolero_id):
     p = Usuario.query.get(panolero_id)
     if not p or p.rol != 'Pañolero':
-        flash("❌ Pañolero no encontrado.")
+        flash("❌ Instructor no encontrado.")
         return redirect(url_for('gestionar_panoleros'))
     p.password_hash = generate_password_hash("pañol123")
     db.session.commit()
@@ -2944,9 +2945,107 @@ def descargar_plantilla_alumnos():
 @login_requerido
 @admin_requerido
 def admin_reporte_mermas():
-    """Reporte de mermas (placeholder)."""
-    flash("Reporte de mermas: funcion en construccion.")
-    return redirect(url_for('ver_inventario'))
+    """Reporte de mermas Excel con columnas adaptadas al tipo de cada área.
+    Una hoja por especialidad. Solo ítems con cantidad_mermada > 0 + préstamos
+    cerrados con merma. PANOL_TP muestra ubicación/categoría; BIBLIOTECA muestra
+    ISBN/autor; INFORMATICA muestra marca/modelo/serie; DEPORTIVO muestra estado."""
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        creadas = 0
+        for esp in Especialidad.query.filter_by(activa=True).order_by(Especialidad.id).all():
+            items_merma = Item.query.filter(
+                Item.especialidad_id == esp.id,
+                Item.cantidad_mermada > 0
+            ).order_by(Item.cantidad_mermada.desc()).all()
+            if not items_merma:
+                continue
+            ta = esp.tipo_area or 'GENERAL'
+
+            # Columnas por tipo
+            if ta == 'BIBLIOTECA':
+                rows = [{
+                    'ISBN':        i.isbn or '',
+                    'Título':      i.nombre,
+                    'Autor':       i.autor or '',
+                    'Editorial':   i.editorial or '',
+                    'Categoría':   i.categoria or '',
+                    'Mermados':    i.cantidad_mermada,
+                    'Disponibles': i.cantidad_disponible,
+                    'Total':       i.cantidad_total,
+                    'Costo unit ($)':  i.precio_unitario or 0,
+                    'Pérdida ($)':     (i.precio_unitario or 0) * (i.cantidad_mermada or 0),
+                    'Ubicación':   i.ubicacion or '',
+                } for i in items_merma]
+            elif ta == 'INFORMATICA':
+                rows = [{
+                    'Código':      i.codigo_barras,
+                    'Nombre':      i.nombre,
+                    'Marca':       i.marca or '',
+                    'Modelo':      i.modelo or '',
+                    'N° Serie':    i.numero_serie or '',
+                    'Estado':      i.estado or '',
+                    'Categoría':   i.categoria or '',
+                    'Mermados':    i.cantidad_mermada,
+                    'Disponibles': i.cantidad_disponible,
+                    'Total':       i.cantidad_total,
+                    'Costo unit ($)':  i.precio_unitario or 0,
+                    'Pérdida ($)':     (i.precio_unitario or 0) * (i.cantidad_mermada or 0),
+                    'Ubicación':   i.ubicacion or '',
+                } for i in items_merma]
+            elif ta == 'DEPORTIVO':
+                rows = [{
+                    'Código':      i.codigo_barras,
+                    'Nombre':      i.nombre,
+                    'Categoría':   i.categoria or '',
+                    'Estado':      i.estado or '',
+                    'Mermados':    i.cantidad_mermada,
+                    'Disponibles': i.cantidad_disponible,
+                    'Total':       i.cantidad_total,
+                    'Costo unit ($)':  i.precio_unitario or 0,
+                    'Pérdida ($)':     (i.precio_unitario or 0) * (i.cantidad_mermada or 0),
+                    'Ubicación':   i.ubicacion or '',
+                } for i in items_merma]
+            elif ta == 'PANOL_TP':
+                rows = [{
+                    'Código':      i.codigo_barras,
+                    'Nombre':      i.nombre,
+                    'Marca':       i.marca or '',
+                    'Modelo':      i.modelo or '',
+                    'Categoría':   i.categoria or '',
+                    'Mermados':    i.cantidad_mermada,
+                    'Disponibles': i.cantidad_disponible,
+                    'Total':       i.cantidad_total,
+                    'Costo unit ($)':  i.precio_unitario or 0,
+                    'Pérdida ($)':     (i.precio_unitario or 0) * (i.cantidad_mermada or 0),
+                    'Ubicación':   i.ubicacion or '',
+                } for i in items_merma]
+            else:  # GENERAL
+                rows = [{
+                    'Código':      i.codigo_barras,
+                    'Nombre':      i.nombre,
+                    'Categoría':   i.categoria or '',
+                    'Mermados':    i.cantidad_mermada,
+                    'Disponibles': i.cantidad_disponible,
+                    'Total':       i.cantidad_total,
+                    'Costo unit ($)':  i.precio_unitario or 0,
+                    'Pérdida ($)':     (i.precio_unitario or 0) * (i.cantidad_mermada or 0),
+                    'Ubicación':   i.ubicacion or '',
+                } for i in items_merma]
+
+            df = pd.DataFrame(rows)
+            # Nombre de hoja máx 31 chars en Excel
+            sheet = (esp.nombre[:28] + '...') if len(esp.nombre) > 31 else esp.nombre
+            df.to_excel(writer, sheet_name=sheet, index=False)
+            creadas += 1
+
+        if creadas == 0:
+            # Hoja vacía si no hay mermas
+            pd.DataFrame([{'Aviso': 'No hay items con merma en ningún área.'}])                 .to_excel(writer, sheet_name='Sin mermas', index=False)
+
+    buf.seek(0)
+    fname = f"reporte_mermas_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
 @app.route('/admin/exportar_completo')
@@ -3177,28 +3276,49 @@ def admin_buscar():
 @app.route('/admin/cambiar_password', methods=['GET', 'POST'])
 @login_requerido
 def admin_cambiar_password():
-    """Cambiar contrasena del usuario logueado."""
+    """Cambiar contraseña del usuario logueado. Los nombres de los campos del form
+    DEBEN coincidir con el template cambiar_password.html: actual / nueva / confirmar."""
     user = Usuario.query.get(session.get('usuario_id'))
     if not user:
-        flash("Sesion invalida.")
+        flash("❌ Sesión inválida.")
         return redirect(url_for('login'))
     if request.method == 'POST':
-        actual = request.form.get('password_actual', '')
-        nueva = request.form.get('password_nueva', '')
-        confirm = request.form.get('password_confirm', '')
+        actual = request.form.get('actual', '')
+        nueva = request.form.get('nueva', '')
+        confirmar = request.form.get('confirmar', '')
+
         if not check_password_hash(user.password_hash, actual):
-            flash("Contrasena actual incorrecta.")
+            flash("❌ La contraseña actual es incorrecta.")
             return redirect(url_for('admin_cambiar_password'))
-        if len(nueva) < 8:
-            flash("La nueva contrasena debe tener al menos 8 caracteres.")
+        if not nueva or len(nueva) < 8:
+            flash("❌ La nueva contraseña debe tener al menos 8 caracteres.")
             return redirect(url_for('admin_cambiar_password'))
-        if nueva != confirm:
-            flash("Las contrasenas no coinciden.")
+        if nueva != confirmar:
+            flash("❌ La confirmación no coincide con la nueva contraseña.")
             return redirect(url_for('admin_cambiar_password'))
+        if nueva == actual:
+            flash("⚠️ La nueva contraseña debe ser distinta de la actual.")
+            return redirect(url_for('admin_cambiar_password'))
+        # Fortaleza mínima: mayúscula + minúscula + número
+        tiene_mayus = any(c.isupper() for c in nueva)
+        tiene_minus = any(c.islower() for c in nueva)
+        tiene_num = any(c.isdigit() for c in nueva)
+        if not (tiene_mayus and tiene_minus and tiene_num):
+            flash("⚠️ La contraseña debe tener al menos una mayúscula, una minúscula y un número.")
+            return redirect(url_for('admin_cambiar_password'))
+
         user.password_hash = generate_password_hash(nueva)
         user.must_change_password = False
+        user.failed_attempts = 0
+        user.locked_until = None
         db.session.commit()
-        flash("Contrasena actualizada.")
+        session.pop('forzar_cambio_password', None)
+        try:
+            registrar_auditoria('actualizar', 'Usuario', user.id,
+                                valores_nuevos={'accion': 'cambio_password_propio'})
+        except Exception:
+            pass
+        flash("✅ Contraseña actualizada correctamente.")
         return redirect(url_for('index'))
     return render_template('cambiar_password.html', usuario=user)
 

@@ -182,7 +182,8 @@
             <button onclick="abrirModalDevolucion()" class="action-btn action-btn-warning"><i class="fas fa-arrow-circle-down"></i> Devolver Cosas</button>
         </div>
 
-        {# ===== GRID: CURSOS A CARGO + PAÑOLEROS DEL DÍA ===== #}
+        {# ===== GRID: CURSOS A CARGO + PAÑOLEROS DEL DÍA — solo en PANOL_TP ===== #}
+        {% if tipo_area == 'PANOL_TP' %}
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; margin-bottom: 20px;">
         {# ===== CARD: CURSOS A CARGO DEL PAÑOL ===== #}
         {% if session['usuario_rol'] in ['Pañolero', 'Admin'] %}
@@ -267,7 +268,7 @@
         {% if session['usuario_rol'] in ['Pañolero', 'Admin'] %}
         <div class="card" style="border-left: 4px solid #f59e0b;">
             <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
-                <i class="fas fa-user-shield"></i> Pañoleros del Día designados
+                <i class="fas fa-user-shield"></i> Instructores del Día designados
                 <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
                     ({{ panoleros_dia|length }} / {{ max_panoleros_dia }})
                 </span>
@@ -297,7 +298,7 @@
             </div>
             {% else %}
             <p style="font-size: 0.85rem; color: #b91c1c; background: #fee2e2; padding: 8px 12px; border-radius: 4px; margin: 0 0 12px 0;">
-                <i class="fas fa-exclamation-triangle"></i> No hay pañoleros del día designados. Mientras tanto, solo tú (el encargado) puedes registrar préstamos.
+                <i class="fas fa-exclamation-triangle"></i> No hay instructores del día designados. Mientras tanto, solo tú (el instructor) puedes registrar préstamos.
             </p>
             {% endif %}
 
@@ -314,7 +315,7 @@
                     {% endfor %}
                 </select>
                 <button type="submit" class="btn-add" style="white-space: nowrap;">
-                    <i class="fas fa-plus"></i> Designar pañolero del día
+                    <i class="fas fa-plus"></i> Designar instructor del día
                 </button>
             </form>
             {% endif %}
@@ -331,8 +332,10 @@
         {% endif %}
         </div>
 
-        {# ===== CARD: ALUMNOS VISITANTES (de otras especialidades) ===== #}
-        {% if session['usuario_rol'] in ['Pañolero', 'Admin'] and alumnos_visitantes %}
+        {% endif %}{# fin if PANOL_TP — grid cursos+panoleros #}
+
+        {# ===== CARD: ALUMNOS VISITANTES — solo en PANOL_TP ===== #}
+        {% if tipo_area == 'PANOL_TP' and session['usuario_rol'] in ['Pañolero', 'Admin'] and alumnos_visitantes %}
         <div class="card" style="border-left: 4px solid #14b8a6; margin-bottom: 20px;">
             <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
                 <i class="fas fa-user-friends"></i> Alumnos Visitantes
@@ -503,6 +506,9 @@
                 <div>
                     <label>Categoría</label>
                     <select name="categoria">
+                        {% if especialidad and 'ACLE' in especialidad %}
+                        <option value="Encargado ACLE">Encargado ACLE</option>
+                        {% endif %}
                         <option value="Material Escritorio">Material Escritorio</option>
                         <option value="Material Didáctico">Material Didáctico</option>
                         <option value="Mobiliario">Mobiliario</option>
@@ -1070,6 +1076,7 @@
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
 
+            {% if tipo_area in ['PANOL_TP', 'INFORMATICA'] %}
             <div class="card" style="border-left: 4px solid var(--info);">
                 <h2>
                     <i class="fas fa-clipboard-check"></i> Órdenes de Trabajo (OT)
@@ -1108,6 +1115,8 @@
                     </table>
                 </div>
             </div>
+
+            {% endif %}{# fin if OT solo en PANOL_TP+INFORMATICA #}
 
             <div class="card" style="border-left: 4px solid var(--purple);">
                 <h2><i class="fas fa-exchange-alt"></i> Préstamos a Especialidades</h2>
@@ -1256,7 +1265,7 @@
             {% if panoleros_dia %}
             <div style="margin-bottom: 15px; background: #fef3c7; padding: 10px; border-radius: 6px; border: 1px solid #fbbf24;">
                 <label style="font-weight: 600; color: #92400e;">
-                    <i class="fas fa-user-shield"></i> Pañolero del Día que entrega:
+                    <i class="fas fa-user-shield"></i> Instructor del Día que entrega:
                 </label>
                 <select name="panolero_dia_id" required style="width: 100%; padding: 8px; margin-top: 5px; border: 2px solid #fbbf24;">
                     <option value="" disabled selected>— Selecciona al pañolero del día que está atendiendo —</option>
@@ -1268,7 +1277,7 @@
             {% else %}
             <div style="margin-bottom: 15px; background: #fee2e2; padding: 10px; border-radius: 6px; border: 1px solid #fca5a5;">
                 <p style="margin: 0; color: #991b1b; font-size: 0.85rem;">
-                    <i class="fas fa-exclamation-triangle"></i> No hay pañoleros del día designados.
+                    <i class="fas fa-exclamation-triangle"></i> No hay instructores del día designados.
                     Este préstamo quedará registrado a tu nombre como encargado.
                 </p>
             </div>
