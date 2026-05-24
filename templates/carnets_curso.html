@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Carnets — {{ curso.nombre }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <style>
+        @page { size: A4; margin: 8mm; }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            background: #f1f5f9;
+            margin: 0;
+            padding: 16px;
+        }
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 14px;
+            position: sticky;
+            top: 0;
+            background: #f1f5f9;
+            padding: 8px 0;
+            z-index: 10;
+            align-items: center;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+            text-decoration: none;
+            color: white;
+        }
+        .btn-print { background: #10b981; }
+        .btn-back  { background: #64748b; }
+        .info {
+            background: #e0e7ff;
+            color: #3730a3;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+        }
+        .carnet-wrap {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 5mm;
+            background: white;
+            padding: 8mm;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            max-width: 210mm;
+            margin: 0 auto;
+        }
+        .carnet {
+            border: 1.5px dashed #94a3b8;
+            border-radius: 8px;
+            padding: 12px 16px;
+            min-height: 42mm;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            background: white;
+            page-break-inside: avoid;
+        }
+        .carnet .escuela {
+            font-size: 0.65rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .carnet .nombre {
+            font-size: 1.05rem;
+            font-weight: 800;
+            color: #0f172a;
+            line-height: 1.2;
+            margin: 3px 0;
+        }
+        .carnet .meta {
+            font-size: 0.8rem;
+            color: #475569;
+        }
+        .carnet .codigo {
+            font-family: 'Courier New', monospace;
+            font-size: 0.7rem;
+            color: #1e293b;
+            text-align: center;
+            margin-top: 2px;
+        }
+        .carnet svg { display: block; margin: 4px auto 0; }
+        .vacio { text-align:center; color:#b91c1c; padding:40px; }
+        @media print {
+            body { background: white; padding: 0; }
+            .toolbar { display: none !important; }
+            .carnet-wrap { box-shadow: none; border-radius: 0; padding: 0; max-width: 100%; }
+            .carnet { border: 1px solid #475569; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="toolbar">
+        <button class="btn btn-print" onclick="window.print()">🖨️ Imprimir carnets</button>
+        <a href="/inventario" class="btn btn-back">← Volver</a>
+        <span class="info"><strong>{{ curso.nombre }}</strong> — {{ alumnos|length }} alumno(s)</span>
+    </div>
+
+    {% if alumnos %}
+    <div class="carnet-wrap">
+        {% for a in alumnos %}
+        <div class="carnet">
+            <div>
+                <div class="escuela">Carnet de Alumno · {{ a.especialidad.nombre if a.especialidad else curso.nombre }}</div>
+                <div class="nombre">{{ a.nombre }}</div>
+                <div class="meta">
+                    {% if a.numero_lista is not none %}N° {{ a.numero_lista }} · {% endif %}
+                    {{ a.curso_display }}
+                    {% if a.rut_matricula %}<br>RUT: {{ a.rut_matricula }}{% endif %}
+                </div>
+            </div>
+            <div>
+                <svg class="codigo-svg" data-code="{{ a.codigo_barras }}"></svg>
+                <div class="codigo">{{ a.codigo_barras }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="vacio">⚠️ Este curso no tiene alumnos cargados.</div>
+    {% endif %}
+
+    <script>
+        document.querySelectorAll('.codigo-svg').forEach(function(svg) {
+            var code = svg.dataset.code || '';
+            if (!code) return;
+            try {
+                JsBarcode(svg, code, {
+                    format: 'CODE128', displayValue: false,
+                    height: 48, width: 1.4, margin: 2
+                });
+            } catch (e) { console.warn('Barcode error', code, e); }
+        });
+    </script>
+</body>
+</html>

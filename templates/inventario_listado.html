@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Listado de Inventario — {{ especialidad_nombre }}</title>
+    <style>
+        @page { size: A4 landscape; margin: 10mm; }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            background: #f1f5f9;
+            margin: 0;
+            padding: 16px;
+            color: #0f172a;
+        }
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 14px;
+            position: sticky;
+            top: 0;
+            background: #f1f5f9;
+            padding: 8px 0;
+            z-index: 10;
+            align-items: center;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+            text-decoration: none;
+            color: white;
+        }
+        .btn-print { background: #10b981; }
+        .btn-back  { background: #64748b; }
+        .hoja {
+            background: white;
+            padding: 14mm;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            max-width: 285mm;
+            margin: 0 auto;
+        }
+        h1 { font-size: 1.4rem; margin: 0 0 4px 0; color: #1e3a8a; }
+        .sub { color: #64748b; font-size: 0.85rem; margin-bottom: 14px; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+        th {
+            background: #1e3a8a;
+            color: white;
+            padding: 7px 8px;
+            text-align: left;
+            font-weight: 600;
+        }
+        td {
+            padding: 6px 8px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        tr:nth-child(even) td { background: #f8fafc; }
+        .num { text-align: center; }
+        .tot { font-weight: bold; }
+        tfoot td {
+            background: #e0e7ff;
+            font-weight: bold;
+            border-top: 2px solid #1e3a8a;
+        }
+        .vacio { text-align:center; color:#b91c1c; padding:40px; }
+        @media print {
+            body { background: white; padding: 0; }
+            .toolbar { display: none !important; }
+            .hoja { box-shadow: none; border-radius: 0; padding: 0; max-width: 100%; }
+            thead { display: table-header-group; }
+            tr { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="toolbar">
+        <button class="btn btn-print" onclick="window.print()">🖨️ Imprimir listado</button>
+        <a href="/inventario" class="btn btn-back">← Volver</a>
+    </div>
+
+    <div class="hoja">
+        <h1>Listado de Inventario — {{ especialidad_nombre }}</h1>
+        <div class="sub">Generado el {{ fecha }} · {{ items|length }} ítem(s)</div>
+
+        {% if items %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Nombre</th>
+                    <th>Marca / Modelo</th>
+                    <th>Categoría</th>
+                    <th class="num">Total</th>
+                    <th class="num">Disp.</th>
+                    <th class="num">En uso</th>
+                    <th class="num">Merma</th>
+                    <th>Ubicación</th>
+                    <th class="num">Costo unit.</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for i in items %}
+                <tr>
+                    <td style="font-family:monospace; font-size:0.72rem;">{{ i.codigo_barras or '—' }}</td>
+                    <td><strong>{{ i.nombre }}</strong></td>
+                    <td>{{ i.marca or '' }} {{ i.modelo or '' }}</td>
+                    <td>{{ i.categoria or '—' }}</td>
+                    <td class="num tot">{{ i.cantidad_total }}</td>
+                    <td class="num" style="color:#16a34a;">{{ i.cantidad_disponible }}</td>
+                    <td class="num" style="color:#ca8a04;">{{ i.cantidad_total - i.cantidad_disponible }}</td>
+                    <td class="num" style="color:#dc2626;">{{ i.cantidad_mermada or 0 }}</td>
+                    <td>{{ i.ubicacion or '—' }}</td>
+                    <td class="num">${{ '{:,.0f}'.format(i.precio_unitario or 0).replace(',', '.') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="4">TOTALES</td>
+                    <td class="num">{{ items | sum(attribute='cantidad_total') }}</td>
+                    <td class="num">{{ items | sum(attribute='cantidad_disponible') }}</td>
+                    <td class="num">{{ (items | sum(attribute='cantidad_total')) - (items | sum(attribute='cantidad_disponible')) }}</td>
+                    <td class="num">{{ items | sum(attribute='cantidad_mermada') }}</td>
+                    <td></td>
+                    <td class="num">${{ '{:,.0f}'.format(valor_total).replace(',', '.') }}</td>
+                </tr>
+            </tfoot>
+        </table>
+        {% else %}
+        <div class="vacio">⚠️ No hay ítems cargados en este inventario.</div>
+        {% endif %}
+    </div>
+</body>
+</html>

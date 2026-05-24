@@ -3364,6 +3364,52 @@ def etiquetas_lote():
 
 
 
+
+@app.route('/inventario_listado')
+@login_requerido
+def inventario_listado():
+    """Listado completo del inventario en formato tabla, imprimible (A4 horizontal)."""
+    if session.get('usuario_rol') == 'Admin':
+        esp_id = request.args.get('especialidad_id', type=int) or session.get('usuario_especialidad_id')
+    else:
+        esp_id = session.get('usuario_especialidad_id')
+    if not esp_id:
+        flash("❌ Sin especialidad activa.")
+        return redirect(url_for('ver_inventario'))
+    esp = Especialidad.query.get(esp_id)
+    items = Item.query.filter_by(especialidad_id=esp_id).order_by(
+        Item.categoria.asc(), Item.nombre.asc()).all()
+    valor_total = sum((i.precio_unitario or 0) * (i.cantidad_total or 0) for i in items)
+    return render_template('inventario_listado.html',
+                           items=items,
+                           especialidad_nombre=(esp.nombre if esp else 'Mi área'),
+                           valor_total=valor_total,
+                           fecha=datetime.now().strftime('%d-%m-%Y %H:%M'))
+
+
+@app.route('/carnets_curso/<int:curso_id>')
+@login_requerido
+def carnets_curso(curso_id):
+    """Página imprimible con los carnets (código de barras) de todos los alumnos
+    de un curso. Genera el código de barras a los alumnos que aún no tengan."""
+    curso = Curso.query.get_or_404(curso_id)
+    if (session.get('usuario_rol') != 'Admin'
+            and curso.especialidad_id != session.get('usuario_especialidad_id')):
+        flash("❌ Sin permiso para ver los carnets de este curso.")
+        return redirect(url_for('ver_inventario'))
+    alumnos = Estudiante.query.filter_by(curso_id=curso.id, activo=True).order_by(
+        Estudiante.numero_lista.asc(), Estudiante.nombre.asc()).all()
+    # Asegurar que todos tengan código de barras
+    generados = 0
+    for a in alumnos:
+        if not a.codigo_barras:
+            a.codigo_barras = generar_codigo_barras_alumno()
+            generados += 1
+    if generados:
+        db.session.commit()
+    return render_template('carnets_curso.html', curso=curso, alumnos=alumnos)
+
+
 if __name__ == '__main__':
     import threading, webbrowser, sys
     es_exe = getattr(sys, 'frozen', False)

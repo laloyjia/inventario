@@ -1023,6 +1023,24 @@
                 </a>
                 {% endif %}
             </div>
+
+            <!-- Impresión del inventario -->
+            <div style="background: white; padding: 15px; border-radius: 8px; margin-top: 12px;">
+                <h3 style="margin: 0 0 10px 0; color: #065f46; font-size: 1rem;"><i class="fas fa-print"></i> Imprimir inventario</h3>
+                <p style="font-size: 0.85rem; color: #555; margin: 0 0 12px 0;">
+                    Genera versiones imprimibles de todo el inventario del área.
+                </p>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                    <a href="/inventario_listado" target="_blank"
+                       style="background: #1e3a8a; color: white; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+                        <i class="fas fa-list"></i> Imprimir listado de inventario
+                    </a>
+                    <a href="/etiquetas_lote" target="_blank"
+                       style="background: #6366f1; color: white; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+                        <i class="fas fa-barcode"></i> Imprimir etiquetas de inventario
+                    </a>
+                </div>
+            </div>
         </div>
 
         {# === Carga masiva de Alumnos por curso (solo Pañolero) === #}
@@ -1070,6 +1088,32 @@
                    style="background: #6366f1; color: white; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;">
                     <i class="fas fa-download"></i> Descargar plantilla alumnos
                 </a>
+            </div>
+
+            <!-- Imprimir carnets de un curso -->
+            <div style="background: white; padding: 15px; border-radius: 8px; margin-top: 12px;">
+                <h3 style="margin: 0 0 10px 0; color: #3730a3; font-size: 1rem;"><i class="fas fa-id-card"></i> Imprimir carnets de alumnos</h3>
+                <p style="font-size: 0.85rem; color: #555; margin: 0 0 12px 0;">
+                    Elige un curso e imprime los carnets con código de barras de todos sus alumnos.
+                </p>
+                {% if cursos_disponibles %}
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center;">
+                    <select id="select_curso_carnets" style="flex: 1; min-width: 220px; padding: 8px; border: 1px solid #c7d2fe; border-radius: 6px;">
+                        <option value="">— Selecciona un curso —</option>
+                        {% for c in cursos_disponibles %}
+                        <option value="{{ c.id }}">{{ c.nombre }} ({{ c.total_alumnos }} alumno{{ 's' if c.total_alumnos != 1 else '' }})</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" onclick="imprimirCarnetsCurso()"
+                            style="background: #6366f1; color: white; padding: 10px 18px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">
+                        <i class="fas fa-print"></i> Imprimir carnets del curso
+                    </button>
+                </div>
+                {% else %}
+                <p style="font-size: 0.85rem; color: #b91c1c; background: #fee2e2; padding: 8px 12px; border-radius: 4px; margin: 0;">
+                    <i class="fas fa-info-circle"></i> Aún no hay cursos cargados. Sube una planilla de alumnos primero.
+                </p>
+                {% endif %}
             </div>
         </div>
         {% endif %}
@@ -1473,6 +1517,16 @@
         evt.currentTarget.classList.add("active");
         evt.currentTarget.style.background = "var(--primary)";
         evt.currentTarget.style.color = "white";
+    }
+
+    // Abrir la página imprimible de carnets del curso seleccionado
+    function imprimirCarnetsCurso() {
+        const sel = document.getElementById('select_curso_carnets');
+        if (!sel || !sel.value) {
+            alert("Selecciona un curso primero.");
+            return;
+        }
+        window.open('/carnets_curso/' + sel.value, '_blank');
     }
 
     // --- CARGA DE CURSOS PARA LOS FILTROS ---
