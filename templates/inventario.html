@@ -334,6 +334,50 @@
 
         {% endif %}{# fin if PANOL_TP — grid cursos+panoleros #}
 
+        {# ===== CARD: PROFESORES SUPERVISORES ===== #}
+        {% if session['usuario_rol'] in ['Pañolero', 'Admin'] %}
+        <div class="card" style="border-left: 4px solid #0ea5e9; margin-bottom: 20px;">
+            <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
+                <i class="fas fa-chalkboard-teacher"></i> Profesores Supervisores
+                <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
+                    ({{ profesores_area|length }})
+                </span>
+            </h2>
+            <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 12px 0;">
+                Profesores responsables del área. Aparecen como supervisor a cargo en préstamos y órdenes de trabajo.
+            </p>
+
+            {% if profesores_area %}
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                {% for prof in profesores_area %}
+                <div style="background: #e0f2fe; border: 1px solid #7dd3fc; border-radius: 20px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; font-size: 0.88rem;">
+                    <i class="fas fa-user-tie" style="color: #0284c7;"></i>
+                    <strong style="color: #075985;">{{ prof.nombre }}</strong>
+                    <form action="/profesor/quitar/{{ prof.id }}" method="POST" style="display:inline; margin:0;"
+                          onsubmit="return confirm('¿Dar de baja al profesor {{ prof.nombre }}?');">
+                        <button type="submit" style="background:none; border:none; color:#b91c1c; cursor:pointer; padding:0;" title="Quitar">
+                            <i class="fas fa-times-circle"></i>
+                        </button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p style="font-size: 0.85rem; color: #b91c1c; background: #fee2e2; padding: 8px 12px; border-radius: 4px; margin: 0 0 12px 0;">
+                <i class="fas fa-info-circle"></i> No hay profesores registrados. Agrega al menos uno para poder registrar préstamos y OT.
+            </p>
+            {% endif %}
+
+            <form action="/profesor/agregar" method="POST" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <input type="text" name="nombre" required placeholder="Nombre completo del profesor"
+                       style="flex: 1; min-width: 220px; padding: 8px; border: 1px solid #7dd3fc; border-radius: 6px;">
+                <button type="submit" class="btn-add" style="background: #0ea5e9; white-space: nowrap;">
+                    <i class="fas fa-plus"></i> Registrar profesor
+                </button>
+            </form>
+        </div>
+        {% endif %}
+
         {# ===== CARD: ALUMNOS VISITANTES — solo en PANOL_TP ===== #}
         {% if tipo_area == 'PANOL_TP' and session['usuario_rol'] in ['Pañolero', 'Admin'] and alumnos_visitantes %}
         <div class="card" style="border-left: 4px solid #14b8a6; margin-bottom: 20px;">
@@ -472,9 +516,10 @@
                 <div>
                     <label>Cód. Barras (Vacío=Auto)</label>
                     <input type="text" name="codigo_barras" id="agregar_codigo_barras"
-                           placeholder="Escanear o digitar..." autocomplete="off"
+                           placeholder="Escanear o digitar y presionar Enter..." autocomplete="off"
                            onchange="autocompletarItemExistente(this.value)"
-                           onblur="autocompletarItemExistente(this.value)">
+                           onblur="autocompletarItemExistente(this.value)"
+                           onkeydown="if(event.key==='Enter'){event.preventDefault(); autocompletarItemExistente(this.value);}">
                     <small id="agregar_codigo_aviso" style="display:none; color:#1d4ed8; font-size:0.7rem;"></small>
                 </div>
                 <div><label>Nombre</label><input type="text" name="nombre" id="agregar_nombre" required></div>
@@ -495,7 +540,7 @@
                 <div><label>Fecha adquisición</label><input type="date" name="fecha_adquisicion" id="agregar_fecha"></div>
                 <div><label>Desgaste ($)</label><input type="number" name="desgaste" id="agregar_desgaste" min="0" step="any" value="0"></div>
                 <div><label>Costo unitario ($)</label><input type="number" name="precio_unitario" id="agregar_precio" min="0" step="any" value="0"></div>
-                <div><label>URL Imagen (Opcional)</label><input type="url" name="imagen_url" id="agregar_imagen" placeholder="Pegar link..."></div>
+                <div><label>URL Imagen (Opcional)</label><input type="text" name="imagen_url" id="agregar_imagen" placeholder="Pegar link..."></div>
                 <div><label>Máx. usos (desgaste)</label><input type="number" name="max_usos" id="agregar_max_usos" min="0" placeholder="Opcional"></div>
 
                 {# === GENERAL (ACLE, Salas, Oficina) === #}
@@ -520,7 +565,7 @@
                 <div><label>Stock mínimo</label><input type="number" name="cantidad_minima" min="0" value="5"></div>
                 <div><label>Ubicación</label><input type="text" name="ubicacion"></div>
                 <div><label>Fecha adquisición</label><input type="date" name="fecha_adquisicion"></div>
-                <div><label>URL Imagen (Opcional)</label><input type="url" name="imagen_url" placeholder="Pegar link..."></div>
+                <div><label>URL Imagen (Opcional)</label><input type="text" name="imagen_url" placeholder="Pegar link..."></div>
                 {% endif %}
 
                 {# === CAMPOS COMUNES: costos y desgaste === #}
@@ -1233,8 +1278,13 @@
             <label style="color: var(--danger);">1. Profesor Supervisor a Cargo <span style="color:red;">*</span></label>
             <select id="profesor_id_modal" required style="border: 2px solid var(--danger); margin-bottom: 10px;">
                 <option value="" disabled selected>-- Seleccione al Profesor --</option>
-                {% for prof in profesores %}<option value="{{ prof.id }}">{{ prof.nombre }}</option>{% endfor %}
+                {% for prof in profesores_area %}<option value="{{ prof.nombre }}">{{ prof.nombre }}</option>{% endfor %}
             </select>
+            {% if not profesores_area %}
+            <p style="font-size:0.75rem; color:#b45309; margin:-6px 0 10px 0;">
+                <i class="fas fa-info-circle"></i> No hay profesores registrados. Agrégalos en la tarjeta "Profesores Supervisores" de la pestaña Inventario Físico.
+            </p>
+            {% endif %}
             <label>2. Filtro de Curso</label>
             <select id="curso_salida" onchange="filtrarAlumnosModalSalida()" style="margin-bottom: 10px;">
                 <option value="ALL">📚 Mostrar Todos los Cursos</option>
@@ -1302,7 +1352,7 @@
         </div>
         <form action="/registrar_salida" method="POST" id="form_final_despacho">
             <input type="hidden" name="estudiante_id" id="hidden_estudiante_id">
-            <input type="hidden" name="profesor_id" id="hidden_profesor_id">
+            <input type="hidden" name="profesor_nombre" id="hidden_profesor_nombre">
             <input type="hidden" name="carrito_data" id="hidden_carrito">
 
             {# Selector de pañolero del día que está atendiendo este préstamo #}
@@ -1372,11 +1422,35 @@
             <label>Título de la OT <span style="color:red;">*</span></label>
             <input type="text" name="titulo" placeholder="Ej: Reparación Tablero Eléctrico" required style="margin-bottom: 10px;">
 
-            <label>Profesional a Cargo <span style="color:red;">*</span></label>
-            <input type="text" name="profesional_cargo" placeholder="Nombre del profesional..." required style="margin-bottom: 10px;">
+            <label>Profesor a Cargo <span style="color:red;">*</span></label>
+            {% if profesores_area %}
+            <select name="profesional_cargo" required style="margin-bottom: 10px;">
+                <option value="" disabled selected>— Selecciona al profesor —</option>
+                {% for prof in profesores_area %}
+                <option value="{{ prof.nombre }}">{{ prof.nombre }}</option>
+                {% endfor %}
+            </select>
+            {% else %}
+            <input type="text" name="profesional_cargo" placeholder="Nombre del profesor..." required style="margin-bottom: 10px;">
+            <p style="font-size:0.72rem; color:#b45309; margin:-4px 0 10px 0;">
+                <i class="fas fa-info-circle"></i> No hay profesores registrados. Agrégalos en la pestaña Inventario Físico para que aparezcan aquí.
+            </p>
+            {% endif %}
 
-            <label>Alumno(s) a Cargo (Opcional)</label>
+            <label>Alumno(s) a Cargo de ejecutar la OT</label>
+            {% if estudiantes %}
+            <div style="max-height: 130px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; margin-bottom: 10px; background: #f8fafc;">
+                {% for est in estudiantes %}
+                <label style="display:block; font-size:0.85rem; padding:2px 0; font-weight:normal;">
+                    <input type="checkbox" name="alumnos_cargo[]" value="{{ est.nombre }}{% if est.curso_display and est.curso_display != '—' %} ({{ est.curso_display }}){% endif %}">
+                    {% if est.numero_lista is not none %}N°{{ est.numero_lista }} · {% endif %}{{ est.nombre }}
+                    {% if est.curso_display and est.curso_display != '—' %}<span style="color:#64748b;"> · {{ est.curso_display }}</span>{% endif %}
+                </label>
+                {% endfor %}
+            </div>
+            {% else %}
             <input type="text" name="alumnos_cargo" placeholder="Nombres separados por coma..." style="margin-bottom: 10px;">
+            {% endif %}
 
             <label>Descripción General</label>
             <textarea name="descripcion" rows="2" placeholder="Falla detectada o trabajo a realizar..." style="margin-bottom: 15px;"></textarea>
@@ -1465,7 +1539,7 @@
             <input type="text" name="descripcion" id="edit_descripcion" placeholder="Descripción breve del ítem" style="margin-bottom: 12px;">
 
             <label>URL de Imagen (dejar vacío para no cambiar)</label>
-            <input type="url" name="imagen_url" id="edit_imagen" placeholder="https://..." style="margin-bottom: 12px;">
+            <input type="text" name="imagen_url" id="edit_imagen" placeholder="https://..." style="margin-bottom: 12px;">
 
             <label>Ubicación</label>
             <input type="text" name="ubicacion" id="edit_ubicacion" placeholder="Ej: Estante A, Armario 1, etc." style="margin-bottom: 12px;">
@@ -1701,6 +1775,25 @@
         {% endfor %}
     };
 
+    // --- FILTRO DEL INVENTARIO (buscador + categorías) ---
+    let categoriaActiva = 'TODOS';
+    function filtrarInventario() {
+        const inp = document.getElementById('buscadorInventario');
+        const texto = (inp ? inp.value : '').toLowerCase().trim();
+        document.querySelectorAll('tr.fila-item').forEach(function(tr) {
+            const cat = (tr.getAttribute('data-categoria') || '');
+            const matchCat = (categoriaActiva === 'TODOS' || cat === categoriaActiva);
+            const matchTexto = (texto === '' || tr.innerText.toLowerCase().includes(texto));
+            tr.style.display = (matchCat && matchTexto) ? '' : 'none';
+        });
+    }
+    function filtrarCategoria(btn, categoria) {
+        categoriaActiva = categoria;
+        document.querySelectorAll('.cat-btn').forEach(function(b) { b.classList.remove('active'); });
+        if (btn) btn.classList.add('active');
+        filtrarInventario();
+    }
+
     // Buscar ítem por código (case-insensitive, trim)
     function buscarItemPorCodigo(codigo) {
         if (!codigo) return null;
@@ -1860,9 +1953,13 @@
     if (formFinal) {
         formFinal.addEventListener('submit', function (e) {
             const estId = document.getElementById('estudiante_id_modal').value;
+            const profSel = document.getElementById('profesor_id_modal');
+            const profNombre = profSel ? profSel.value : '';
+            if (!profNombre) { e.preventDefault(); alert("Selecciona el profesor supervisor a cargo."); return; }
             if (!estId) { e.preventDefault(); alert("Selecciona un estudiante."); return; }
             if (carrito.length === 0) { e.preventDefault(); alert("El carrito esta vacio."); return; }
             document.getElementById('hidden_estudiante_id').value = estId;
+            document.getElementById('hidden_profesor_nombre').value = profNombre;
             document.getElementById('hidden_carrito').value = JSON.stringify(carrito);
         });
     }
@@ -1936,37 +2033,4 @@
         const q = (document.getElementById('buscadorPrestamos') || {value: ''}).value.toLowerCase().trim();
         document.querySelectorAll('tr[data-estudiante], tr.fila-prestamo').forEach(tr => {
             const txt = tr.textContent.toLowerCase();
-            tr.style.display = (!q || txt.indexOf(q) !== -1) ? '' : 'none';
-        });
-    }
-    function filtrarEstadoPrestamo(btn, estado) {
-        document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
-        if (btn) btn.classList.add('active');
-        document.querySelectorAll('tr.fila-prestamo, tr[data-estudiante]').forEach(tr => {
-            const e = tr.getAttribute('data-estado') || '';
-            tr.style.display = (estado === 'TODOS' || e === estado) ? '' : 'none';
-        });
-    }
-
-</script>
-
-
-<script>
-// Pintar codigos de barras Code128 en todas las filas del inventario
-document.addEventListener('DOMContentLoaded', function() {
-    if (typeof JsBarcode === 'undefined') return;
-    document.querySelectorAll('svg.barcode-mini').forEach(function (svg) {
-        const code = svg.dataset.code;
-        if (!code) return;
-        try {
-            JsBarcode(svg, code, {
-                format: 'CODE128', displayValue: false,
-                height: 26, width: 1.2, margin: 0
-            });
-        } catch (e) { /* ignorar errores individuales */ }
-    });
-});
-</script>
-
-</body>
-</html>
+            tr.style.display = (!q || txt.indexOf(q) 

@@ -276,6 +276,8 @@ class Prestamo(db.Model):
     item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
     estudiante_id = db.Column(db.Integer, db.ForeignKey('estudiante.id'), nullable=False)
     profesor_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=True)
+    # Nombre del profesor supervisor (modelo Profesor, gestionado por el instructor)
+    profesor_nombre = db.Column(db.String(120), nullable=True)
     # Pañolero del día (estudiante designado que entregó el ítem). Opcional.
     panolero_dia_id = db.Column(db.Integer, db.ForeignKey('estudiante.id'), nullable=True)
     encargado = db.Column(db.String(100))
@@ -400,6 +402,21 @@ class PanoleroDesignado(db.Model):
     estudiante = db.relationship('Estudiante', backref='designaciones_panolero', lazy=True)
     especialidad = db.relationship('Especialidad', backref='panoleros_designados', lazy=True)
     designado_por = db.relationship('Usuario', foreign_keys=[designado_por_id], lazy=True)
+
+
+class Profesor(db.Model):
+    """Profesor supervisor de un área. NO es una cuenta del sistema: es solo un
+    nombre que el instructor registra para que aparezca como 'supervisor a cargo'
+    en préstamos y órdenes de trabajo. Los gestiona el instructor de cada área."""
+    __tablename__ = 'profesor'
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(120), nullable=False)
+    especialidad_id = db.Column(db.Integer, db.ForeignKey('especialidad.id'),
+                                nullable=False, index=True)
+    activo = db.Column(db.Boolean, default=True, nullable=False,
+                       server_default='true', index=True)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    especialidad = db.relationship('Especialidad', backref='profesores_area', lazy=True)
 
 
 def _panoleros_dia_activos(especialidad_id):
@@ -570,11 +587,13 @@ def _migrar_columnas_seguridad():
             if 'desgaste' not in cols:
                 statements.append("ALTER TABLE item ADD COLUMN desgaste FLOAT NOT NULL DEFAULT 0")
 
-        # === prestamo: panolero_dia_id ===
+        # === prestamo: panolero_dia_id, profesor_nombre ===
         if 'prestamo' in tablas:
             cols = {c['name'] for c in insp.get_columns('prestamo')}
             if 'panolero_dia_id' not in cols:
                 statements.append("ALTER TABLE prestamo ADD COLUMN panolero_dia_id INTEGER NULL")
+            if 'profesor_nombre' not in cols:
+                statements.append("ALTER TABLE prestamo ADD COLUMN profesor_nombre VARCHAR(120) NULL")
 
         # === estudiante: curso_id, email, numero_lista, codigo_barras ===
         if 'estudiante' in tablas:
@@ -1020,10 +1039,12 @@ def ver_inventario():
     # Cursos a cargo del pañol (máx. 2) y alumnos visitantes de otras especialidades
     cursos_a_cargo = _cursos_a_cargo(especialidad_id) if especialidad_id else []
     alumnos_visitantes = _alumnos_visitantes(especialidad_id) if especialidad_id else []
+    profesores_area = _profesores_activos(especialidad_id) if especialidad_id else []
     return render_template('inventario.html',
                            items=items, estudiantes=estudiantes, prestamos=prestamos,
                            prestamos_externos=prestamos_externos,
                            ordenes_trabajo=ordenes_trabajo, profesores=profesores,
+                           profesores_area=profesores_area,
                            usuarios_sistema=usuarios_sistema,
                            practicas_resumen=practicas_resumen,
                            total_stock=total_stock,
@@ -1575,6 +1596,8 @@ def eliminar_estudiante(est_id):
 def registrar_salida():
     estudiante_id = request.form.get('estudiante_id', type=int)
     profesor_id = request.form.get('profesor_id', type=int)
+    # Nombre del profesor supervisor (modelo Profesor gestionado por el instructor)
+    profesor_nombre = (request.form.get('profesor_nombre') or '').strip() or None
     nombre_practica = (request.form.get('nombre_practica') or '').strip()
     try:
         carrito = json.loads(request.form.get('carrito_data', '[]'))
@@ -1626,6 +1649,7 @@ def registrar_salida():
 
         db.session.add(Prestamo(item_id=item.id, estudiante_id=estudiante.id,
                                 profesor_id=profesor_id,
+                                profesor_nombre=profesor_nombre,
                                 panolero_dia_id=panolero_dia_id,
                                 encargado=session.get('usuario_nombre'),
                                 cantidad=cantidad, cantidad_solicitada=cantidad,
@@ -1738,7 +1762,12 @@ def devolver_externo(ext_id):
 def agregar_ot():
     titulo = (request.form.get('titulo') or '').strip()
     profesional = (request.form.get('profesional_cargo') or '').strip()
-    alumnos = (request.form.get('alumnos_cargo') or '').strip()
+    # Alumnos a cargo: pueden venir como checkboxes múltiples (alumnos_cargo[]) o texto libre
+    alumnos_lista = request.form.getlist('alumnos_cargo[]')
+    if alumnos_lista:
+        alumnos = ', '.join(a.strip() for a in alumnos_lista if a.strip())
+    else:
+        alumnos = (request.form.get('alumnos_cargo') or '').strip()
     descripcion = (request.form.get('descripcion') or '').strip()
     herr = request.form.get('herramientas_utilizadas') or ''
     rep = request.form.get('repuestos_utilizados') or ''
@@ -3180,6 +3209,71 @@ def quitar_curso_a_cargo(curso_id):
     except Exception:
         pass
     flash(f"✅ '{curso.nombre}' dado de baja como curso a cargo (los alumnos siguen en la BD).")
+    return redirect(url_for('ver_inventario'))
+
+
+# ========================================================================
+# PROFESORES SUPERVISORES — gestionados por el instructor de cada área
+# ========================================================================
+
+def _profesores_activos(especialidad_id):
+    """Lista de profesores activos de una especialidad (orden alfabético)."""
+    if not especialidad_id:
+        return []
+    try:
+        return Profesor.query.filter_by(
+            especialidad_id=especialidad_id, activo=True
+        ).order_by(Profesor.nombre.asc()).all()
+    except Exception as e:
+        print(f"[WARN] _profesores_activos: {e}")
+        return []
+
+
+@app.route('/profesor/agregar', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def agregar_profesor():
+    """El instructor registra un profesor supervisor de su área."""
+    especialidad_id = session.get('usuario_especialidad_id')
+    if not especialidad_id:
+        flash("❌ No tienes una especialidad activa.")
+        return redirect(url_for('ver_inventario'))
+    nombre = (request.form.get('nombre') or '').strip()
+    if not nombre:
+        flash("❌ Debes escribir el nombre del profesor.")
+        return redirect(url_for('ver_inventario'))
+    # Evitar duplicados activos
+    existe = Profesor.query.filter(
+        Profesor.especialidad_id == especialidad_id,
+        Profesor.activo == True,
+        db.func.lower(Profesor.nombre) == nombre.lower()
+    ).first()
+    if existe:
+        flash(f"ℹ️ El profesor '{nombre}' ya está registrado.")
+        return redirect(url_for('ver_inventario'))
+    db.session.add(Profesor(nombre=nombre, especialidad_id=especialidad_id))
+    db.session.commit()
+    try:
+        registrar_auditoria('crear', 'Profesor', 0, valores_nuevos={'nombre': nombre})
+    except Exception:
+        pass
+    flash(f"✅ Profesor '{nombre}' registrado.")
+    return redirect(url_for('ver_inventario'))
+
+
+@app.route('/profesor/quitar/<int:profesor_id>', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def quitar_profesor(profesor_id):
+    """Da de baja un profesor supervisor."""
+    especialidad_id = session.get('usuario_especialidad_id')
+    p = Profesor.query.get_or_404(profesor_id)
+    if p.especialidad_id != especialidad_id and session.get('usuario_rol') != 'Admin':
+        flash("❌ Sin permiso.")
+        return redirect(url_for('ver_inventario'))
+    p.activo = False
+    db.session.commit()
+    flash(f"✅ Profesor '{p.nombre}' dado de baja.")
     return redirect(url_for('ver_inventario'))
 
 
