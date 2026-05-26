@@ -334,50 +334,6 @@
 
         {% endif %}{# fin if PANOL_TP — grid cursos+panoleros #}
 
-        {# ===== CARD: PROFESORES SUPERVISORES ===== #}
-        {% if session['usuario_rol'] in ['Pañolero', 'Admin'] %}
-        <div class="card" style="border-left: 4px solid #0ea5e9; margin-bottom: 20px;">
-            <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
-                <i class="fas fa-chalkboard-teacher"></i> Profesores Supervisores
-                <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
-                    ({{ profesores_area|length }})
-                </span>
-            </h2>
-            <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 12px 0;">
-                Profesores responsables del área. Aparecen como supervisor a cargo en préstamos y órdenes de trabajo.
-            </p>
-
-            {% if profesores_area %}
-            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-                {% for prof in profesores_area %}
-                <div style="background: #e0f2fe; border: 1px solid #7dd3fc; border-radius: 20px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; font-size: 0.88rem;">
-                    <i class="fas fa-user-tie" style="color: #0284c7;"></i>
-                    <strong style="color: #075985;">{{ prof.nombre }}</strong>
-                    <form action="/profesor/quitar/{{ prof.id }}" method="POST" style="display:inline; margin:0;"
-                          onsubmit="return confirm('¿Dar de baja al profesor {{ prof.nombre }}?');">
-                        <button type="submit" style="background:none; border:none; color:#b91c1c; cursor:pointer; padding:0;" title="Quitar">
-                            <i class="fas fa-times-circle"></i>
-                        </button>
-                    </form>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <p style="font-size: 0.85rem; color: #b91c1c; background: #fee2e2; padding: 8px 12px; border-radius: 4px; margin: 0 0 12px 0;">
-                <i class="fas fa-info-circle"></i> No hay profesores registrados. Agrega al menos uno para poder registrar préstamos y OT.
-            </p>
-            {% endif %}
-
-            <form action="/profesor/agregar" method="POST" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <input type="text" name="nombre" required placeholder="Nombre completo del profesor"
-                       style="flex: 1; min-width: 220px; padding: 8px; border: 1px solid #7dd3fc; border-radius: 6px;">
-                <button type="submit" class="btn-add" style="background: #0ea5e9; white-space: nowrap;">
-                    <i class="fas fa-plus"></i> Registrar profesor
-                </button>
-            </form>
-        </div>
-        {% endif %}
-
         {# ===== CARD: ALUMNOS VISITANTES — solo en PANOL_TP ===== #}
         {% if tipo_area == 'PANOL_TP' and session['usuario_rol'] in ['Pañolero', 'Admin'] and alumnos_visitantes %}
         <div class="card" style="border-left: 4px solid #14b8a6; margin-bottom: 20px;">
@@ -1163,6 +1119,56 @@
         </div>
         {% endif %}
 
+        {# ===== CARD: PROFESORES SUPERVISORES (gestión en Varios) ===== #}
+        {% if session['usuario_rol'] in ['Pañolero', 'Admin'] %}
+        <div class="card" style="border-left: 4px solid #0ea5e9; background: #f0f9ff;">
+            <h2 style="color:#075985;">
+                <i class="fas fa-chalkboard-teacher"></i> Profesores Supervisores del Área
+                <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
+                    ({{ profesores_area|length }})
+                </span>
+            </h2>
+            <p style="font-size: 0.85rem; color: #475569; margin: 0 0 14px 0;">
+                Profesores responsables del área que aparecen como supervisor en préstamos y órdenes de trabajo. El instructor del pañol los gestiona aquí.
+            </p>
+
+            <div style="background: white; padding: 14px; border-radius: 8px; margin-bottom: 12px;">
+                <h3 style="margin: 0 0 10px 0; color: #075985; font-size: 1rem;"><i class="fas fa-plus-circle"></i> Registrar profesor</h3>
+                <form action="/profesor/agregar" method="POST" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <input type="text" name="nombre" required placeholder="Nombre completo del profesor"
+                           style="flex: 1; min-width: 240px; padding: 9px; border: 1px solid #7dd3fc; border-radius: 6px;">
+                    <button type="submit" style="background: #0ea5e9; color:white; padding: 10px 18px; border:none; border-radius: 6px; font-weight: bold; cursor: pointer;">
+                        <i class="fas fa-plus"></i> Agregar
+                    </button>
+                </form>
+            </div>
+
+            {% if profesores_area %}
+            <div style="background: white; padding: 14px; border-radius: 8px;">
+                <h3 style="margin: 0 0 10px 0; color: #075985; font-size: 1rem;"><i class="fas fa-list"></i> Profesores registrados</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    {% for prof in profesores_area %}
+                    <div style="background: #e0f2fe; border: 1px solid #7dd3fc; border-radius: 20px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem;">
+                        <i class="fas fa-user-tie" style="color: #0284c7;"></i>
+                        <strong style="color: #075985;">{{ prof.nombre }}</strong>
+                        <form action="/profesor/quitar/{{ prof.id }}" method="POST" style="display:inline; margin:0;"
+                              onsubmit="return confirm('¿Dar de baja al profesor {{ prof.nombre }}?');">
+                            <button type="submit" style="background:none; border:none; color:#b91c1c; cursor:pointer; padding:0;" title="Dar de baja">
+                                <i class="fas fa-times-circle"></i>
+                            </button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% else %}
+            <p style="font-size: 0.85rem; color: #b91c1c; background: #fee2e2; padding: 10px 14px; border-radius: 6px; margin: 0;">
+                <i class="fas fa-exclamation-triangle"></i> Aún no hay profesores registrados. Agrega al menos uno para poder registrar préstamos y OT.
+            </p>
+            {% endif %}
+        </div>
+        {% endif %}
+
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
 
             {% if tipo_area in ['PANOL_TP', 'INFORMATICA'] %}
@@ -1282,7 +1288,7 @@
             </select>
             {% if not profesores_area %}
             <p style="font-size:0.75rem; color:#b45309; margin:-6px 0 10px 0;">
-                <i class="fas fa-info-circle"></i> No hay profesores registrados. Agrégalos en la tarjeta "Profesores Supervisores" de la pestaña Inventario Físico.
+                <i class="fas fa-info-circle"></i> No hay profesores registrados. Agrégalos en la pestaña "Varios" → "Profesores Supervisores del Área".
             </p>
             {% endif %}
             <label>2. Filtro de Curso</label>
@@ -1433,7 +1439,7 @@
             {% else %}
             <input type="text" name="profesional_cargo" placeholder="Nombre del profesor..." required style="margin-bottom: 10px;">
             <p style="font-size:0.72rem; color:#b45309; margin:-4px 0 10px 0;">
-                <i class="fas fa-info-circle"></i> No hay profesores registrados. Agrégalos en la pestaña Inventario Físico para que aparezcan aquí.
+                <i class="fas fa-info-circle"></i> No hay profesores registrados. Agrégalos en la pestaña "Varios" → "Profesores Supervisores del Área".
             </p>
             {% endif %}
 
@@ -2015,22 +2021,120 @@
         if (m) m.style.display = 'none';
     }
 
-    const _modalEdAl = document.getElementById('modalEditarAlumno');
-    if (_modalEdAl) _modalEdAl.addEventListener('click', function (e) { if (e.target === this) cerrarModalEditarAlumno(); });
+    // === FUNCIONES JS RESTAURADAS (perdidas en truncamientos previos) ===
 
-    // --- MODAL DE OT (orden de trabajo) — stubs por si los onclick lo invocan
+    // --- Modal OT y carrito ---
+    let carritoOT = [];
     function abrirModalOT() {
         const m = document.getElementById('modalOT');
         if (m) m.style.display = 'block';
+        carritoOT = [];
+        actualizarTablaOT();
+        const inp = document.getElementById('inputScanOT');
+        if (inp) setTimeout(function(){ inp.focus(); }, 100);
     }
     function cerrarModalOT() {
         const m = document.getElementById('modalOT');
         if (m) m.style.display = 'none';
     }
+    function agregarAlPedidoOT() {
+        const input = document.getElementById('inputScanOT');
+        const inpCant = document.getElementById('inputCantOT');
+        if (!input) return;
+        const codigo = (input.value || '').trim();
+        const cantidad = parseInt(inpCant ? inpCant.value : '1') || 1;
+        if (!codigo) return;
+        const info = (typeof buscarItemPorCodigo === 'function') ? buscarItemPorCodigo(codigo) : null;
+        if (!info) {
+            alert("No se encontro ningun item con el codigo: " + codigo);
+            input.value = ""; input.focus();
+            return;
+        }
+        const existente = carritoOT.find(function(p){ return p.item_id === info.id; });
+        if (existente) { existente.cantidad += cantidad; }
+        else { carritoOT.push({ item_id: info.id, codigo: codigo, nombre: info.nombre, cantidad: cantidad }); }
+        input.value = "";
+        if (inpCant) inpCant.value = 1;
+        input.focus();
+        actualizarTablaOT();
+    }
+    function actualizarTablaOT() {
+        const cuerpo = document.getElementById('lista_ot_cuerpo');
+        const cont = document.getElementById('div_tabla_ot');
+        if (!cuerpo) return;
+        cuerpo.innerHTML = "";
+        carritoOT.forEach(function(p, i){
+            const safeNom = (p.nombre || '').replace(/</g,'&lt;');
+            cuerpo.innerHTML += '<tr>'
+                + '<td><span style="font-family:monospace;background:#eee;padding:2px 4px;font-size:0.75rem;border-radius:3px;">' + p.codigo + '</span> <strong style="font-size:0.85rem;">' + safeNom + '</strong></td>'
+                + '<td><input type="number" value="' + p.cantidad + '" min="1" onchange="carritoOT[' + i + '].cantidad=parseInt(this.value)||1" style="width:55px;"></td>'
+                + '<td><button type="button" onclick="carritoOT.splice(' + i + ',1); actualizarTablaOT();" class="btn-delete"><i class="fas fa-times"></i></button></td>'
+                + '</tr>';
+        });
+        if (cont) cont.style.display = carritoOT.length ? 'block' : 'none';
+    }
+    function finalizarOT() {
+        const form = document.getElementById('form_ot_final');
+        if (!form) return;
+        const titulo = form.querySelector('[name="titulo"]');
+        const prof = form.querySelector('[name="profesional_cargo"]');
+        if (!titulo || !titulo.value.trim()) { alert("Falta el titulo de la OT."); return; }
+        if (!prof || !prof.value.trim()) { alert("Selecciona el profesor a cargo."); return; }
+        const hid = document.getElementById('hidden_carrito_ot');
+        if (hid) hid.value = JSON.stringify(carritoOT);
+        if (typeof form.requestSubmit === 'function') form.requestSubmit(); else form.submit();
+    }
 
-    // --- BUSCADOR de prestamos en tabla "Activos" ---
+    // --- Salida (prestamo) confirmacion ---
+    function finalizarDespacho() {
+        const form = document.getElementById('form_final_despacho');
+        if (!form) return;
+        if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
+        } else {
+            form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+            if (form.checkValidity && form.checkValidity()) form.submit();
+        }
+    }
+
+    // --- Editar item: dispara submit del form ---
+    function confirmarEdicion() {
+        const form = document.getElementById('formEditar');
+        if (!form) return;
+        if (typeof form.requestSubmit === 'function') form.requestSubmit(); else form.submit();
+    }
+
+    // --- Filtros de prestamos activos ---
+    function filtrarEstadoPrestamo(btn, estado) {
+        if (btn && btn.parentElement) {
+            btn.parentElement.querySelectorAll('.cat-btn').forEach(function(b){ b.classList.remove('active'); });
+            btn.classList.add('active');
+        }
+        document.querySelectorAll('tr.fila-prestamo').forEach(function(tr){
+            const e = tr.getAttribute('data-estado') || '';
+            tr.style.display = (estado === 'TODOS' || e === estado) ? '' : 'none';
+        });
+    }
     function filtrarPrestamos() {
-        const q = (document.getElementById('buscadorPrestamos') || {value: ''}).value.toLowerCase().trim();
-        document.querySelectorAll('tr[data-estudiante], tr.fila-prestamo').forEach(tr => {
-            const txt = tr.textContent.toLowerCase();
-            tr.style.display = (!q || txt.indexOf(q) 
+        const q = (document.getElementById('buscadorPrestamos') || {value:''}).value.toLowerCase().trim();
+        document.querySelectorAll('tr.fila-prestamo').forEach(function(tr){
+            tr.style.display = (!q || tr.textContent.toLowerCase().indexOf(q) >= 0) ? '' : 'none';
+        });
+    }
+
+    // --- Prestamo externo: mostrar/ocultar campo profesor a cargo ---
+    function toggleProfesorExt() {
+        const sel = document.getElementById('tipo_persona_ext');
+        const div = document.getElementById('div_profesor_cargo_ext');
+        if (!sel || !div) return;
+        div.style.display = ((sel.value || '').toLowerCase() === 'alumno') ? 'block' : 'none';
+    }
+
+
+
+    const _modalEdAl = document.getElementById('modalEditarAlumno');
+    if (_modalEdAl) _modalEdAl.addEventListener('click', function (e) { if (e.target === this) cerrarModalEditarAlumno(); });
+
+    // --- MODAL DE OT (orden de trabajo) ---
+    let carritoOT = [];
+    functi
