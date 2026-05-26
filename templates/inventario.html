@@ -1772,11 +1772,11 @@
             ubicacion: {{ (item.ubicacion or '')|tojson }},
             imagen_url: {{ (item.imagen_url or '')|tojson }},
             fecha_adquisicion: {{ (item.fecha_adquisicion.isoformat() if item.fecha_adquisicion else '')|tojson }},
-            precio_unitario: {{ item.precio_unitario|default(0) }},
-            desgaste: {{ item.desgaste|default(0) }},
-            max_usos: {{ item.max_usos|default(0) }},
-            disponible: {{ item.cantidad_disponible|default(0) }},
-            total: {{ item.cantidad_total|default(0) }}
+            precio_unitario: {{ item.precio_unitario or 0 }},
+            desgaste: {{ item.desgaste or 0 }},
+            max_usos: {{ item.max_usos or 0 }},
+            disponible: {{ item.cantidad_disponible or 0 }},
+            total: {{ item.cantidad_total or 0 }}
         }{% if not loop.last %},{% endif %}
         {% endfor %}
     };
