@@ -1430,6 +1430,20 @@ def cargar_alumnos_excel():
         except Exception as e:
             print(f"[WARN] auto-marcar a_cargo: {e}")
 
+    LIMITES_ITEM = {
+        'codigo_barras': 100, 'nombre': 100, 'marca': 100,
+        'modelo': 100, 'categoria': 50, 'ubicacion': 200, 'imagen_url': 500,
+    }
+    truncados = []
+    def tr(valor, campo, idx_fila):
+        if valor is None:
+            return valor
+        limite = LIMITES_ITEM.get(campo)
+        if limite and len(str(valor)) > limite:
+            truncados.append((idx_fila + 1, campo, len(str(valor))))
+            return str(valor)[:limite]
+        return valor
+
     creados = actualizados = 0
     errores = []
 
@@ -2291,6 +2305,14 @@ def cargar_excel():
 
         # Col L (costo total) se ignora: lo calcula la app
         imagen = col(fila, 12, '')  # M
+
+        codigo    = tr(codigo,    'codigo_barras', idx)
+        nombre    = tr(nombre,    'nombre',        idx)
+        marca     = tr(marca,     'marca',         idx)
+        modelo    = tr(modelo,    'modelo',        idx)
+        categoria = tr(categoria, 'categoria',     idx)
+        ubicacion = tr(ubicacion, 'ubicacion',     idx)
+        imagen    = tr(imagen,    'imagen_url',    idx)
 
         existente = Item.query.filter_by(
             codigo_barras=codigo, especialidad_id=especialidad_id
