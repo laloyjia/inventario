@@ -49,3 +49,4 @@ inventario_exportado_*.xlsx
 *.spec
 PanolERP/
 build/
+*.docx
