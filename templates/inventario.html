@@ -1000,11 +1000,30 @@
                       style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                     <input type="file" name="archivo_excel" accept=".xlsx, .xls" required
                            style="flex: 1; min-width: 220px; padding: 8px; border: 2px dashed #10b981; border-radius: 6px; background: #f0fdf4;">
+                    {# Si el usuario NO tiene especialidad asignada (típicamente Admin),
+                       debe elegir la especialidad de destino. Los usuarios con especialidad
+                       fija cargan directo a la suya. #}
+                    {% if not session.get('usuario_especialidad_id') and especialidades_disponibles %}
+                    <select name="especialidad_id" required
+                            style="padding: 10px; border: 2px solid #10b981; border-radius: 6px; background: white; font-weight: bold; min-width: 200px;">
+                        <option value="">— Selecciona especialidad destino —</option>
+                        {% for esp in especialidades_disponibles %}
+                        <option value="{{ esp.id }}"
+                                {% if session.get('admin_viendo_especialidad_id') == esp.id %}selected{% endif %}>
+                            {{ esp.nombre }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% endif %}
                     <button type="submit"
                             style="background: #10b981; color: white; padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">
                         <i class="fas fa-upload"></i> Subir Excel
                     </button>
                 </form>
+                <p style="font-size: 0.78rem; color: #6b7280; margin-top: 8px; text-align: center;">
+                    <i class="fas fa-shield-alt"></i>
+                    Todas las cargas quedan registradas en la auditoría del sistema con usuario, fecha, IP y detalle de resultados.
+                </p>
             </div>
 
             <!-- Descargas -->

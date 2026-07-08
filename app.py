@@ -1059,7 +1059,8 @@ def ver_inventario():
                            max_cursos_a_cargo=MAX_CURSOS_A_CARGO,
                            especialidad=(session.get('admin_viendo_especialidad')
                                           if session.get('usuario_rol') == 'Admin'
-                                          else session.get('usuario_especialidad')))
+                                          else session.get('usuario_especialidad')),
+                           especialidades_disponibles=Especialidad.query.order_by(Especialidad.nombre).all())
 
 @app.route('/auditoria')
 @login_requerido
@@ -2105,9 +2106,12 @@ def credenciales():
 
 @app.route('/cargar_excel', methods=['POST'])
 @login_requerido
-@pañolero_o_admin
 def cargar_excel():
     """Carga masiva desde Excel.
+
+    Acceso: cualquier usuario autenticado. La operación queda registrada en
+    auditoría con usuario_id, rol, nombre del archivo, especialidad destino,
+    filas procesadas, ítems creados/actualizados y errores.
 
     Formato esperado (13 columnas A–M, orden FIJO; las extras son opcionales):
       A (1)  → Código de barra (si está vacía, se autogenera)
@@ -2133,6 +2137,8 @@ def cargar_excel():
         flash("❌ No subiste ningún archivo.")
         return redirect(url_for('ver_inventario'))
 
+    nombre_archivo = archivo.filename
+
     try:
         df = pd.read_excel(archivo, header=None, dtype=object)
     except Exception as e:
@@ -2151,9 +2157,25 @@ def cargar_excel():
     except (ValueError, TypeError, IndexError):
         inicio = 1  # primera fila es cabecera, saltarla
 
+    # ── Resolución de la especialidad destino ────────────────────────────
+    # Prioridad: (1) la del usuario logueado si tiene; (2) la que venga por
+    # formulario (Admin u otros roles sin especialidad fija). NO NULL en BD:
+    # si al final queda vacía, se rechaza con mensaje claro (sin caer en 500).
     especialidad_id = session.get('usuario_especialidad_id')
-    if not especialidad_id and session.get('usuario_rol') != 'Admin':
-        flash("❌ No tienes especialidad asignada.")
+    if not especialidad_id:
+        # intentar tomar del formulario (solo Admin u otros roles pueden usarlo)
+        try:
+            especialidad_id = int(request.form.get('especialidad_id') or 0) or None
+        except (TypeError, ValueError):
+            especialidad_id = None
+
+    if not especialidad_id:
+        flash("❌ Debes seleccionar la especialidad de destino antes de cargar el Excel.")
+        return redirect(url_for('ver_inventario'))
+
+    # Validar que la especialidad realmente exista
+    if not Especialidad.query.get(especialidad_id):
+        flash("❌ La especialidad seleccionada no existe.")
         return redirect(url_for('ver_inventario'))
 
     def col(fila, i, default=''):
@@ -2269,15 +2291,42 @@ def cargar_excel():
             registrar_cambio_sync('item', nuevo.id, 'crear', nuevo)
             creados += 1
 
-    db.session.commit()
-    registrar_auditoria('importar', 'Item', 0,
-                        valores_nuevos={'creados': creados,
-                                        'actualizados': actualizados,
-                                        'errores': len(errores)})
+    # Commit protegido: si la BD rechaza algo, hacemos rollback y
+    # devolvemos mensaje humano en vez de un 500 crudo.
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        flash(f"❌ Error al guardar en la base de datos: {str(e)[:180]}")
+        return redirect(url_for('ver_inventario'))
+
+    # Auditoría enriquecida: quién, con qué archivo, a qué especialidad,
+    # cuántas filas procesó, cuántos creó/actualizó/erró. Queda accesible
+    # al Administrador desde /auditoria.
+    esp_destino = Especialidad.query.get(especialidad_id)
+    registrar_auditoria(
+        'importar_excel', 'Item', 0,
+        valores_nuevos={
+            'archivo': nombre_archivo,
+            'usuario_id': session.get('usuario_id'),
+            'usuario_nombre': session.get('usuario_nombre'),
+            'usuario_rol': session.get('usuario_rol'),
+            'especialidad_destino_id': especialidad_id,
+            'especialidad_destino_nombre': esp_destino.nombre if esp_destino else None,
+            'filas_totales': int(len(df) - inicio),
+            'creados': creados,
+            'actualizados': actualizados,
+            'errores': len(errores),
+            'errores_detalle': errores[:10],  # muestra primeros 10 para revisión
+            'fecha': datetime.utcnow().isoformat(),
+        },
+        especialidad_id=especialidad_id
+    )
 
     msg = f"✅ Excel cargado: {creados} ítem(s) nuevo(s), {actualizados} actualizado(s)."
     if errores:
         msg += f" ⚠️ {len(errores)} fila(s) con errores: " + " | ".join(errores[:3])
+    msg += " 📋 La carga quedó registrada en la auditoría del sistema."
     flash(msg)
     return redirect(url_for('ver_inventario'))
 
