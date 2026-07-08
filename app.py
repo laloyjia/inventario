@@ -1430,20 +1430,6 @@ def cargar_alumnos_excel():
         except Exception as e:
             print(f"[WARN] auto-marcar a_cargo: {e}")
 
-    LIMITES_ITEM = {
-        'codigo_barras': 100, 'nombre': 100, 'marca': 100,
-        'modelo': 100, 'categoria': 50, 'ubicacion': 200, 'imagen_url': 500,
-    }
-    truncados = []
-    def tr(valor, campo, idx_fila):
-        if valor is None:
-            return valor
-        limite = LIMITES_ITEM.get(campo)
-        if limite and len(str(valor)) > limite:
-            truncados.append((idx_fila + 1, campo, len(str(valor))))
-            return str(valor)[:limite]
-        return valor
-
     creados = actualizados = 0
     errores = []
 
@@ -2196,6 +2182,21 @@ def cargar_excel():
         return redirect(url_for('ver_inventario'))
 
     nombre_archivo = archivo.filename
+
+    LIMITES_ITEM = {
+        'codigo_barras': 100, 'nombre': 100, 'marca': 100,
+        'modelo': 100, 'categoria': 50, 'ubicacion': 200, 'imagen_url': 500,
+    }
+    truncados = []
+    def tr(valor, campo, idx_fila):
+        if valor is None:
+            return valor
+        limite = LIMITES_ITEM.get(campo)
+        if limite and len(str(valor)) > limite:
+            truncados.append((idx_fila + 1, campo, len(str(valor))))
+            return str(valor)[:limite]
+        return valor
+
 
     try:
         df = pd.read_excel(archivo, header=None, dtype=object)
