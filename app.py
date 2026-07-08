@@ -7,6 +7,7 @@ import json
 import pandas as pd
 import io
 import os
+import traceback
 
 app = Flask(__name__)
 
@@ -18,6 +19,49 @@ app = Flask(__name__)
 # ============================================================
 
 app.secret_key = os.getenv('PANOL_SECRET_KEY', 'llave_super_secreta_enterprise_v5_multiespecialidad')
+
+# ────────────────────────────────────────────────────────────────────
+# Handler global de errores 500: escribe el traceback COMPLETO al
+# stdout (que Render captura en su vista de Logs) y devuelve un
+# mensaje con la primera línea del error a la interfaz. Esto elimina
+# las pantallas "Error Interno" en blanco que no dicen nada.
+# ────────────────────────────────────────────────────────────────────
+@app.errorhandler(500)
+def _err500(e):
+    tb = traceback.format_exc()
+    print("═══ ERROR 500 ═══")
+    print(f"Ruta: {request.path}  Método: {request.method}")
+    print(f"Usuario: {session.get('usuario_id')} / rol: {session.get('usuario_rol')}")
+    print(tb)
+    print("═══ FIN ERROR 500 ═══")
+    linea = tb.strip().splitlines()[-1] if tb else "sin detalle"
+    return (
+        "<h1>Error Interno del Servidor</h1>"
+        "<p>Detalle técnico (para reportar al administrador):</p>"
+        f"<pre style='background:#fee;padding:10px;border-left:4px solid #b91c1c;'>{linea}</pre>"
+        "<p><a href='/'>Volver al inicio</a></p>"
+    ), 500
+
+@app.errorhandler(Exception)
+def _err_generico(e):
+    # Cualquier excepción no-HTTP se re-lanza para que Flask la trate como 500,
+    # pero también la logueamos por si es un tipo específico (IntegrityError, etc.)
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
+    tb = traceback.format_exc()
+    print("═══ EXCEPCIÓN NO CAPTURADA ═══")
+    print(f"Ruta: {request.path}  Método: {request.method}")
+    print(f"Tipo: {type(e).__name__}")
+    print(tb)
+    print("═══ FIN EXCEPCIÓN ═══")
+    linea = f"{type(e).__name__}: {str(e)[:200]}"
+    return (
+        "<h1>Error Interno del Servidor</h1>"
+        "<p>Detalle técnico (para reportar al administrador):</p>"
+        f"<pre style='background:#fee;padding:10px;border-left:4px solid #b91c1c;'>{linea}</pre>"
+        "<p><a href='/'>Volver al inicio</a></p>"
+    ), 500
 
 # Carpeta instance para SQLite local
 db_folder = os.path.join(os.path.dirname(__file__), 'instance')
