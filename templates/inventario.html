@@ -1036,6 +1036,11 @@
                    style="background: #2563eb; color: white; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;">
                     <i class="fas fa-file-export"></i> Exportar mi inventario
                 </a>
+                <a href="/exportar_etiquetas_excel"
+                   style="background: #0F2C5C; color: white; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;"
+                   title="Descarga un Excel con los códigos de barras de todos los ítems, listo para imprimir">
+                    <i class="fas fa-barcode"></i> Descargar etiquetas Excel
+                </a>
                 {% if session['usuario_rol'] in ['Administrador', 'Admin', 'Profesor'] %}
                 <a href="/exportar_inventario"
                    style="background: #065f46; color: white; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;">

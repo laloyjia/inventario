@@ -7,6 +7,7 @@ import json
 import pandas as pd
 import io
 import os
+from rutas_etiquetas import registrar_rutas_etiquetas
 import traceback
 
 app = Flask(__name__)
@@ -3684,6 +3685,10 @@ def carnets_curso(curso_id):
         db.session.commit()
     return render_template('carnets_curso.html', curso=curso, alumnos=alumnos)
 
+
+# Registrar rutas del modulo separado de etiquetas Excel
+registrar_rutas_etiquetas(app, db, Item, Especialidad,
+                          registrar_auditoria, login_requerido)
 
 if __name__ == '__main__':
     import threading, webbrowser, sys

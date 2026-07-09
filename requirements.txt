@@ -16,6 +16,10 @@ psycopg2-binary>=2.9        # PostgreSQL para cloud (Render/Railway)
 pandas>=2.0
 openpyxl>=3.1
 
+# Código de barras (para etiquetas Excel)
+python-barcode>=0.15
+Pillow>=10.0
+
 # Cliente HTTP (sync)
 requests>=2.31
 
