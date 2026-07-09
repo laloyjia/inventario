@@ -1673,10 +1673,20 @@ def registrar_salida():
             panolero_dia_id = None
 
     creados = 0
+    ignorados = []  # para diagnóstico visible al usuario
     for entry in carrito:
-        item = Item.query.get(entry.get('item_id'))
+        # Aceptar tanto 'item_id' (nombre canónico) como 'id' (nombre usado por
+        # el carrito del frontend histórico). Sin esto los préstamos caían
+        # todos en el continue y "creados" se quedaba en 0.
+        item_id = entry.get('item_id') or entry.get('id')
+        item = Item.query.get(item_id) if item_id else None
         cantidad = int(entry.get('cantidad') or 1)
-        if not item or item.cantidad_disponible < cantidad: continue
+        if not item:
+            ignorados.append(f"ítem #{item_id or '?'} no encontrado")
+            continue
+        if item.cantidad_disponible < cantidad:
+            ignorados.append(f"{item.nombre}: solicitados {cantidad}, disponibles {item.cantidad_disponible}")
+            continue
 
         # Plazo de devolución: BIBLIOTECA forza 14 días por defecto si no vino otro valor.
         tipo_area_item = (item.especialidad.tipo_area or 'GENERAL') if item.especialidad else 'GENERAL'
@@ -1703,8 +1713,18 @@ def registrar_salida():
         creados += 1
     db.session.commit()
     registrar_auditoria('crear', 'Prestamo', estudiante.id,
-                        valores_nuevos={'practica': nombre_practica, 'items': creados})
-    flash(f"✅ {creados} préstamo(s) registrado(s) a {estudiante.nombre}.")
+                        valores_nuevos={'practica': nombre_practica,
+                                        'items_registrados': creados,
+                                        'items_ignorados': ignorados[:10]})
+    if creados > 0:
+        msg = f"✅ {creados} préstamo(s) registrado(s) a {estudiante.nombre}."
+    else:
+        msg = f"⚠️ No se pudo registrar ningún préstamo a {estudiante.nombre}."
+    if ignorados:
+        msg += f" Ignorados: {' | '.join(ignorados[:3])}"
+        if len(ignorados) > 3:
+            msg += f" (y {len(ignorados)-3} más)"
+    flash(msg)
     return redirect(url_for('ver_inventario'))
 
 @app.route('/devolver_prestamo/<int:prestamo_id>', methods=['POST'])
@@ -1981,22 +2001,51 @@ def editar_curso(curso_id):
 @login_requerido
 @pañolero_o_admin
 def eliminar_curso(curso_id):
-    """Elimina un curso. Solo se puede borrar si NO tiene alumnos activos asociados."""
+    """Elimina un curso (soft-delete).
+
+    Modo por defecto: falla si el curso tiene alumnos activos.
+    Modo cascada (form field ``forzar=1``): también da de baja a todos
+    los alumnos activos del curso. Los préstamos históricos se conservan
+    porque usamos soft-delete (activo=False) en ambos casos.
+    """
     c = Curso.query.get_or_404(curso_id)
     if not _validar_acceso_curso(c):
         flash("❌ Sin permiso para eliminar este curso.")
         return redirect(url_for('ver_cursos'))
-    alumnos_activos = Estudiante.query.filter_by(curso_id=c.id, activo=True).count()
-    if alumnos_activos > 0:
-        flash(f"⚠️ El curso «{c.nombre}» tiene {alumnos_activos} alumno(s). "
+
+    forzar = request.form.get('forzar') == '1'
+    alumnos = Estudiante.query.filter_by(curso_id=c.id, activo=True).all()
+    n_alumnos = len(alumnos)
+
+    if n_alumnos > 0 and not forzar:
+        flash(f"⚠️ El curso «{c.nombre}» tiene {n_alumnos} alumno(s). "
               f"Reasigna o elimina los alumnos antes de borrar el curso.")
         return redirect(url_for('ver_cursos'))
+
     nombre = c.nombre
-    # Soft delete: marcar inactivo (mantiene historial si alguien tenía referencias)
+
+    # Modo cascada: dar de baja a todos los alumnos activos del curso
+    if forzar and alumnos:
+        for a in alumnos:
+            a.activo = False
+            registrar_auditoria('eliminar_cascada', 'Estudiante', a.id,
+                                valores_anteriores={'nombre': a.nombre,
+                                                    'curso_id': c.id,
+                                                    'motivo': f'baja por cascada al eliminar curso «{nombre}»'})
+
+    # Soft delete del curso
     c.activo = False
     db.session.commit()
-    registrar_auditoria('eliminar', 'Curso', c.id, valores_anteriores={'nombre': nombre})
-    flash(f"✅ Curso «{nombre}» eliminado.")
+    registrar_auditoria('eliminar', 'Curso', c.id,
+                        valores_anteriores={'nombre': nombre,
+                                            'alumnos_dados_de_baja': n_alumnos if forzar else 0,
+                                            'modo': 'cascada' if forzar else 'directo'})
+
+    if forzar and n_alumnos > 0:
+        flash(f"✅ Curso «{nombre}» eliminado junto con {n_alumnos} alumno(s) (baja en cascada). "
+              f"📋 La operación quedó registrada en la auditoría del sistema.")
+    else:
+        flash(f"✅ Curso «{nombre}» eliminado.")
     return redirect(url_for('ver_cursos'))
 
 

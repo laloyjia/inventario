@@ -228,10 +228,12 @@
                 <i class="fas fa-pencil-alt"></i> Editar curso
             </button>
             <form action="/curso/eliminar/{{ curso.id }}" method="POST"
-                  onsubmit="return confirm('¿Eliminar el curso «{{ curso.nombre }}»? Solo se puede si no tiene alumnos.');"
+                  onsubmit="return confirmarEliminarCurso(this, '{{ curso.nombre | replace("'", "\\'") }}', {{ curso.total_alumnos }});"
                   style="display:inline; margin:0;">
+                {# Campo oculto: se completa a '1' si el usuario acepta la cascada #}
+                <input type="hidden" name="forzar" value="0">
                 <button class="btn-mini btn-del" type="submit"
-                        {% if curso.total_alumnos > 0 %}disabled title="Tiene alumnos asignados — no se puede eliminar"{% endif %}>
+                        title="{% if curso.total_alumnos > 0 %}Eliminar curso y dar de baja a sus {{ curso.total_alumnos }} alumno(s){% else %}Eliminar curso vacío{% endif %}">
                     <i class="fas fa-trash"></i> Eliminar curso
                 </button>
             </form>
@@ -404,6 +406,35 @@
 </div>
 
 <script>
+    // Confirmación en 1 o 2 pasos para eliminar curso.
+    // - Si no tiene alumnos: una sola confirmación.
+    // - Si tiene alumnos: doble confirmación explícita y activa el modo cascada
+    //   (forzar=1) para que el backend dé de baja curso + alumnos.
+    function confirmarEliminarCurso(form, nombre, totalAlumnos) {
+        if (totalAlumnos === 0) {
+            return confirm('¿Eliminar el curso «' + nombre + '»?\n\nEl curso está vacío, esta acción es reversible desde la auditoría.');
+        }
+        const paso1 = confirm(
+            '⚠️ ATENCIÓN\n\n' +
+            'El curso «' + nombre + '» tiene ' + totalAlumnos + ' alumno(s) activo(s).\n\n' +
+            'Al eliminarlo, TODOS sus alumnos también serán dados de baja (baja en cascada).\n' +
+            'Los préstamos históricos se conservan.\n\n' +
+            '¿Continuar?'
+        );
+        if (!paso1) return false;
+        const paso2 = confirm(
+            'Confirmación final:\n\n' +
+            'Se dará de baja al curso «' + nombre + '» y a sus ' + totalAlumnos + ' alumno(s).\n\n' +
+            'Esta operación quedará registrada en la auditoría del sistema.\n\n' +
+            '¿Proceder?'
+        );
+        if (!paso2) return false;
+        // Activar el modo cascada en el form antes de enviarlo
+        const hidden = form.querySelector('input[name="forzar"]');
+        if (hidden) hidden.value = '1';
+        return true;
+    }
+
     function abrirEditarCurso(id, nombre, nivel, letra, anio) {
         const f = document.getElementById('formEditarCurso');
         f.action = '/curso/editar/' + id;
