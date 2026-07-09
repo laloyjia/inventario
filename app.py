@@ -1797,8 +1797,24 @@ def agregar_prestamo_externo():
     registrar_auditoria('crear', 'PrestamoExterno', p.id,
                         valores_nuevos={'item': item.nombre, 'persona': persona, 'tipo': tipo_mov})
     accion = 'Consumo registrado' if tipo_mov == 'consumo' else 'Préstamo externo'
-    flash(f"✅ {accion}: {item.nombre} → {persona}.")
-    return redirect(url_for('ver_inventario'))
+    flash(f"✅ {accion}: {item.nombre} → {persona}. "
+          f"📄 Imprime el comprobante en /prestamo_externo/comprobante/{p.id}")
+    return redirect(url_for('comprobante_externo', ext_id=p.id))
+
+
+
+@app.route('/prestamo_externo/comprobante/<int:ext_id>')
+@login_requerido
+def comprobante_externo(ext_id):
+    """Comprobante imprimible con firma para prestamo externo."""
+    ext = PrestamoExterno.query.get_or_404(ext_id)
+    if (session.get('usuario_rol') != 'Admin' and
+        ext.especialidad_id != session.get('usuario_especialidad_id')):
+        flash('Sin permiso para ver este comprobante.')
+        return redirect(url_for('ver_inventario'))
+    return render_template('comprobante_externo.html', ext=ext,
+                           establecimiento=os.getenv('PANOL_ESTABLECIMIENTO',
+                                                     'Establecimiento Educacional'))
 
 @app.route('/devolver_externo/<int:ext_id>', methods=['POST'])
 @login_requerido

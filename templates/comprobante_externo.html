@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Comprobante Préstamo Externo #{{ ext.id }}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Arial', 'Helvetica', sans-serif;
+            color: #1E293B;
+            padding: 18mm 14mm;
+            background: white;
+        }
+        .comprobante {
+            border: 2px solid #0F2C5C;
+            border-radius: 6px;
+            padding: 16px 20px;
+            margin-bottom: 14px;
+            page-break-inside: avoid;
+        }
+        .comprobante + .comprobante {
+            border-top: 3px dashed #94A3B8;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid #B45309;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+        }
+        .header h1 {
+            font-size: 14pt;
+            color: #0F2C5C;
+            font-weight: 800;
+        }
+        .header .subtitle {
+            font-size: 9pt;
+            color: #64748B;
+            margin-top: 2px;
+        }
+        .header .numero {
+            font-size: 11pt;
+            font-weight: 700;
+            color: #B45309;
+            text-align: right;
+        }
+        .header .numero small {
+            display: block;
+            font-size: 8pt;
+            color: #94A3B8;
+            font-weight: normal;
+        }
+        .copia-label {
+            background: #B45309;
+            color: white;
+            padding: 3px 10px;
+            font-size: 8pt;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-radius: 3px;
+            display: inline-block;
+            margin-bottom: 8px;
+        }
+        .datos {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px 14px;
+            margin-bottom: 12px;
+            font-size: 10pt;
+        }
+        .campo {
+            padding: 5px 0;
+            border-bottom: 1px dotted #CBD5E1;
+        }
+        .campo strong {
+            display: block;
+            color: #64748B;
+            font-size: 8pt;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 2px;
+        }
+        .campo span {
+            color: #0F2C5C;
+            font-weight: 700;
+            font-size: 10pt;
+        }
+        .campo.full { grid-column: 1 / -1; }
+        .item-box {
+            background: #F1F5F9;
+            border-left: 4px solid #0F2C5C;
+            padding: 8px 12px;
+            margin: 10px 0;
+            font-size: 11pt;
+        }
+        .item-box .cant {
+            float: right;
+            background: #B45309;
+            color: white;
+            padding: 2px 12px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 10pt;
+        }
+        .firmas {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-top: 22px;
+        }
+        .firma-box {
+            text-align: center;
+        }
+        .firma-linea {
+            border-top: 1px solid #1E293B;
+            padding-top: 4px;
+            margin: 32px 8px 0 8px;
+            font-size: 9pt;
+            color: #475569;
+        }
+        .firma-linea strong {
+            display: block;
+            color: #0F2C5C;
+            font-size: 10pt;
+        }
+        .compromiso {
+            background: #FEF3C7;
+            border-left: 3px solid #B45309;
+            padding: 8px 12px;
+            font-size: 8.5pt;
+            color: #78350F;
+            margin-top: 12px;
+            border-radius: 0 3px 3px 0;
+        }
+        .compromiso strong {
+            display: block;
+            margin-bottom: 3px;
+            font-size: 9pt;
+            color: #78350F;
+        }
+        .botonera {
+            margin-bottom: 14px;
+            text-align: center;
+        }
+        .btn {
+            padding: 10px 20px;
+            font-size: 10pt;
+            font-weight: 700;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 0 4px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-print { background: #0F2C5C; color: white; }
+        .btn-print:hover { background: #1E40AF; }
+        .btn-back { background: #94A3B8; color: white; }
+        .btn-back:hover { background: #64748B; }
+        @media print {
+            .botonera { display: none; }
+            body { padding: 8mm 8mm; }
+            .comprobante { border-color: #000; page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="botonera">
+    <button class="btn btn-print" onclick="window.print();">
+        🖨️  Imprimir Comprobante (2 copias)
+    </button>
+    <a href="/inventario" class="btn btn-back">← Volver al Pañol</a>
+</div>
+
+{# Generamos DOS copias del comprobante: una para el pañol y otra para el receptor #}
+{% for copia in ['ORIGINAL — PAÑOL', 'DUPLICADO — RECEPTOR'] %}
+<div class="comprobante">
+    <span class="copia-label">{{ copia }}</span>
+    <div class="header">
+        <div>
+            <h1>{{ establecimiento }}</h1>
+            <div class="subtitle">Comprobante de {% if ext.tipo_movimiento == 'consumo' %}Consumo Interno{% else %}Préstamo Externo{% endif %} de Recursos Educativos</div>
+        </div>
+        <div class="numero">
+            N° {{ '%06d' | format(ext.id) }}
+            <small>{{ ext.fecha_prestamo.strftime('%d-%m-%Y  %H:%M') }} hrs</small>
+        </div>
+    </div>
+
+    <div class="datos">
+        <div class="campo">
+            <strong>Especialidad origen (pañol)</strong>
+            <span>{{ ext.especialidad.nombre if ext.especialidad else '—' }}</span>
+        </div>
+        <div class="campo">
+            <strong>Especialidad / Depto. destino</strong>
+            <span>{{ ext.especialidad_destino or '—' }}</span>
+        </div>
+        <div class="campo full">
+            <strong>Persona que retira</strong>
+            <span>{{ ext.persona_retira }}
+                {% if ext.es_alumno %}<em style="color:#B45309;font-weight:normal">(estudiante)</em>{% endif %}
+            </span>
+        </div>
+        {% if ext.profesor_cargo %}
+        <div class="campo full">
+            <strong>Profesor / Funcionario a cargo</strong>
+            <span>{{ ext.profesor_cargo }}</span>
+        </div>
+        {% endif %}
+        <div class="campo">
+            <strong>Instructor del pañol (entrega)</strong>
+            <span>{{ ext.encargado or '—' }}</span>
+        </div>
+        <div class="campo">
+            <strong>Tipo de movimiento</strong>
+            <span>{% if ext.tipo_movimiento == 'consumo' %}CONSUMO (no se devuelve){% else %}PRÉSTAMO (con devolución){% endif %}</span>
+        </div>
+    </div>
+
+    <div class="item-box">
+        <span class="cant">Cantidad: {{ ext.cantidad }}</span>
+        <strong>Ítem entregado:</strong> {{ ext.item.nombre }}
+        {% if ext.item.marca %} · Marca {{ ext.item.marca }}{% endif %}
+        {% if ext.item.modelo %} · Modelo {{ ext.item.modelo }}{% endif %}
+        {% if ext.item.codigo_barras %}<br><small style="color:#64748B;font-family:monospace">Código: {{ ext.item.codigo_barras }}</small>{% endif %}
+    </div>
+
+    <div class="firmas">
+        <div class="firma-box">
+            <div class="firma-linea">
+                <strong>{{ ext.persona_retira }}</strong>
+                Firma quien retira · RUT: ______________
+            </div>
+        </div>
+        <div class="firma-box">
+            <div class="firma-linea">
+                <strong>{{ ext.encargado or 'Instructor del Pañol' }}</strong>
+                Firma instructor del pañol
+            </div>
+        </div>
+    </div>
+
+    <div class="compromiso">
+        <strong>Compromiso de la persona que retira:</strong>
+        {% if ext.tipo_movimiento == 'consumo' %}
+        Reconoce haber recibido el material indicado como CONSUMO interno del establecimiento. No requiere devolución.
+        {% else %}
+        Se compromete a devolver el ítem en las mismas condiciones en que lo recibe. Ante extravío o daño, la persona que retira o el profesor a cargo responden ante el establecimiento por el valor de reposición. Este comprobante quedará archivado en el sistema de auditoría del pañol.
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+</body>
+</html>

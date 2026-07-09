@@ -1278,13 +1278,21 @@
                                     {% if ext.es_alumno %}<span style="font-size: 0.7rem; color: var(--danger);">Autoriza: {{ ext.profesor_cargo }}</span>{% endif %}
                                 </td>
                                 <td>
-                                    {% if ext.estado == 'Activo' %}
-                                        <form action="/devolver_externo/{{ ext.id }}" method="POST">
-                                            <button type="submit" style="background: var(--warning); border:none; padding:5px 8px; border-radius:4px; cursor:pointer;" title="Recibir de vuelta"><i class="fas fa-undo"></i></button>
-                                        </form>
-                                    {% else %}
-                                        <span class="badge" style="background: #bbf7d0; color: #166534;">Devuelto</span>
-                                    {% endif %}
+                                    <div style="display:flex; gap:4px; align-items:center;">
+                                        <a href="/prestamo_externo/comprobante/{{ ext.id }}"
+                                           target="_blank"
+                                           style="background: #0F2C5C; color: white; padding:5px 8px; border-radius:4px; text-decoration:none; display:inline-block;"
+                                           title="Imprimir comprobante con firma">
+                                           <i class="fas fa-print"></i>
+                                        </a>
+                                        {% if ext.estado == 'Activo' %}
+                                            <form action="/devolver_externo/{{ ext.id }}" method="POST" style="margin:0;">
+                                                <button type="submit" style="background: var(--warning); border:none; padding:5px 8px; border-radius:4px; cursor:pointer;" title="Recibir de vuelta"><i class="fas fa-undo"></i></button>
+                                            </form>
+                                        {% else %}
+                                            <span class="badge" style="background: #bbf7d0; color: #166534;">Devuelto</span>
+                                        {% endif %}
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}
