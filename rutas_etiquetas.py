@@ -90,17 +90,17 @@ def registrar_rutas_etiquetas(app, db, Item, Especialidad,
 
         tmp_dir = tempfile.mkdtemp(prefix="etiquetas_")
 
+        # 3 filas por etiqueta: imagen + ubicación + nombre
         fila_actual = 4
         for idx, item in enumerate(items):
             pos = idx % ETIQUETAS_POR_FILA
             col = col_letters[pos]
 
             if pos == 0:
-                ws.row_dimensions[fila_actual].height = 90
-                ws.row_dimensions[fila_actual + 1].height = 18
-                ws.row_dimensions[fila_actual + 2].height = 15
-                ws.row_dimensions[fila_actual + 3].height = 15
-                ws.row_dimensions[fila_actual + 4].height = 10
+                ws.row_dimensions[fila_actual].height = 78       # imagen barcode
+                ws.row_dimensions[fila_actual + 1].height = 20   # ubicacion
+                ws.row_dimensions[fila_actual + 2].height = 22   # nombre
+                ws.row_dimensions[fila_actual + 3].height = 8    # separación
 
             codigo = (item.codigo_barras or f"ITEM{item.id:06d}").strip()
             img_path = os.path.join(tmp_dir, f"{item.id}")
@@ -108,7 +108,7 @@ def registrar_rutas_etiquetas(app, db, Item, Especialidad,
                 Code128 = barcode.get_barcode_class('code128')
                 bar = Code128(codigo, writer=ImageWriter())
                 bar.save(img_path, options={
-                    'module_height': 12.0,
+                    'module_height': 14.0,
                     'font_size': 8,
                     'text_distance': 3.0,
                     'quiet_zone': 2.0,
@@ -118,43 +118,35 @@ def registrar_rutas_etiquetas(app, db, Item, Especialidad,
             except Exception:
                 img_full = None
 
+            # Celda IMAGEN — código de barras
             celda_img = f"{col}{fila_actual}"
             if img_full and os.path.exists(img_full):
                 xlimg = XLImage(img_full)
                 xlimg.width = 220
-                xlimg.height = 80
+                xlimg.height = 72
                 ws.add_image(xlimg, celda_img)
             ws[celda_img].border = border_all
 
-            celda_codigo = f"{col}{fila_actual + 1}"
-            c = ws[celda_codigo]
-            c.value = codigo
-            c.font = font_codigo
-            c.alignment = Alignment(horizontal="center", vertical="center")
-            c.border = border_all
-
-            celda_nombre = f"{col}{fila_actual + 2}"
-            c = ws[celda_nombre]
-            c.value = item.nombre[:60]
-            c.font = font_nombre
-            c.alignment = Alignment(horizontal="center", vertical="center",
-                                     wrap_text=True)
-            c.border = border_all
-
-            celda_meta = f"{col}{fila_actual + 3}"
-            c = ws[celda_meta]
-            partes = []
-            if item.marca: partes.append(item.marca)
-            if item.modelo: partes.append(item.modelo)
-            if item.ubicacion: partes.append(f"Ubic: {item.ubicacion}")
-            c.value = "  |  ".join(partes) if partes else (item.categoria or "")
+            # Celda UBICACIÓN — "Ubic: [ubicacion]"
+            celda_ubic = f"{col}{fila_actual + 1}"
+            c = ws[celda_ubic]
+            c.value = f"Ubic: {item.ubicacion}" if item.ubicacion else "Ubic: —"
             c.font = font_meta
             c.alignment = Alignment(horizontal="center", vertical="center",
                                      wrap_text=True)
             c.border = border_all
 
+            # Celda NOMBRE
+            celda_nombre = f"{col}{fila_actual + 2}"
+            c = ws[celda_nombre]
+            c.value = item.nombre[:80]
+            c.font = font_nombre
+            c.alignment = Alignment(horizontal="center", vertical="center",
+                                     wrap_text=True)
+            c.border = border_all
+
             if pos == ETIQUETAS_POR_FILA - 1:
-                fila_actual += 5
+                fila_actual += 4
 
         # Configuración de impresión
         ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
