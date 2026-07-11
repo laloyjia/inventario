@@ -50,3 +50,4 @@ inventario_exportado_*.xlsx
 PanolERP/
 build/
 *.docx
+fix_*.py
