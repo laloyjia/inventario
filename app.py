@@ -908,8 +908,10 @@ def pañolero_o_admin(f):
 @app.route('/')
 def index():
     if 'usuario_id' in session:
-        if session.get('usuario_rol') == 'Admin':
-            return redirect(url_for('dashboard_admin'))
+        rol = session.get('usuario_rol')
+        # Admin y Jefe Tecnico van al dashboard moderno
+        if rol in ('Admin', 'JefeTecnico'):
+            return redirect(url_for('dashboard_moderno'))
         return redirect(url_for('ver_inventario'))
     return redirect(url_for('login'))
 
@@ -1054,11 +1056,11 @@ def ver_inventario():
         # Admin puede pasar ?especialidad_id=X para ver inventario de un área
         esp_query = request.args.get('especialidad_id', type=int)
         if not esp_query:
-            return redirect(url_for('dashboard_admin'))
+            return redirect(url_for('dashboard_moderno'))
         esp_obj = Especialidad.query.get(esp_query)
         if not esp_obj:
             flash("❌ Especialidad no encontrada.")
-            return redirect(url_for('dashboard_admin'))
+            return redirect(url_for('dashboard_moderno'))
         especialidad_id = esp_query
         # Setear sesión temporal para que los POSTs (agregar, prestar, etc.) sepan el área
         session['admin_viendo_especialidad'] = esp_obj.nombre
@@ -3647,7 +3649,7 @@ def etiquetas_lote():
         esp_id = request.args.get('especialidad_id', type=int)
         if not esp_id:
             flash("⚠️ Como admin, indica ?especialidad_id=X.")
-            return redirect(url_for('dashboard_admin'))
+            return redirect(url_for('dashboard_moderno'))
     else:
         esp_id = session.get('usuario_especialidad_id')
     if not esp_id:
