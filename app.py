@@ -1035,6 +1035,8 @@ def dashboard_admin():
                            stats_por_especialidad=stats_por_especialidad)
 
 def _calcular_practicas_resumen(especialidad_id):
+    """Agrupa los prestamos por nombre_practica y calcula uso/merma
+    en las 4 categorias del taller (Herr, Comp, Mat, Fung)."""
     practicas = {}
     qs = Prestamo.query.join(Item).filter(
         Item.especialidad_id == especialidad_id,
@@ -1044,15 +1046,31 @@ def _calcular_practicas_resumen(especialidad_id):
     for p in qs:
         n = p.nombre_practica
         if n not in practicas:
-            practicas[n] = {'nombre_practica': n, 'fecha': p.fecha_prestamo,
-                            'herr_detalles': [], 'mat_detalles': [],
-                            'comp_detalles': [], 'fung_detalles': []}
+            practicas[n] = {
+                'nombre': n,
+                'nombre_practica': n,
+                'fecha': p.fecha_prestamo,
+                'herr_uso': 0, 'herr_merma': 0, 'herr_detalles': [],
+                'comp_uso': 0, 'comp_merma': 0, 'comp_detalles': [],
+                'mat_uso': 0,  'mat_merma': 0,  'mat_detalles':  [],
+                'fung_uso': 0, 'fung_merma': 0, 'fung_detalles': [],
+            }
         cat = (p.item.categoria or '').lower()
-        linea = f"{p.item.nombre} x{p.cantidad}"
-        if 'herr' in cat: practicas[n]['herr_detalles'].append(linea)
-        elif 'mat' in cat: practicas[n]['mat_detalles'].append(linea)
-        elif 'comp' in cat: practicas[n]['comp_detalles'].append(linea)
-        else: practicas[n]['fung_detalles'].append(linea)
+        cant = int(p.cantidad or 0)
+        merma = int(p.cantidad_mermada or 0)
+        linea_merma = f"{p.item.nombre} x{merma}"
+        if 'herr' in cat:
+            prefix = 'herr'
+        elif 'comp' in cat:
+            prefix = 'comp'
+        elif 'mat' in cat:
+            prefix = 'mat'
+        else:
+            prefix = 'fung'
+        practicas[n][prefix + '_uso'] += cant
+        if merma > 0:
+            practicas[n][prefix + '_merma'] += merma
+            practicas[n][prefix + '_detalles'].append(linea_merma)
     return sorted(practicas.values(), key=lambda x: x['fecha'], reverse=True)
 
 @app.route('/inventario')
