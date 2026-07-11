@@ -51,9 +51,8 @@ def registrar_rol_jefe_tecnico(app, db, Usuario, Especialidad, Item,
                                      foreign_keys=[resuelto_por_id], lazy=True)
         especialidad = db.relationship('Especialidad', lazy=True)
 
-    # Crear la tabla si no existe (idempotente)
-    with app.app_context():
-        db.create_all()
+    # NOTA: la creacion de tabla se delega al db.create_all() principal
+    # del app.py para evitar doble inicializacion en modulos importados.
 
     # ─────────────────────────────────────────────────────────────
     # USUARIO POR DEFECTO: jefe_tecnico
@@ -71,8 +70,18 @@ def registrar_rol_jefe_tecnico(app, db, Usuario, Especialidad, Item,
             ))
             db.session.commit()
 
-    with app.app_context():
-        crear_jefe_tecnico()
+    # Creacion perezosa del usuario JT: se hace en el primer request
+    # via before_first_request para asegurar que las tablas esten listas.
+    _jt_creado = {'v': False}
+    @app.before_request
+    def _crear_jt_lazy():
+        if _jt_creado['v']:
+            return
+        try:
+            crear_jefe_tecnico()
+        except Exception as e:
+            print(f'[JT] No se pudo crear jefe_tecnico automaticamente: {e}')
+        _jt_creado['v'] = True
 
     # ─────────────────────────────────────────────────────────────
     # DECORADORES
