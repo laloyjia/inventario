@@ -546,7 +546,17 @@ def crear_especialidades_por_defecto():
     db.session.commit()
 
 def crear_admin_central():
-    if not Usuario.query.filter_by(username='admin_central').first():
+    """Crea el usuario admin_central si no existe.
+
+    Reset de emergencia: si se define la variable de entorno
+    ``PANOL_RESET_ADMIN_PWD`` con una clave (por ejemplo desde el panel de
+    Render → Environment), al próximo arranque de la app la contraseña del
+    admin_central se resetea a ese valor y queda marcado para cambio
+    obligatorio en el primer login. Después de recuperar el acceso, QUITA la
+    variable de entorno para revertir a la operación normal.
+    """
+    admin = Usuario.query.filter_by(username='admin_central').first()
+    if not admin:
         db.session.add(Usuario(
             nombre="Administrador Central", username="admin_central",
             password_hash=generate_password_hash("admin123"),
@@ -554,6 +564,16 @@ def crear_admin_central():
             must_change_password=True,  # forzado a cambiar en primer login
         ))
         db.session.commit()
+        return
+
+    # Reset de emergencia si la variable de entorno está presente
+    nueva = os.getenv('PANOL_RESET_ADMIN_PWD', '').strip()
+    if nueva:
+        admin.password_hash = generate_password_hash(nueva)
+        admin.must_change_password = True
+        db.session.commit()
+        print(f"[SEC] Contraseña de admin_central RESETEADA por PANOL_RESET_ADMIN_PWD. "
+              f"Debe cambiarse en el primer login. Recuerda quitar la variable de entorno.")
 
 def crear_pañoleros_por_especialidad():
     import unicodedata
