@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Supervisión · PanolERP</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+    :root {
+        --navy: #0F2C5C; --gold: #B45309; --green: #047857;
+        --red: #B91C1C; --grey-500: #64748B; --grey-100: #F1F5F9;
+        --grey-50: #F8FAFC;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+           background: #F8FAFC; color: #0F172A; }
+
+    .top-bar {
+        background: linear-gradient(135deg, var(--navy), #1E40AF);
+        color: white; padding: 14px 26px;
+        display: flex; justify-content: space-between; align-items: center;
+    }
+    .top-bar h1 { font-size: 18px; font-weight: 800; }
+    .top-bar a { color: white; text-decoration: none; font-size: 13px; margin-left: 12px; }
+
+    .container { padding: 22px 26px; max-width: 1200px; margin: 0 auto; }
+
+    .filtros {
+        background: white; padding: 14px 18px; border-radius: 10px;
+        margin-bottom: 20px;
+        display: flex; gap: 14px; align-items: center;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .filtros select, .filtros button {
+        padding: 8px 12px; border: 1px solid #CBD5E1; border-radius: 6px;
+        font-size: 13px;
+    }
+    .filtros button { background: var(--navy); color: white; border: none; cursor: pointer; font-weight: 700; }
+
+    .form-comentario {
+        background: white; padding: 20px; border-radius: 12px;
+        margin-bottom: 24px; border-left: 4px solid var(--gold);
+    }
+    .form-comentario h3 { color: var(--navy); font-size: 15px; margin-bottom: 14px; }
+    .form-comentario textarea {
+        width: 100%; padding: 10px; border: 1px solid #CBD5E1;
+        border-radius: 6px; font-family: inherit; font-size: 13px;
+        min-height: 90px; resize: vertical;
+    }
+    .form-comentario .row {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+        margin-bottom: 12px;
+    }
+    .form-comentario select {
+        width: 100%; padding: 9px 10px; border: 1px solid #CBD5E1;
+        border-radius: 6px; font-size: 13px;
+    }
+    .form-comentario button {
+        background: var(--gold); color: white; padding: 10px 20px;
+        border: none; border-radius: 6px; font-weight: 700; cursor: pointer;
+        margin-top: 10px;
+    }
+
+    .comentario {
+        background: white; padding: 16px 18px; border-radius: 10px;
+        margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        border-left: 4px solid var(--gold);
+    }
+    .comentario.resuelto { border-left-color: var(--green); opacity: 0.7; }
+    .comentario .meta {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: 8px; flex-wrap: wrap; gap: 8px;
+    }
+    .comentario .autor {
+        font-size: 12px; color: var(--grey-500);
+    }
+    .comentario .autor strong { color: var(--navy); }
+    .comentario .contexto {
+        font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+        background: var(--grey-100); padding: 3px 10px; border-radius: 12px;
+        font-weight: 700; color: var(--grey-500);
+    }
+    .comentario .contenido {
+        font-size: 14px; line-height: 1.5; color: #0F172A;
+        padding: 6px 0;
+    }
+    .comentario .respuesta {
+        background: #ECFDF5; border-left: 3px solid var(--green);
+        padding: 10px 12px; margin-top: 10px; border-radius: 0 6px 6px 0;
+        font-size: 13px;
+    }
+    .comentario .respuesta strong { color: var(--green); }
+    .comentario form.resolver {
+        margin-top: 10px; padding: 10px; background: var(--grey-50);
+        border-radius: 6px;
+    }
+    .comentario form.resolver textarea {
+        width: 100%; padding: 8px; border: 1px solid #CBD5E1;
+        border-radius: 4px; font-size: 12px; min-height: 60px;
+    }
+    .comentario form.resolver button {
+        background: var(--green); color: white; padding: 6px 14px;
+        border: none; border-radius: 4px; font-size: 12px; cursor: pointer;
+        margin-top: 6px; font-weight: 700;
+    }
+    .empty {
+        text-align: center; padding: 60px 20px; color: var(--grey-500);
+    }
+    .empty i { font-size: 40px; color: var(--green); margin-bottom: 14px; }
+
+    .flashes {
+        max-width: 1200px; margin: 10px auto; padding: 0 26px;
+    }
+    .flashes li {
+        background: #ECFDF5; color: #065F46; padding: 10px 16px;
+        border-left: 4px solid var(--green); border-radius: 6px;
+        font-size: 13px; list-style: none; margin-bottom: 8px;
+    }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+    <h1><i class="fas fa-comment-dots"></i> Comentarios de Supervisión</h1>
+    <div>
+        <a href="/dashboard"><i class="fas fa-arrow-left"></i> Dashboard</a>
+        <a href="/logout"><i class="fas fa-sign-out-alt"></i> Salir</a>
+    </div>
+</div>
+
+{% with messages = get_flashed_messages() %}
+{% if messages %}
+<ul class="flashes">
+    {% for m in messages %}<li>{{ m }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% endwith %}
+
+<div class="container">
+
+    <!-- FORMULARIO NUEVO COMENTARIO -->
+    <div class="form-comentario">
+        <h3><i class="fas fa-plus-circle"></i> Registrar nueva observación</h3>
+        <form action="/supervision/comentar" method="POST">
+            <div class="row">
+                <select name="especialidad_id">
+                    <option value="">— Sin área específica —</option>
+                    {% for e in especialidades %}
+                    <option value="{{ e.id }}">{{ e.nombre }}</option>
+                    {% endfor %}
+                </select>
+                <select name="tabla">
+                    <option value="General">Observación general</option>
+                    <option value="Item">Sobre un ítem del inventario</option>
+                    <option value="OrdenTrabajo">Sobre orden de trabajo</option>
+                    <option value="Especialidad">Sobre gestión del área</option>
+                </select>
+            </div>
+            <textarea name="contenido" placeholder="Describe la observación, sugerencia o hallazgo..." required></textarea>
+            <button type="submit"><i class="fas fa-paper-plane"></i> Registrar observación</button>
+        </form>
+    </div>
+
+    <!-- FILTROS -->
+    <form class="filtros" method="get" action="/supervision/comentarios">
+        <label style="font-size:12px; color:var(--grey-500); font-weight:700;">FILTRAR:</label>
+        <select name="estado">
+            <option value="pendientes" {% if filtro_estado == 'pendientes' %}selected{% endif %}>Pendientes</option>
+            <option value="resueltos" {% if filtro_estado == 'resueltos' %}selected{% endif %}>Resueltos</option>
+            <option value="todos" {% if filtro_estado == 'todos' %}selected{% endif %}>Todos</option>
+        </select>
+        <select name="especialidad_id">
+            <option value="">— Todas las áreas —</option>
+            {% for e in especialidades %}
+            <option value="{{ e.id }}" {% if filtro_esp == e.id %}selected{% endif %}>{{ e.nombre }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Aplicar</button>
+        <span style="margin-left:auto; color:var(--grey-500); font-size:12px;">
+            {{ comentarios|length }} observaciones
+        </span>
+    </form>
+
+    <!-- LISTA -->
+    {% for c in comentarios %}
+    <div class="comentario {% if c.resuelto %}resuelto{% endif %}">
+        <div class="meta">
+            <div class="autor">
+                <strong>{{ c.autor.nombre if c.autor else '—' }}</strong>
+                &nbsp;·&nbsp; {{ c.fecha.strftime('%d-%m-%Y %H:%M') }}
+                {% if c.especialidad %}
+                &nbsp;·&nbsp; Área: <strong>{{ c.especialidad.nombre }}</strong>
+                {% endif %}
+            </div>
+            <span class="contexto">{{ c.tabla }}</span>
+        </div>
+        <div class="contenido">{{ c.contenido }}</div>
+
+        {% if c.resuelto %}
+        <div class="respuesta">
+            <strong><i class="fas fa-check-circle"></i> Resuelto</strong>
+            {% if c.resolutor %}por {{ c.resolutor.nombre }}{% endif %}
+            {% if c.fecha_resuelto %} el {{ c.fecha_resuelto.strftime('%d-%m-%Y %H:%M') }}{% endif %}
+            {% if c.respuesta %}<br><br>{{ c.respuesta }}{% endif %}
+        </div>
+        {% else %}
+        <form class="resolver" action="/supervision/resolver/{{ c.id }}" method="POST">
+            <textarea name="respuesta" placeholder="Respuesta o acción tomada (opcional)"></textarea>
+            <button type="submit"><i class="fas fa-check"></i> Marcar como resuelto</button>
+        </form>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="empty">
+        <i class="fas fa-check-circle"></i>
+        <div>No hay observaciones que mostrar con los filtros actuales</div>
+    </div>
+    {% endfor %}
+</div>
+</body>
+</html>

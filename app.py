@@ -7,6 +7,8 @@ import json
 import pandas as pd
 import io
 import os
+from rol_jefe_tecnico import registrar_rol_jefe_tecnico
+from dashboard_moderno import registrar_dashboard_moderno
 from rutas_etiquetas import registrar_rutas_etiquetas
 import traceback
 
@@ -3709,6 +3711,17 @@ def carnets_curso(curso_id):
 # Registrar rutas del modulo separado de etiquetas Excel
 registrar_rutas_etiquetas(app, db, Item, Especialidad,
                           registrar_auditoria, login_requerido)
+
+
+
+# ==== Rol Jefe Tecnico + Dashboard moderno (modulos separados) ====
+_JT_MODEL, _JT_DECORATOR = registrar_rol_jefe_tecnico(
+    app, db, Usuario, Especialidad, Item, OrdenTrabajo,
+    login_requerido, registrar_auditoria, generate_password_hash)
+registrar_dashboard_moderno(
+    app, db, Item, Especialidad, Prestamo, PrestamoExterno,
+    Estudiante, Usuario, OrdenTrabajo, Auditoria,
+    login_requerido, _JT_DECORATOR)
 
 if __name__ == '__main__':
     import threading, webbrowser, sys
