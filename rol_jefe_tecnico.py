@@ -107,10 +107,32 @@ def registrar_rol_jefe_tecnico(app, db, Usuario, Especialidad, Item,
     @login_requerido
     @jt_o_admin
     def ver_comentarios():
-        """Lista de comentarios/observaciones de supervisión."""
+        """Lista de comentarios/observaciones de supervisión.
+
+        Alcance visual del JT: solo especialidades técnico-profesionales
+        (tipo_area PANOL_TP). El Admin ve todo.
+        """
+        rol = session.get('usuario_rol')
+        # Especialidades visibles según rol
+        q_esp = Especialidad.query
+        if rol == 'JefeTecnico':
+            q_esp = q_esp.filter(Especialidad.tipo_area == 'PANOL_TP')
+        especialidades = q_esp.order_by(Especialidad.nombre).all()
+        ids_visibles = [e.id for e in especialidades]
+
         f_esp = request.args.get('especialidad_id', type=int)
+        # Si el JT pide una especialidad fuera de su alcance, la ignora
+        if f_esp and rol == 'JefeTecnico' and f_esp not in ids_visibles:
+            f_esp = None
         f_estado = request.args.get('estado', 'pendientes')
+
         q = ComentarioSupervision.query
+        if rol == 'JefeTecnico' and ids_visibles:
+            # JT solo ve observaciones ligadas a sus especialidades o generales
+            q = q.filter(
+                (ComentarioSupervision.especialidad_id.in_(ids_visibles)) |
+                (ComentarioSupervision.especialidad_id.is_(None))
+            )
         if f_esp:
             q = q.filter_by(especialidad_id=f_esp)
         if f_estado == 'pendientes':
@@ -118,7 +140,7 @@ def registrar_rol_jefe_tecnico(app, db, Usuario, Especialidad, Item,
         elif f_estado == 'resueltos':
             q = q.filter_by(resuelto=True)
         comentarios = q.order_by(ComentarioSupervision.fecha.desc()).limit(200).all()
-        especialidades = Especialidad.query.order_by(Especialidad.nombre).all()
+
         return render_template('comentarios_supervision.html',
                                 comentarios=comentarios,
                                 especialidades=especialidades,

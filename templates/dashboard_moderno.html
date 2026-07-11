@@ -2,576 +2,1079 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Dashboard · PanolERP</title>
+<title>PanolERP · Dashboard</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
 <style>
-    :root {
-        --navy: #0F2C5C; --navy-light: #1E40AF;
-        --gold: #B45309; --gold-light: #F59E0B;
-        --green: #047857; --green-light: #10B981;
-        --red: #B91C1C; --red-light: #EF4444;
-        --grey-900: #0F172A; --grey-700: #334155;
-        --grey-500: #64748B; --grey-300: #CBD5E1;
-        --grey-100: #F1F5F9; --grey-50: #F8FAFC;
-        --bg: #F8FAFC;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-        background: var(--bg);
-        color: var(--grey-900);
-        min-height: 100vh;
-    }
-    /* HEADER */
-    .top-bar {
-        background: linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 100%);
-        color: white;
-        padding: 14px 26px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        box-shadow: 0 2px 12px rgba(15,44,92,0.15);
-    }
-    .top-bar h1 {
-        font-size: 20px; font-weight: 800; letter-spacing: -0.3px;
-        display: flex; align-items: center; gap: 10px;
-    }
-    .top-bar h1 .badge-rol {
-        background: var(--gold); color: white;
-        font-size: 10px; padding: 3px 10px; border-radius: 20px;
-        font-weight: 700; letter-spacing: 0.5px;
-    }
-    .top-bar .actions { display: flex; gap: 10px; }
-    .top-bar a, .top-bar button {
-        background: rgba(255,255,255,0.14);
-        color: white; padding: 8px 14px;
-        border: none; border-radius: 6px;
-        text-decoration: none; font-size: 13px; font-weight: 600;
-        cursor: pointer; transition: all 0.2s;
-    }
-    .top-bar a:hover, .top-bar button:hover { background: rgba(255,255,255,0.28); }
+:root {
+    /* Paleta profesional */
+    --bg: #F7F8FC;
+    --sidebar: #0B1739;
+    --sidebar-hover: #1A2951;
+    --sidebar-text: #94A3C8;
+    --sidebar-active: #F59E0B;
 
-    /* CONTAINER */
-    .container { padding: 22px 26px; max-width: 1600px; margin: 0 auto; }
+    --card: #FFFFFF;
+    --border: #E5E9F2;
+    --border-hover: #C7D0E5;
 
-    /* FILTRO ESPECIALIDAD */
-    .filter-bar {
-        background: white; padding: 14px 18px; border-radius: 10px;
-        display: flex; align-items: center; gap: 14px;
-        margin-bottom: 22px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-    }
-    .filter-bar label { font-size: 12px; color: var(--grey-500); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-    .filter-bar select {
-        padding: 8px 12px; border: 1px solid var(--grey-300); border-radius: 6px;
-        font-size: 14px; min-width: 260px;
-        font-family: inherit; color: var(--grey-900);
-    }
-    .filter-bar .info { color: var(--grey-500); font-size: 13px; margin-left: auto; }
+    --text-900: #0F172A;
+    --text-700: #334155;
+    --text-500: #64748B;
+    --text-400: #94A3B8;
+    --text-300: #CBD5E1;
 
-    /* KPIs */
-    .kpi-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 14px; margin-bottom: 24px;
-    }
-    .kpi-card {
-        background: white;
-        padding: 18px 20px;
-        border-radius: 12px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        border-left: 4px solid var(--navy);
-        position: relative;
-        transition: transform 0.15s, box-shadow 0.15s;
-    }
-    .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
-    .kpi-card.gold { border-color: var(--gold); }
-    .kpi-card.green { border-color: var(--green); }
-    .kpi-card.red { border-color: var(--red); }
-    .kpi-card .icon {
-        position: absolute; top: 16px; right: 18px;
-        font-size: 22px; color: var(--grey-300);
-    }
-    .kpi-card .label {
-        font-size: 11px; color: var(--grey-500);
-        text-transform: uppercase; letter-spacing: 0.6px;
-        font-weight: 700; margin-bottom: 8px;
-    }
-    .kpi-card .value {
-        font-size: 26px; font-weight: 800;
-        color: var(--navy); letter-spacing: -0.5px;
-    }
-    .kpi-card.gold .value { color: var(--gold); }
-    .kpi-card.green .value { color: var(--green); }
-    .kpi-card.red .value { color: var(--red); }
-    .kpi-card .sub {
-        font-size: 11px; color: var(--grey-500); margin-top: 4px;
-    }
+    --brand: #4F46E5;
+    --brand-light: #EEF2FF;
+    --success: #10B981;
+    --success-light: #D1FAE5;
+    --warning: #F59E0B;
+    --warning-light: #FEF3C7;
+    --danger: #EF4444;
+    --danger-light: #FEE2E2;
+    --info: #06B6D4;
+    --info-light: #CFFAFE;
 
-    /* SECCIONES */
-    .row {
-        display: grid;
-        grid-template-columns: 2fr 1fr;
-        gap: 18px;
-        margin-bottom: 20px;
-    }
-    .row.thirds {
-        grid-template-columns: 1fr 1fr 1fr;
-    }
-    .row.halves {
-        grid-template-columns: 1fr 1fr;
-    }
-    @media (max-width: 1100px) {
-        .row, .row.thirds, .row.halves { grid-template-columns: 1fr; }
-    }
+    --shadow-sm: 0 1px 2px rgba(15,23,42,0.04);
+    --shadow: 0 4px 12px rgba(15,23,42,0.06);
+    --shadow-lg: 0 12px 32px rgba(15,23,42,0.10);
+}
 
-    .card {
-        background: white; border-radius: 12px; padding: 18px 20px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    }
-    .card h3 {
-        font-size: 14px; color: var(--navy);
-        font-weight: 800; margin-bottom: 12px;
-        display: flex; align-items: center; gap: 8px;
-        text-transform: uppercase; letter-spacing: 0.4px;
-    }
-    .card h3 .fa-icon { color: var(--gold); }
-    .card .sub-h3 { font-size: 11px; color: var(--grey-500); font-weight: 500; text-transform: none; letter-spacing: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text-900);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
 
-    /* TABLAS */
-    .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
-    .tbl th {
-        text-align: left; padding: 8px 6px; font-size: 10px;
-        text-transform: uppercase; letter-spacing: 0.4px;
-        color: var(--grey-500); font-weight: 700;
-        border-bottom: 2px solid var(--grey-100);
-    }
-    .tbl td {
-        padding: 8px 6px; border-bottom: 1px solid var(--grey-100);
-    }
-    .tbl tr:hover td { background: var(--grey-50); }
-    .tbl .num { text-align: right; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; }
-    .tbl .name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .tbl .code { font-family: 'Consolas', monospace; font-size: 11px; color: var(--gold); }
+/* ═════════════ LAYOUT ═════════════ */
+.app {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: 100vh;
+}
 
-    /* HEATMAP */
-    .heatmap {
-        display: grid;
-        grid-template-columns: 40px repeat(24, 1fr);
-        gap: 2px;
-        margin-top: 8px;
-    }
-    .heatmap .hh {
-        text-align: center; font-size: 8px; color: var(--grey-500);
-        padding: 2px 0;
-    }
-    .heatmap .day {
-        font-size: 10px; color: var(--grey-500);
-        display: flex; align-items: center; padding-right: 6px;
-        font-weight: 600;
-    }
-    .heatmap .cell {
-        height: 20px; border-radius: 3px;
-        background: var(--grey-100);
-        cursor: help;
-    }
-    .heatmap .cell.l1 { background: #E0F2FE; }
-    .heatmap .cell.l2 { background: #7DD3FC; }
-    .heatmap .cell.l3 { background: #38BDF8; }
-    .heatmap .cell.l4 { background: #0284C7; }
-    .heatmap .cell.l5 { background: #075985; }
+/* ═════════════ SIDEBAR ═════════════ */
+.sidebar {
+    background: var(--sidebar);
+    color: var(--sidebar-text);
+    padding: 22px 14px;
+    position: sticky; top: 0; height: 100vh;
+    display: flex; flex-direction: column;
+}
+.sidebar .brand {
+    padding: 8px 14px 22px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 18px;
+}
+.sidebar .brand h1 {
+    font-size: 18px;
+    color: white;
+    font-weight: 800;
+    letter-spacing: -0.4px;
+    display: flex; align-items: center; gap: 10px;
+}
+.sidebar .brand h1 i { color: var(--sidebar-active); }
+.sidebar .brand small {
+    display: block;
+    font-size: 10px;
+    color: var(--text-400);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 600;
+}
 
-    /* BADGES */
-    .badge {
-        display: inline-block; padding: 2px 8px; border-radius: 12px;
-        font-size: 10px; font-weight: 700; letter-spacing: 0.3px;
-    }
-    .badge.gold { background: #FEF3C7; color: #78350F; }
-    .badge.green { background: #D1FAE5; color: #065F46; }
-    .badge.red { background: #FEE2E2; color: #7F1D1D; }
-    .badge.navy { background: #DBEAFE; color: #1E3A8A; }
+.nav-label {
+    font-size: 10px;
+    color: rgba(148,163,200,0.6);
+    padding: 12px 14px 6px 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 700;
+}
+.nav a {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    color: var(--sidebar-text);
+    text-decoration: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.15s;
+    margin-bottom: 2px;
+}
+.nav a:hover { background: var(--sidebar-hover); color: white; }
+.nav a.active {
+    background: linear-gradient(135deg, var(--sidebar-active) 0%, #D97706 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(245,158,11,0.35);
+    font-weight: 700;
+}
+.nav a i { width: 18px; text-align: center; font-size: 14px; }
+.nav a .count {
+    margin-left: auto;
+    background: rgba(255,255,255,0.15);
+    padding: 2px 8px; border-radius: 10px;
+    font-size: 10px; font-weight: 700;
+}
 
-    /* CANVAS */
-    .chart-wrap { position: relative; height: 260px; }
-    .chart-wrap.small { height: 200px; }
+.sidebar .user {
+    margin-top: auto;
+    padding: 14px;
+    background: var(--sidebar-hover);
+    border-radius: 10px;
+    display: flex; align-items: center; gap: 10px;
+}
+.sidebar .user .avatar {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--sidebar-active), #D97706);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-weight: 800; font-size: 13px;
+}
+.sidebar .user .who {
+    flex: 1; min-width: 0;
+}
+.sidebar .user .who .n {
+    color: white; font-size: 12px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sidebar .user .who .r {
+    color: var(--text-400); font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+.sidebar .user a { color: var(--text-400); font-size: 14px; }
+.sidebar .user a:hover { color: white; }
 
-    /* CTA BTN */
-    .btn {
-        display: inline-block; padding: 8px 14px;
-        background: var(--navy); color: white;
-        border: none; border-radius: 6px; text-decoration: none;
-        font-size: 12px; font-weight: 700; cursor: pointer;
-        transition: background 0.15s;
-    }
-    .btn:hover { background: var(--navy-light); }
-    .btn.gold { background: var(--gold); }
-    .btn.gold:hover { background: var(--gold-light); }
+/* ═════════════ MAIN ═════════════ */
+.main {
+    padding: 24px 30px;
+    max-width: 100%;
+    overflow-x: hidden;
+}
 
-    /* MERCADO / COMPARATIVA */
-    .esp-row {
-        display: grid;
-        grid-template-columns: 32px 1fr 90px 100px 60px;
-        gap: 10px; align-items: center;
-        padding: 8px 0; border-bottom: 1px solid var(--grey-100);
-        font-size: 13px;
-    }
-    .esp-row .dot {
-        width: 10px; height: 10px; border-radius: 50%;
-    }
-    .esp-row .nombre {
-        font-weight: 700; color: var(--grey-900);
-    }
-    .esp-row .valor { font-family: monospace; color: var(--green); font-weight: 700; text-align: right; }
-    .esp-row .items { color: var(--grey-500); text-align: right; }
-    .esp-row .badge-p { text-align: center; }
+/* HEADER */
+.page-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+    gap: 20px;
+}
+.page-head h2 {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--text-900);
+}
+.page-head p {
+    color: var(--text-500);
+    font-size: 13px;
+    margin-top: 4px;
+}
+.page-head .badge-rol {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--brand-light); color: var(--brand);
+    padding: 3px 10px; border-radius: 12px;
+    font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-top: 8px;
+}
+.page-head .badge-rol.jt { background: var(--warning-light); color: #92400E; }
+
+/* FILTER */
+.filter-shell {
+    display: flex; gap: 12px; align-items: center;
+    background: var(--card);
+    padding: 6px 6px 6px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    min-width: 320px;
+}
+.filter-shell i { color: var(--text-400); font-size: 14px; }
+.filter-shell select {
+    flex: 1; border: none; background: transparent;
+    font-family: inherit; font-size: 13px; color: var(--text-900);
+    font-weight: 500; padding: 8px 4px; outline: none;
+}
+.filter-shell .btn-quick {
+    background: var(--brand); color: white;
+    padding: 8px 14px; border-radius: 6px;
+    text-decoration: none; font-size: 12px; font-weight: 600;
+    border: none; cursor: pointer;
+}
+
+/* KPI CARDS */
+.kpis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 22px;
+}
+@media (max-width: 1200px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px) { .kpis { grid-template-columns: 1fr; } }
+
+.kpi {
+    background: var(--card);
+    border-radius: 14px;
+    padding: 20px;
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s;
+}
+.kpi:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+.kpi .kpi-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 12px;
+}
+.kpi .kpi-label {
+    color: var(--text-500);
+    font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.3px;
+}
+.kpi .kpi-icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+}
+.kpi.brand .kpi-icon { background: var(--brand-light); color: var(--brand); }
+.kpi.success .kpi-icon { background: var(--success-light); color: var(--success); }
+.kpi.warning .kpi-icon { background: var(--warning-light); color: var(--warning); }
+.kpi.danger .kpi-icon { background: var(--danger-light); color: var(--danger); }
+.kpi.info .kpi-icon { background: var(--info-light); color: var(--info); }
+.kpi .kpi-value {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--text-900);
+    letter-spacing: -0.8px;
+    line-height: 1;
+    margin-bottom: 6px;
+    font-family: 'Inter', sans-serif;
+    font-variant-numeric: tabular-nums;
+}
+.kpi .kpi-sub {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px;
+    color: var(--text-500);
+}
+.kpi .kpi-sub .tag {
+    background: var(--brand-light); color: var(--brand);
+    padding: 1px 7px; border-radius: 6px;
+    font-size: 10px; font-weight: 700;
+}
+.kpi .kpi-sub .tag.up { background: var(--success-light); color: var(--success); }
+.kpi .kpi-sub .tag.dn { background: var(--danger-light); color: var(--danger); }
+
+/* GRID */
+.grid {
+    display: grid;
+    gap: 18px;
+    margin-bottom: 22px;
+}
+.grid.g-2 { grid-template-columns: 2fr 1fr; }
+.grid.g-3 { grid-template-columns: 1fr 1fr 1fr; }
+.grid.g-half { grid-template-columns: 1fr 1fr; }
+@media (max-width: 1100px) {
+    .grid.g-2, .grid.g-3, .grid.g-half { grid-template-columns: 1fr; }
+}
+
+/* PANEL */
+.panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 22px;
+    transition: all 0.2s;
+}
+.panel:hover { border-color: var(--border-hover); }
+.panel-head {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 18px;
+    gap: 10px;
+}
+.panel-head h3 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-900);
+    letter-spacing: -0.2px;
+    display: flex; align-items: center; gap: 10px;
+}
+.panel-head h3 .icon-badge {
+    width: 30px; height: 30px;
+    background: var(--brand-light); color: var(--brand);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+}
+.panel-head h3 small {
+    color: var(--text-500);
+    font-size: 12px; font-weight: 500;
+    display: block; margin-top: 2px;
+    letter-spacing: 0;
+}
+.panel-head .actions { display: flex; gap: 6px; }
+.panel-head .pill {
+    background: var(--brand-light); color: var(--brand);
+    padding: 4px 10px; border-radius: 12px;
+    font-size: 11px; font-weight: 600;
+}
+.panel-head .pill.success { background: var(--success-light); color: var(--success); }
+.panel-head .pill.warning { background: var(--warning-light); color: var(--warning); }
+
+/* CHART */
+.chart-box { height: 300px; position: relative; }
+.chart-box.sm { height: 220px; }
+.chart-box.md { height: 260px; }
+
+/* TABLE */
+.table {
+    width: 100%; border-collapse: collapse;
+    font-size: 13px;
+}
+.table th {
+    text-align: left;
+    padding: 10px 8px;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-500); font-weight: 700;
+    border-bottom: 2px solid var(--border);
+}
+.table th.num { text-align: right; }
+.table td {
+    padding: 12px 8px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-700);
+}
+.table tr:last-child td { border-bottom: none; }
+.table tr:hover td { background: rgba(79,70,229,0.02); }
+.table td.num { text-align: right; font-weight: 700; color: var(--text-900); font-variant-numeric: tabular-nums; }
+.table td.rank {
+    width: 30px;
+    font-weight: 800; color: var(--text-400);
+    font-size: 12px;
+}
+.table td.rank.gold { color: #F59E0B; font-size: 15px; }
+.table td.rank.silver { color: #94A3B8; font-size: 14px; }
+.table td.rank.bronze { color: #D97706; font-size: 13px; }
+.table td.name { font-weight: 600; color: var(--text-900); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table td.code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--brand);
+    font-weight: 500;
+}
+.table .mini-bar {
+    display: inline-block;
+    width: 60px; height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    margin-left: 8px; vertical-align: middle;
+    overflow: hidden;
+}
+.table .mini-bar > div {
+    height: 100%; background: var(--brand);
+    border-radius: 3px;
+}
+.table .mini-bar.danger > div { background: var(--danger); }
+
+/* BADGE */
+.badge {
+    display: inline-block; padding: 3px 8px; border-radius: 6px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
+.badge.success { background: var(--success-light); color: var(--success); }
+.badge.warning { background: var(--warning-light); color: var(--warning); }
+.badge.danger { background: var(--danger-light); color: var(--danger); }
+.badge.info { background: var(--info-light); color: var(--info); }
+.badge.brand { background: var(--brand-light); color: var(--brand); }
+
+/* HEATMAP */
+.heatmap {
+    display: grid;
+    grid-template-columns: 44px repeat(24, 1fr);
+    gap: 3px;
+    margin-top: 10px;
+}
+.heatmap .hh {
+    text-align: center; font-size: 9px; color: var(--text-400);
+    padding: 3px 0; font-weight: 600;
+}
+.heatmap .day {
+    font-size: 11px; color: var(--text-500);
+    display: flex; align-items: center; padding-right: 8px;
+    font-weight: 700;
+}
+.heatmap .cell {
+    height: 22px; border-radius: 4px;
+    background: var(--border);
+    cursor: help;
+    transition: transform 0.1s;
+}
+.heatmap .cell:hover { transform: scale(1.4); z-index: 10; position: relative; box-shadow: 0 2px 8px rgba(79,70,229,0.4); }
+.heatmap .cell.l1 { background: #DBEAFE; }
+.heatmap .cell.l2 { background: #93C5FD; }
+.heatmap .cell.l3 { background: #60A5FA; }
+.heatmap .cell.l4 { background: #3B82F6; }
+.heatmap .cell.l5 { background: #1D4ED8; }
+.hm-legend {
+    display: flex; align-items: center; justify-content: flex-end;
+    gap: 8px; margin-top: 12px;
+    font-size: 11px; color: var(--text-500);
+}
+.hm-legend .scale { display: flex; gap: 3px; }
+.hm-legend .scale div {
+    width: 12px; height: 12px; border-radius: 3px;
+    background: var(--border);
+}
+
+/* ESPECIALIDAD ROW */
+.esp-item {
+    display: grid;
+    grid-template-columns: 28px 1fr 90px 100px 130px 60px;
+    gap: 12px; align-items: center;
+    padding: 12px 4px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    transition: background 0.1s;
+}
+.esp-item:hover { background: rgba(79,70,229,0.03); border-radius: 6px; }
+.esp-item:last-child { border-bottom: none; }
+.esp-item .dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    box-shadow: 0 0 0 3px rgba(255,255,255,1), 0 0 0 4px currentColor;
+}
+.esp-item .info-esp .n {
+    font-weight: 700; color: var(--text-900);
+}
+.esp-item .info-esp .t {
+    color: var(--text-400); font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px;
+    font-weight: 600;
+}
+.esp-item .items-c { color: var(--text-500); text-align: right; font-size: 12px; }
+.esp-item .items-c strong { color: var(--text-900); }
+.esp-item .valor-c {
+    text-align: right;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--success); font-weight: 700;
+    font-size: 13px;
+}
+.esp-item .progress-c { text-align: center; }
+.esp-item .progress-c .barc {
+    display: block; width: 100%; height: 6px;
+    background: var(--border); border-radius: 3px; overflow: hidden;
+    margin-bottom: 4px;
+}
+.esp-item .progress-c .barc > div {
+    height: 100%; border-radius: 3px;
+    transition: width 0.4s;
+}
+.esp-item .progress-c .lbl { font-size: 10px; color: var(--text-400); }
+.esp-item .prest-c { text-align: center; }
+
+/* EMPTY STATE */
+.empty {
+    text-align: center; padding: 40px 20px;
+    color: var(--text-400);
+}
+.empty i { font-size: 40px; color: var(--success); margin-bottom: 10px; display: block; }
+.empty p { font-size: 13px; }
+
+/* FLASHES */
+.flashes {
+    max-width: 100%;
+    margin-bottom: 18px;
+}
+.flashes li {
+    background: var(--brand-light);
+    color: var(--brand);
+    padding: 10px 14px;
+    border-left: 3px solid var(--brand);
+    border-radius: 6px;
+    font-size: 13px;
+    list-style: none;
+    margin-bottom: 6px;
+}
 </style>
 </head>
 <body>
 
-<div class="top-bar">
-    <h1>
-        <i class="fas fa-chart-line"></i>
-        Dashboard PanolERP
-        <span class="badge-rol">
-            {% if es_jt %}JEFE TÉCNICO{% else %}ADMIN CENTRAL{% endif %}
-        </span>
-    </h1>
-    <div class="actions">
+<div class="app">
+
+    <!-- ═════════════ SIDEBAR ═════════════ -->
+    <aside class="sidebar">
+        <div class="brand">
+            <h1><i class="fas fa-cube"></i> PanolERP</h1>
+            <small>Panel de control</small>
+        </div>
+
+        <div class="nav-label">Principal</div>
+        <div class="nav">
+            <a href="/dashboard" class="active">
+                <i class="fas fa-chart-pie"></i> Dashboard
+            </a>
+            <a href="/inventario">
+                <i class="fas fa-boxes-stacked"></i> Inventarios
+                <span class="count">{{ especialidades|length }}</span>
+            </a>
+            <a href="/supervision/comentarios">
+                <i class="fas fa-comment-dots"></i> Supervisión
+            </a>
+            <a href="/auditoria">
+                <i class="fas fa-history"></i> Auditoría
+            </a>
+        </div>
+
         {% if not es_jt %}
-        <a href="/exportar_excel"><i class="fas fa-file-excel"></i> Exportar todo</a>
+        <div class="nav-label">Administración</div>
+        <div class="nav">
+            <a href="/gestionar_instructores">
+                <i class="fas fa-user-gear"></i> Instructores
+            </a>
+            <a href="/exportar_excel">
+                <i class="fas fa-file-excel"></i> Exportar
+            </a>
+            <a href="/reporte_mermas">
+                <i class="fas fa-triangle-exclamation"></i> Mermas
+            </a>
+        </div>
         {% endif %}
-        <a href="/supervision/comentarios"><i class="fas fa-comment-dots"></i> Supervisión</a>
-        <a href="/auditoria"><i class="fas fa-history"></i> Auditoría</a>
-        <a href="/admin_cambiar_password"><i class="fas fa-key"></i> Cambiar clave</a>
-        <a href="/logout"><i class="fas fa-sign-out-alt"></i> Salir</a>
-    </div>
-</div>
 
-<div class="container">
-
-    <!-- FILTRO ESPECIALIDAD -->
-    <form class="filter-bar" method="get" action="/dashboard">
-        <label><i class="fas fa-filter"></i> Vista:</label>
-        <select name="especialidad_id" onchange="this.form.submit()">
-            <option value="">— Consolidado del establecimiento —</option>
-            {% for e in especialidades %}
-            <option value="{{ e.id }}" {% if esp_actual and esp_actual.id == e.id %}selected{% endif %}>
-                {{ e.nombre }} ({{ e.tipo_area or 'GEN' }})
-            </option>
-            {% endfor %}
-        </select>
-        <div class="info">
-            {% if esp_actual %}Viendo: <strong>{{ esp_actual.nombre }}</strong>{% else %}Vista global de las {{ especialidades|length }} áreas{% endif %}
-            &nbsp;·&nbsp; Datos al {{ series_labels[-1] if series_labels }}
-        </div>
-    </form>
-
-    <!-- KPIs -->
-    <div class="kpi-grid">
-        <div class="kpi-card gold">
-            <i class="fas fa-coins icon"></i>
-            <div class="label">Valor patrimonial</div>
-            <div class="value">${{ "{:,}".format(valor_total).replace(",", ".") }}</div>
-            <div class="sub">CLP total del inventario</div>
-        </div>
-        <div class="kpi-card">
-            <i class="fas fa-boxes icon"></i>
-            <div class="label">Ítems únicos</div>
-            <div class="value">{{ total_items }}</div>
-            <div class="sub">{{ stock_total }} unidades totales</div>
-        </div>
-        <div class="kpi-card green">
-            <i class="fas fa-check icon"></i>
-            <div class="label">Stock disponible</div>
-            <div class="value">{{ stock_disponible }}</div>
-            <div class="sub">{{ "%.0f"|format((stock_disponible / stock_total * 100) if stock_total else 0) }}% del stock total</div>
-        </div>
-        <div class="kpi-card">
-            <i class="fas fa-hand-holding icon"></i>
-            <div class="label">Préstamos activos</div>
-            <div class="value">{{ prestamos_activos }}</div>
-            <div class="sub">Pendientes de devolución</div>
-        </div>
-        <div class="kpi-card red">
-            <i class="fas fa-exclamation-triangle icon"></i>
-            <div class="label">Merma del mes</div>
-            <div class="value">{{ merma_mes }}</div>
-            <div class="sub">Unidades perdidas</div>
-        </div>
-        <div class="kpi-card">
-            <i class="fas fa-users icon"></i>
-            <div class="label">Estudiantes</div>
-            <div class="value">{{ total_alumnos }}</div>
-            <div class="sub">Activos en el sistema</div>
-        </div>
-        <div class="kpi-card gold">
-            <i class="fas fa-tools icon"></i>
-            <div class="label">Órdenes de trabajo</div>
-            <div class="value">{{ ot_pendientes }}</div>
-            <div class="sub">En curso</div>
-        </div>
-        <div class="kpi-card">
-            <i class="fas fa-building icon"></i>
-            <div class="label">Áreas activas</div>
-            <div class="value">{{ especialidades|length }}</div>
-            <div class="sub">Especialidades del establecimiento</div>
-        </div>
-    </div>
-
-    <!-- FILA 1: Movimientos 30 días + distribución -->
-    <div class="row">
-        <div class="card">
-            <h3><i class="fas fa-chart-area fa-icon"></i> Movimientos últimos 30 días
-                <span class="sub-h3">&nbsp;·&nbsp; Préstamos vs devoluciones diarias</span>
-            </h3>
-            <div class="chart-wrap"><canvas id="chartMovimientos"></canvas></div>
-        </div>
-        <div class="card">
-            <h3><i class="fas fa-chart-pie fa-icon"></i> Distribución por tipo de área</h3>
-            <div class="chart-wrap"><canvas id="chartTipos"></canvas></div>
-        </div>
-    </div>
-
-    <!-- FILA 2: Top prestados y top mermados -->
-    <div class="row halves">
-        <div class="card">
-            <h3><i class="fas fa-trophy fa-icon"></i> Top 10 ítems más prestados
-                <span class="sub-h3">&nbsp;·&nbsp; últimos 30 días</span>
-            </h3>
-            <table class="tbl">
-                <thead>
-                    <tr><th>#</th><th>Ítem</th><th>Código</th><th class="num">Préstamos</th></tr>
-                </thead>
-                <tbody>
-                {% for it in top_prestados %}
-                <tr>
-                    <td>{{ loop.index }}</td>
-                    <td class="name">{{ it.nombre }}</td>
-                    <td class="code">{{ it.codigo_barras or '—' }}</td>
-                    <td class="num">{{ it.total }}</td>
-                </tr>
-                {% else %}
-                <tr><td colspan="4" style="text-align:center; color: var(--grey-500); padding: 20px;">Sin préstamos en este periodo</td></tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        <div class="card">
-            <h3><i class="fas fa-exclamation-triangle fa-icon" style="color:var(--red)"></i> Top 10 ítems con más merma
-                <span class="sub-h3">&nbsp;·&nbsp; histórico total</span>
-            </h3>
-            <table class="tbl">
-                <thead>
-                    <tr><th>#</th><th>Ítem</th><th class="num">Merma</th><th class="num">Total</th></tr>
-                </thead>
-                <tbody>
-                {% for it in top_mermados %}
-                <tr>
-                    <td>{{ loop.index }}</td>
-                    <td class="name">{{ it.nombre }}</td>
-                    <td class="num" style="color:var(--red)">{{ it.cantidad_mermada }}</td>
-                    <td class="num">{{ it.cantidad_total }}</td>
-                </tr>
-                {% else %}
-                <tr><td colspan="4" style="text-align:center; color: var(--grey-500); padding: 20px;">Sin mermas registradas</td></tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- FILA 3: Mapa de calor -->
-    <div class="row">
-        <div class="card">
-            <h3><i class="fas fa-th fa-icon"></i> Mapa de calor de actividad
-                <span class="sub-h3">&nbsp;·&nbsp; préstamos por día y hora, últimos 30 días</span>
-            </h3>
-            <div class="heatmap">
-                <div></div>
-                {% for h in range(24) %}
-                <div class="hh">{{ '%02d' | format(h) }}</div>
-                {% endfor %}
-                {% set dias = ['LUN','MAR','MIÉ','JUE','VIE','SÁB','DOM'] %}
-                {% for d in range(7) %}
-                    <div class="day">{{ dias[d] }}</div>
-                    {% for h in range(24) %}
-                        {% set v = heatmap[d][h] %}
-                        {% set nivel = 0 %}
-                        {% if v > 0 %}{% set nivel = 1 %}{% endif %}
-                        {% if v > 2 %}{% set nivel = 2 %}{% endif %}
-                        {% if v > 5 %}{% set nivel = 3 %}{% endif %}
-                        {% if v > 10 %}{% set nivel = 4 %}{% endif %}
-                        {% if v > 20 %}{% set nivel = 5 %}{% endif %}
-                        <div class="cell {% if nivel > 0 %}l{{ nivel }}{% endif %}" title="{{ dias[d] }} {{ '%02d'|format(h) }}:00 - {{ v }} préstamos"></div>
-                    {% endfor %}
-                {% endfor %}
+        <div class="user">
+            <div class="avatar">
+                {% if es_jt %}JT{% else %}AC{% endif %}
             </div>
-            <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--grey-500);">
-                Menos actividad
-                <div style="display:flex; gap:2px;">
-                    <div class="cell" style="width:14px; height:14px;"></div>
-                    <div class="cell l1" style="width:14px; height:14px;"></div>
-                    <div class="cell l2" style="width:14px; height:14px;"></div>
-                    <div class="cell l3" style="width:14px; height:14px;"></div>
-                    <div class="cell l4" style="width:14px; height:14px;"></div>
-                    <div class="cell l5" style="width:14px; height:14px;"></div>
-                </div>
-                Más actividad
+            <div class="who">
+                <div class="n">{% if es_jt %}Jefe Técnico{% else %}Admin Central{% endif %}</div>
+                <div class="r">{{ rol }}</div>
             </div>
+            <a href="/admin_cambiar_password" title="Cambiar clave"><i class="fas fa-key"></i></a>
+            <a href="/logout" title="Cerrar sesión"><i class="fas fa-sign-out-alt"></i></a>
         </div>
-        <div class="card">
-            <h3><i class="fas fa-bell fa-icon" style="color:var(--red)"></i> Alertas: Stock bajo</h3>
-            <table class="tbl">
-                <thead>
-                    <tr><th>Ítem</th><th class="num">Disp.</th><th class="num">Mín.</th></tr>
-                </thead>
-                <tbody>
-                {% for it in stock_bajo %}
-                <tr>
-                    <td class="name">{{ it.nombre }}</td>
-                    <td class="num" style="color:var(--red)">{{ it.cantidad_disponible }}</td>
-                    <td class="num">{{ it.cantidad_minima }}</td>
-                </tr>
-                {% else %}
-                <tr><td colspan="3" style="text-align:center; color: var(--grey-500); padding: 20px;"><i class="fas fa-check-circle" style="color:var(--green)"></i> Todo el stock sobre el mínimo</td></tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
+    </aside>
 
-    {% if comparativa %}
-    <!-- FILA 4: Comparativa por especialidad -->
-    <div class="card" style="margin-bottom: 20px;">
-        <h3><i class="fas fa-balance-scale fa-icon"></i> Comparativa por especialidad</h3>
-        {% for esp in comparativa %}
-        <div class="esp-row">
-            <div class="dot" style="background: {% if esp.tipo_area == 'PANOL_TP' %}var(--gold){% elif esp.tipo_area == 'BIBLIOTECA' %}var(--green){% elif esp.tipo_area == 'INFORMATICA' %}var(--navy){% elif esp.tipo_area == 'DEPORTIVO' %}var(--red){% else %}var(--grey-500){% endif %};"></div>
+    <!-- ═════════════ MAIN ═════════════ -->
+    <main class="main">
+
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+        <ul class="flashes">
+            {% for m in messages %}<li>{{ m }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+        {% endwith %}
+
+        <!-- HEADER -->
+        <div class="page-head">
             <div>
-                <div class="nombre">{{ esp.nombre }}</div>
-                <div style="font-size: 10px; color: var(--grey-500);">{{ esp.tipo_area }}</div>
+                <h2>
+                    {% if esp_actual %}
+                        {{ esp_actual.nombre }}
+                    {% else %}
+                        Panel Ejecutivo
+                    {% endif %}
+                </h2>
+                <p>
+                    {% if esp_actual %}
+                        Métricas de la especialidad · Datos al {{ series_labels[-1] if series_labels else '' }}
+                    {% else %}
+                        Visión consolidada de las {{ especialidades|length }} áreas del establecimiento
+                    {% endif %}
+                </p>
+                <span class="badge-rol {% if es_jt %}jt{% endif %}">
+                    <i class="fas {% if es_jt %}fa-eye{% else %}fa-crown{% endif %}"></i>
+                    {% if es_jt %}Jefe Técnico UTP{% else %}Administrador Central{% endif %}
+                </span>
             </div>
-            <div class="items">{{ esp.items }} ítems</div>
-            <div class="valor">${{ "{:,}".format(esp.valor).replace(",", ".") }}</div>
-            <div class="badge-p">
-                {% if esp.prestamos_activos > 0 %}
-                    <span class="badge navy">{{ esp.prestamos_activos }}</span>
-                {% else %}
-                    <span class="badge green">0</span>
+            <form class="filter-shell" method="get" action="/dashboard">
+                <i class="fas fa-filter"></i>
+                <select name="especialidad_id" onchange="this.form.submit()">
+                    <option value="">Todas las áreas</option>
+                    {% for e in especialidades %}
+                    <option value="{{ e.id }}" {% if esp_actual and esp_actual.id == e.id %}selected{% endif %}>
+                        {{ e.nombre }}
+                    </option>
+                    {% endfor %}
+                </select>
+                {% if esp_actual %}
+                <a href="/dashboard" class="btn-quick" style="text-decoration:none;">Limpiar</a>
                 {% endif %}
+            </form>
+        </div>
+
+        <!-- KPIs -->
+        <div class="kpis">
+            <div class="kpi warning">
+                <div class="kpi-head">
+                    <span class="kpi-label">Valor Patrimonial</span>
+                    <div class="kpi-icon"><i class="fas fa-coins"></i></div>
+                </div>
+                <div class="kpi-value">${{ "{:,}".format(valor_total).replace(",", ".") }}</div>
+                <div class="kpi-sub">
+                    <span class="tag">CLP</span>
+                    Total del inventario
+                </div>
+            </div>
+            <div class="kpi brand">
+                <div class="kpi-head">
+                    <span class="kpi-label">Ítems Únicos</span>
+                    <div class="kpi-icon"><i class="fas fa-boxes-stacked"></i></div>
+                </div>
+                <div class="kpi-value">{{ total_items }}</div>
+                <div class="kpi-sub">
+                    <span class="tag">SKU</span>
+                    {{ stock_total }} unidades totales
+                </div>
+            </div>
+            <div class="kpi success">
+                <div class="kpi-head">
+                    <span class="kpi-label">Stock Disponible</span>
+                    <div class="kpi-icon"><i class="fas fa-check-circle"></i></div>
+                </div>
+                <div class="kpi-value">{{ stock_disponible }}</div>
+                <div class="kpi-sub">
+                    <span class="tag up">{{ "%.0f"|format((stock_disponible / stock_total * 100) if stock_total else 0) }}%</span>
+                    del total en bodega
+                </div>
+            </div>
+            <div class="kpi info">
+                <div class="kpi-head">
+                    <span class="kpi-label">Préstamos Activos</span>
+                    <div class="kpi-icon"><i class="fas fa-hand-holding"></i></div>
+                </div>
+                <div class="kpi-value">{{ prestamos_activos }}</div>
+                <div class="kpi-sub">
+                    Pendientes de devolución
+                </div>
+            </div>
+            <div class="kpi danger">
+                <div class="kpi-head">
+                    <span class="kpi-label">Merma del Mes</span>
+                    <div class="kpi-icon"><i class="fas fa-triangle-exclamation"></i></div>
+                </div>
+                <div class="kpi-value">{{ merma_mes }}</div>
+                <div class="kpi-sub">
+                    <span class="tag dn">unidades</span>
+                    perdidas o dañadas
+                </div>
+            </div>
+            <div class="kpi brand">
+                <div class="kpi-head">
+                    <span class="kpi-label">Estudiantes</span>
+                    <div class="kpi-icon"><i class="fas fa-users"></i></div>
+                </div>
+                <div class="kpi-value">{{ total_alumnos }}</div>
+                <div class="kpi-sub">Registrados y activos</div>
+            </div>
+            <div class="kpi warning">
+                <div class="kpi-head">
+                    <span class="kpi-label">Órdenes de Trabajo</span>
+                    <div class="kpi-icon"><i class="fas fa-screwdriver-wrench"></i></div>
+                </div>
+                <div class="kpi-value">{{ ot_pendientes }}</div>
+                <div class="kpi-sub">En curso · mantenciones</div>
+            </div>
+            <div class="kpi info">
+                <div class="kpi-head">
+                    <span class="kpi-label">Áreas Activas</span>
+                    <div class="kpi-icon"><i class="fas fa-building"></i></div>
+                </div>
+                <div class="kpi-value">{{ especialidades|length }}</div>
+                <div class="kpi-sub">Especialidades del colegio</div>
             </div>
         </div>
-        {% endfor %}
-    </div>
-    {% endif %}
 
-    <!-- FILA 5: Últimos movimientos -->
-    <div class="card" style="margin-bottom: 30px;">
-        <h3><i class="fas fa-clock fa-icon"></i> Últimos 15 movimientos</h3>
-        <table class="tbl">
-            <thead>
-                <tr><th>Fecha</th><th>Ítem</th><th>Estudiante</th><th>Cant.</th><th>Estado</th></tr>
-            </thead>
-            <tbody>
-            {% for m in ultimos_movimientos %}
-            <tr>
-                <td style="font-family: monospace; font-size: 11px;">{{ m.fecha_prestamo.strftime('%d-%m %H:%M') if m.fecha_prestamo }}</td>
-                <td class="name">{{ m.item.nombre if m.item else '—' }}</td>
-                <td class="name">{{ m.estudiante.nombre if m.estudiante else '—' }}</td>
-                <td class="num">{{ m.cantidad }}</td>
-                <td>
-                    {% if m.estado == 'Pendiente' %}
-                        <span class="badge gold">Activo</span>
-                    {% elif m.estado == 'Devuelto' %}
-                        <span class="badge green">Devuelto</span>
+        <!-- MOVIMIENTOS + DISTRIBUCION -->
+        <div class="grid g-2">
+            <div class="panel">
+                <div class="panel-head">
+                    <h3>
+                        <span class="icon-badge"><i class="fas fa-chart-line"></i></span>
+                        Movimientos últimos 30 días
+                        <small>Actividad diaria de préstamos y devoluciones</small>
+                    </h3>
+                    <div class="actions">
+                        <span class="pill success"><i class="fas fa-arrow-up"></i> {{ series_prestamos|sum }} préstamos</span>
+                        <span class="pill"><i class="fas fa-arrow-down"></i> {{ series_devoluciones|sum }} devol.</span>
+                    </div>
+                </div>
+                <div class="chart-box"><canvas id="chartMov"></canvas></div>
+            </div>
+            <div class="panel">
+                <div class="panel-head">
+                    <h3>
+                        <span class="icon-badge"><i class="fas fa-chart-pie"></i></span>
+                        Distribución
+                        <small>Ítems por tipo de área</small>
+                    </h3>
+                </div>
+                <div class="chart-box"><canvas id="chartTipos"></canvas></div>
+            </div>
+        </div>
+
+        <!-- TOPS -->
+        <div class="grid g-half">
+            <div class="panel">
+                <div class="panel-head">
+                    <h3>
+                        <span class="icon-badge"><i class="fas fa-fire"></i></span>
+                        Top ítems más prestados
+                        <small>Ranking de últimos 30 días</small>
+                    </h3>
+                </div>
+                <table class="table">
+                    <thead><tr><th>#</th><th>Ítem</th><th>Código</th><th class="num">Uso</th></tr></thead>
+                    <tbody>
+                    {% set max_uso = top_prestados|map(attribute='total')|max if top_prestados else 1 %}
+                    {% for it in top_prestados %}
+                    <tr>
+                        <td class="rank {% if loop.index == 1 %}gold{% elif loop.index == 2 %}silver{% elif loop.index == 3 %}bronze{% endif %}">
+                            {% if loop.index == 1 %}<i class="fas fa-trophy"></i>
+                            {% elif loop.index == 2 %}<i class="fas fa-medal"></i>
+                            {% elif loop.index == 3 %}<i class="fas fa-award"></i>
+                            {% else %}{{ loop.index }}{% endif %}
+                        </td>
+                        <td class="name">{{ it.nombre }}</td>
+                        <td class="code">{{ it.codigo_barras or '—' }}</td>
+                        <td class="num">
+                            {{ it.total }}
+                            <span class="mini-bar"><div style="width: {{ (it.total / max_uso * 100)|round }}%"></div></span>
+                        </td>
+                    </tr>
                     {% else %}
-                        <span class="badge navy">{{ m.estado }}</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% else %}
-            <tr><td colspan="5" style="text-align:center; color: var(--grey-500); padding: 20px;">Sin movimientos registrados</td></tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    </div>
+                    <tr><td colspan="4" class="empty"><i class="fas fa-inbox"></i><p>Sin préstamos en este periodo</p></td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="panel">
+                <div class="panel-head">
+                    <h3>
+                        <span class="icon-badge" style="background:var(--danger-light);color:var(--danger)"><i class="fas fa-triangle-exclamation"></i></span>
+                        Top ítems con más merma
+                        <small>Histórico acumulado</small>
+                    </h3>
+                </div>
+                <table class="table">
+                    <thead><tr><th>#</th><th>Ítem</th><th class="num">Merma</th><th class="num">Total</th></tr></thead>
+                    <tbody>
+                    {% set max_merma = top_mermados|map(attribute='cantidad_mermada')|max if top_mermados else 1 %}
+                    {% for it in top_mermados %}
+                    <tr>
+                        <td class="rank">{{ loop.index }}</td>
+                        <td class="name">{{ it.nombre }}</td>
+                        <td class="num" style="color:var(--danger)">
+                            {{ it.cantidad_mermada }}
+                            <span class="mini-bar danger"><div style="width: {{ (it.cantidad_mermada / max_merma * 100)|round }}%"></div></span>
+                        </td>
+                        <td class="num">{{ it.cantidad_total }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="empty"><i class="fas fa-check-circle"></i><p>Sin mermas registradas</p></td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
-    <div style="text-align:center; color: var(--grey-500); font-size: 12px; padding: 14px 0 24px 0;">
-        Avanti Tecnología Limitada · PanolERP · {{ series_labels[-1] if series_labels }}
-    </div>
+        <!-- HEATMAP + ALERTAS -->
+        <div class="grid g-2">
+            <div class="panel">
+                <div class="panel-head">
+                    <h3>
+                        <span class="icon-badge"><i class="fas fa-th"></i></span>
+                        Mapa de calor de actividad
+                        <small>Préstamos por día y hora · últimos 30 días</small>
+                    </h3>
+                </div>
+                <div class="heatmap">
+                    <div></div>
+                    {% for h in range(24) %}<div class="hh">{{ '%02d' | format(h) }}</div>{% endfor %}
+                    {% set dias = ['LUN','MAR','MIÉ','JUE','VIE','SÁB','DOM'] %}
+                    {% for d in range(7) %}
+                        <div class="day">{{ dias[d] }}</div>
+                        {% for h in range(24) %}
+                            {% set v = heatmap[d][h] %}
+                            {% set nivel = 0 %}
+                            {% if v > 0 %}{% set nivel = 1 %}{% endif %}
+                            {% if v > 2 %}{% set nivel = 2 %}{% endif %}
+                            {% if v > 5 %}{% set nivel = 3 %}{% endif %}
+                            {% if v > 10 %}{% set nivel = 4 %}{% endif %}
+                            {% if v > 20 %}{% set nivel = 5 %}{% endif %}
+                            <div class="cell {% if nivel > 0 %}l{{ nivel }}{% endif %}" title="{{ dias[d] }} {{ '%02d'|format(h) }}:00 · {{ v }} préstamos"></div>
+                        {% endfor %}
+                    {% endfor %}
+                </div>
+                <div class="hm-legend">
+                    Menos
+                    <div class="scale">
+                        <div></div>
+                        <div class="cell l1" style="width:12px;height:12px;"></div>
+                        <div class="cell l2" style="width:12px;height:12px;"></div>
+                        <div class="cell l3" style="width:12px;height:12px;"></div>
+                        <div class="cell l4" style="width:12px;height:12px;"></div>
+                        <div class="cell l5" style="width:12px;height:12px;"></div>
+                    </div>
+                    Más
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-head">
+                    <h3>
+                        <span class="icon-badge" style="background:var(--danger-light);color:var(--danger)"><i class="fas fa-bell"></i></span>
+                        Alertas de stock bajo
+                    </h3>
+                    <span class="pill" style="background:var(--danger-light);color:var(--danger)">{{ stock_bajo|length }}</span>
+                </div>
+                <table class="table">
+                    <thead><tr><th>Ítem</th><th class="num">Disp.</th><th class="num">Mín.</th></tr></thead>
+                    <tbody>
+                    {% for it in stock_bajo %}
+                    <tr>
+                        <td class="name">{{ it.nombre }}</td>
+                        <td class="num" style="color:var(--danger)">{{ it.cantidad_disponible }}</td>
+                        <td class="num">{{ it.cantidad_minima }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3" class="empty"><i class="fas fa-check-circle"></i><p>Todo el stock sobre el mínimo</p></td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {% if comparativa %}
+        <!-- COMPARATIVA -->
+        <div class="panel" style="margin-bottom: 20px;">
+            <div class="panel-head">
+                <h3>
+                    <span class="icon-badge"><i class="fas fa-balance-scale"></i></span>
+                    Comparativa por especialidad
+                    <small>Distribución del patrimonio y actividad por área</small>
+                </h3>
+                <span class="pill">{{ comparativa|length }} áreas</span>
+            </div>
+            {% set valor_max = comparativa|map(attribute='valor')|max if comparativa else 1 %}
+            {% for esp in comparativa %}
+            <div class="esp-item">
+                <div class="dot" style="color: {% if esp.tipo_area == 'PANOL_TP' %}var(--warning){% elif esp.tipo_area == 'BIBLIOTECA' %}var(--success){% elif esp.tipo_area == 'INFORMATICA' %}var(--brand){% elif esp.tipo_area == 'DEPORTIVO' %}var(--danger){% else %}var(--text-400){% endif %};"></div>
+                <div class="info-esp">
+                    <div class="n">{{ esp.nombre }}</div>
+                    <div class="t">{{ esp.tipo_area }}</div>
+                </div>
+                <div class="items-c"><strong>{{ esp.n_items }}</strong> ítems</div>
+                <div class="valor-c">${{ "{:,}".format(esp.valor).replace(",", ".") }}</div>
+                <div class="progress-c">
+                    <span class="barc">
+                        <div style="width: {{ (esp.valor / valor_max * 100)|round if valor_max else 0 }}%; background: {% if esp.tipo_area == 'PANOL_TP' %}var(--warning){% elif esp.tipo_area == 'BIBLIOTECA' %}var(--success){% elif esp.tipo_area == 'INFORMATICA' %}var(--brand){% elif esp.tipo_area == 'DEPORTIVO' %}var(--danger){% else %}var(--text-400){% endif %};"></div>
+                    </span>
+                    <span class="lbl">{{ (esp.valor / valor_max * 100)|round if valor_max else 0 }}% del máx.</span>
+                </div>
+                <div class="prest-c">
+                    {% if esp.prestamos_activos > 0 %}
+                        <span class="badge info">{{ esp.prestamos_activos }} act.</span>
+                    {% else %}
+                        <span class="badge success">0</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- ÚLTIMOS MOVIMIENTOS -->
+        <div class="panel" style="margin-bottom: 30px;">
+            <div class="panel-head">
+                <h3>
+                    <span class="icon-badge"><i class="fas fa-clock"></i></span>
+                    Últimos movimientos
+                    <small>Actividad reciente en tiempo real</small>
+                </h3>
+            </div>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Ítem</th>
+                        <th>Estudiante</th>
+                        <th class="num">Cant.</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for m in ultimos_movimientos %}
+                <tr>
+                    <td class="code">{{ m.fecha_prestamo.strftime('%d-%m %H:%M') if m.fecha_prestamo }}</td>
+                    <td class="name">{{ m.item.nombre if m.item else '—' }}</td>
+                    <td class="name">{{ m.estudiante.nombre if m.estudiante else '—' }}</td>
+                    <td class="num">{{ m.cantidad }}</td>
+                    <td>
+                        {% if m.estado == 'Pendiente' %}
+                            <span class="badge warning"><i class="fas fa-clock"></i> Activo</span>
+                        {% elif m.estado == 'Devuelto' %}
+                            <span class="badge success"><i class="fas fa-check"></i> Devuelto</span>
+                        {% else %}
+                            <span class="badge">{{ m.estado }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="empty"><i class="fas fa-inbox"></i><p>Sin movimientos aún</p></td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div style="text-align: center; color: var(--text-400); font-size: 11px; padding: 12px 0 24px 0; letter-spacing: 0.5px;">
+            AVANTI TECNOLOGÍA LIMITADA · PanolERP · {{ series_labels[-1] if series_labels else '' }}
+        </div>
+    </main>
 </div>
 
 <script>
-    // Gráfico de movimientos (línea)
-    const labels = {{ series_labels | tojson }};
-    const prestamos = {{ series_prestamos | tojson }};
-    const devoluciones = {{ series_devoluciones | tojson }};
+// ═════════════ CHART.JS DEFAULTS ═════════════
+Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.color = '#64748B';
 
-    new Chart(document.getElementById('chartMovimientos'), {
-        type: 'line',
-        data: {
-            labels: labels.map(l => l.slice(5)),  // dd-mm
-            datasets: [
-                {
-                    label: 'Préstamos',
-                    data: prestamos,
-                    borderColor: '#0F2C5C',
-                    backgroundColor: 'rgba(15,44,92,0.1)',
-                    fill: true,
-                    tension: 0.35,
-                    borderWidth: 2,
-                    pointRadius: 2,
-                },
-                {
-                    label: 'Devoluciones',
-                    data: devoluciones,
-                    borderColor: '#047857',
-                    backgroundColor: 'rgba(4,120,87,0.08)',
-                    fill: true,
-                    tension: 0.35,
-                    borderWidth: 2,
-                    pointRadius: 2,
-                }
-            ]
-        },
-        options: {
-            responsive: true, maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } }
+// ═════════════ MOVIMIENTOS ═════════════
+const labels = {{ series_labels | tojson }};
+const prestamos = {{ series_prestamos | tojson }};
+const devoluciones = {{ series_devoluciones | tojson }};
+
+const ctx = document.getElementById('chartMov').getContext('2d');
+const gradPrest = ctx.createLinearGradient(0, 0, 0, 300);
+gradPrest.addColorStop(0, 'rgba(79,70,229,0.35)');
+gradPrest.addColorStop(1, 'rgba(79,70,229,0.0)');
+const gradDev = ctx.createLinearGradient(0, 0, 0, 300);
+gradDev.addColorStop(0, 'rgba(16,185,129,0.25)');
+gradDev.addColorStop(1, 'rgba(16,185,129,0.0)');
+
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: labels.map(l => {
+            const [y,m,d] = l.split('-');
+            return d + '/' + m;
+        }),
+        datasets: [
+            {
+                label: 'Préstamos',
+                data: prestamos,
+                borderColor: '#4F46E5',
+                backgroundColor: gradPrest,
+                fill: true, tension: 0.4,
+                borderWidth: 2.5,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                pointHoverBackgroundColor: '#4F46E5',
+                pointHoverBorderColor: 'white',
+                pointHoverBorderWidth: 2,
             },
-            scales: {
-                y: { beginAtZero: true, ticks: { precision: 0 } },
-                x: { grid: { display: false } }
+            {
+                label: 'Devoluciones',
+                data: devoluciones,
+                borderColor: '#10B981',
+                backgroundColor: gradDev,
+                fill: true, tension: 0.4,
+                borderWidth: 2.5,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                pointHoverBackgroundColor: '#10B981',
+                pointHoverBorderColor: 'white',
+                pointHoverBorderWidth: 2,
+            }
+        ]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: {
+                position: 'top',
+                align: 'end',
+                labels: { boxWidth: 8, boxHeight: 8, usePointStyle: true, pointStyle: 'circle', padding: 12, font: { size: 11, weight: '600' } }
+            },
+            tooltip: {
+                backgroundColor: '#0F172A',
+                padding: 12, cornerRadius: 8,
+                titleFont: { size: 12, weight: '700' },
+                bodyFont: { size: 12 },
+                borderColor: 'transparent'
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: { precision: 0, padding: 8 },
+                grid: { color: 'rgba(0,0,0,0.04)', drawBorder: false }
+            },
+            x: {
+                grid: { display: false },
+                ticks: { padding: 6, maxRotation: 0, autoSkipPadding: 20 }
             }
         }
-    });
+    }
+});
 
-    // Distribución por tipo
-    const tiposLabels = {{ tipos_dist.keys() | list | tojson }};
-    const tiposData = {{ tipos_dist.values() | list | tojson }};
-    const tiposColors = ['#B45309','#047857','#0F2C5C','#B91C1C','#64748B','#F59E0B','#10B981','#1E40AF'];
+// ═════════════ DISTRIBUCIÓN ═════════════
+const tiposLabels = {{ tipos_dist.keys() | list | tojson }};
+const tiposData = {{ tipos_dist.values() | list | tojson }};
+const tiposColors = ['#F59E0B','#10B981','#4F46E5','#EF4444','#06B6D4','#8B5CF6','#EC4899','#84CC16'];
 
-    new Chart(document.getElementById('chartTipos'), {
-        type: 'doughnut',
-        data: {
-            labels: tiposLabels,
-            datasets: [{
-                data: tiposData,
-                backgroundColor: tiposColors.slice(0, tiposLabels.length),
-                borderWidth: 3,
-                borderColor: 'white'
-            }]
-        },
-        options: {
-            responsive: true, maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'right', labels: { boxWidth: 10, font: { size: 11 } } }
+new Chart(document.getElementById('chartTipos'), {
+    type: 'doughnut',
+    data: {
+        labels: tiposLabels,
+        datasets: [{
+            data: tiposData,
+            backgroundColor: tiposColors.slice(0, tiposLabels.length),
+            borderWidth: 4,
+            borderColor: 'white',
+            hoverOffset: 12,
+            hoverBorderWidth: 4,
+        }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: '72%',
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { boxWidth: 8, boxHeight: 8, usePointStyle: true, pointStyle: 'circle', padding: 10, font: { size: 11, weight: '600' } }
             },
-            cutout: '65%',
+            tooltip: {
+                backgroundColor: '#0F172A',
+                padding: 12, cornerRadius: 8,
+                callbacks: {
+                    label: (c) => {
+                        const total = c.dataset.data.reduce((a,b) => a+b, 0);
+                        const pct = ((c.parsed / total) * 100).toFixed(1);
+                        return `${c.label}: ${c.parsed} (${pct}%)`;
+                    }
+                }
+            }
         }
-    });
+    }
+});
 </script>
 
 </body>
