@@ -129,6 +129,36 @@ body {
     padding: 2px 8px; border-radius: 10px;
     font-size: 10px; font-weight: 700;
 }
+.nav a.has-sub .chev {
+    margin-left: 4px;
+    font-size: 10px;
+    transition: transform 0.2s;
+    width: auto;
+}
+.nav a.has-sub.open .chev { transform: rotate(180deg); }
+.submenu {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+    margin-left: 22px;
+    border-left: 1px solid rgba(255,255,255,0.08);
+    padding-left: 8px;
+}
+.submenu.open { max-height: 800px; }
+.submenu a.sub {
+    padding: 7px 10px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    color: rgba(148,163,200,0.85) !important;
+}
+.submenu a.sub:hover {
+    background: rgba(255,255,255,0.04) !important;
+    color: white !important;
+}
+.submenu a.sub i {
+    font-size: 10px !important;
+    color: rgba(148,163,200,0.5);
+}
 
 .sidebar .user {
     margin-top: auto;
@@ -531,10 +561,18 @@ body {
             <a href="/dashboard" class="active">
                 <i class="fas fa-chart-pie"></i> Dashboard
             </a>
-            <a href="/inventario">
+            <a href="#" onclick="toggleSubmenu(event, 'submenu-areas')" class="has-sub">
                 <i class="fas fa-boxes-stacked"></i> Inventarios
                 <span class="count">{{ especialidades|length }}</span>
+                <i class="fas fa-chevron-down chev"></i>
             </a>
+            <div id="submenu-areas" class="submenu">
+                {% for e in especialidades %}
+                <a href="/inventario?especialidad_id={{ e.id }}" class="sub">
+                    <i class="fas fa-angle-right"></i> {{ e.nombre }}
+                </a>
+                {% endfor %}
+            </div>
             <a href="/supervision/comentarios">
                 <i class="fas fa-comment-dots"></i> Supervisión
             </a>
@@ -546,13 +584,13 @@ body {
         {% if not es_jt %}
         <div class="nav-label">Administración</div>
         <div class="nav">
-            <a href="/gestionar_instructores">
+            <a href="/admin/panoleros">
                 <i class="fas fa-user-gear"></i> Instructores
             </a>
             <a href="/exportar_excel">
                 <i class="fas fa-file-excel"></i> Exportar
             </a>
-            <a href="/reporte_mermas">
+            <a href="/admin/reporte_mermas">
                 <i class="fas fa-triangle-exclamation"></i> Mermas
             </a>
         </div>
@@ -950,6 +988,15 @@ body {
 </div>
 
 <script>
+// ═════════════ SUBMENU TOGGLE ═════════════
+function toggleSubmenu(ev, id) {
+    ev.preventDefault();
+    const sm = document.getElementById(id);
+    if (!sm) return;
+    sm.classList.toggle('open');
+    ev.currentTarget.classList.toggle('open');
+}
+
 // ═════════════ CHART.JS DEFAULTS ═════════════
 Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
 Chart.defaults.font.size = 11;

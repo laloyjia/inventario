@@ -305,6 +305,9 @@ class Item(db.Model):
                               server_default='0')
     # Desgaste/depreciación acumulada expresada en pesos chilenos (CLP)
     desgaste = db.Column(db.Float, default=0.0, nullable=False, server_default='0')
+    # Decreto Supremo N° 240 (MINEDUC): auditoria patrimonial
+    decreto_240 = db.Column(db.Boolean, default=False, nullable=False,
+                             server_default='false')
 
     @property
     def porcentaje_desgaste(self):
@@ -653,6 +656,10 @@ def _migrar_columnas_seguridad():
                 statements.append("ALTER TABLE item ADD COLUMN usos_actuales INTEGER NOT NULL DEFAULT 0")
             if 'desgaste' not in cols:
                 statements.append("ALTER TABLE item ADD COLUMN desgaste FLOAT NOT NULL DEFAULT 0")
+            if 'decreto_240' not in cols:
+                statements.append(
+                    f"ALTER TABLE item ADD COLUMN decreto_240 BOOLEAN NOT NULL DEFAULT {bool_default}"
+                )
 
         # === prestamo: panolero_dia_id, profesor_nombre ===
         if 'prestamo' in tablas:
@@ -1206,6 +1213,7 @@ def agregar_item():
     descripcion = request.form.get('descripcion', '').strip() or None
     precio_unitario = request.form.get('precio_unitario', type=float) or 0.0
     desgaste = request.form.get('desgaste', type=float) or 0.0
+    decreto_240 = request.form.get('decreto_240') in ('on','1','true','True')
 
     item_existente = Item.query.filter_by(codigo_barras=codigo, especialidad_id=especialidad_id).first()
     nuevo_item = None
@@ -1228,6 +1236,7 @@ def agregar_item():
         if descripcion: item_existente.descripcion = descripcion
         if precio_unitario: item_existente.precio_unitario = precio_unitario
         if desgaste: item_existente.desgaste = desgaste
+        item_existente.decreto_240 = decreto_240
     else:
         nuevo_item = Item(codigo_barras=codigo, nombre=nombre, categoria=categoria,
                           descripcion=descripcion,
@@ -1239,7 +1248,8 @@ def agregar_item():
                           anio_publicacion=anio_pub,
                           marca=marca, modelo=modelo, numero_serie=numero_serie,
                           estado=estado, fecha_adquisicion=fecha_adq,
-                          max_usos=max_usos)
+                          max_usos=max_usos,
+                          decreto_240=decreto_240)
         db.session.add(nuevo_item)
     db.session.commit()
     rid = item_existente.id if item_existente else nuevo_item.id
