@@ -438,6 +438,12 @@
                 <div><label>Ubicación</label><input type="text" name="ubicacion" placeholder="Ej: Sala 12"></div>
                 <div><label>Fecha adquisición</label><input type="date" name="fecha_adquisicion"></div>
                 <div><label>Máx. usos (desgaste)</label><input type="number" name="max_usos" min="0" placeholder="Opcional"></div>
+                <div style="display:flex; align-items:center; padding-top: 22px;">
+                    <label style="display:flex; align-items:center; gap:6px; font-weight:600; color:#B45309; cursor:pointer;">
+                        <input type="checkbox" name="decreto_240" value="1" style="width:16px; height:16px; accent-color:#B45309;">
+                        Dec. 240
+                    </label>
+                </div>
 
                 {# === DEPORTIVO === #}
                 {% elif ta == 'DEPORTIVO' %}
@@ -466,6 +472,12 @@
                 <div><label>Ubicación</label><input type="text" name="ubicacion" placeholder="Ej: Bodega gimnasio"></div>
                 <div><label>Fecha adquisición</label><input type="date" name="fecha_adquisicion"></div>
                 <div><label>Máx. usos (desgaste)</label><input type="number" name="max_usos" min="0" placeholder="Opcional"></div>
+                <div style="display:flex; align-items:center; padding-top: 22px;">
+                    <label style="display:flex; align-items:center; gap:6px; font-weight:600; color:#B45309; cursor:pointer;">
+                        <input type="checkbox" name="decreto_240" value="1" style="width:16px; height:16px; accent-color:#B45309;">
+                        Dec. 240
+                    </label>
+                </div>
 
                 {# === PANOL_TP (talleres técnicos) — formulario completo 13-col === #}
                 {% elif ta == 'PANOL_TP' %}
@@ -498,6 +510,12 @@
                 <div><label>Costo unitario ($)</label><input type="number" name="precio_unitario" id="agregar_precio" min="0" step="any" value="0"></div>
                 <div><label>URL Imagen (Opcional)</label><input type="text" name="imagen_url" id="agregar_imagen" placeholder="Pegar link..."></div>
                 <div><label>Máx. usos (desgaste)</label><input type="number" name="max_usos" id="agregar_max_usos" min="0" placeholder="Opcional"></div>
+                <div style="display:flex; align-items:center; padding-top: 22px;">
+                    <label style="display:flex; align-items:center; gap:6px; font-weight:600; color:#B45309; cursor:pointer;">
+                        <input type="checkbox" name="decreto_240" id="agregar_decreto_240" value="1" style="width:16px; height:16px; accent-color:#B45309;">
+                        Dec. 240
+                    </label>
+                </div>
 
                 {# === GENERAL (ACLE, Salas, Oficina) === #}
                 {% else %}
@@ -555,6 +573,11 @@
             <!-- Filtros rápidos por categoría (adaptativos por tipo de área) -->
             <div class="cat-filters">
                 <button class="cat-btn active" onclick="filtrarCategoria(this, 'TODOS')">Todos</button>
+                <button class="cat-btn" onclick="filtrarDecreto240(this)"
+                        style="background:#FEF3C7; color:#78350F; border:1px solid #B45309; font-weight:700;"
+                        title="Mostrar solo items marcados con Decreto 240">
+                    <i class="fas fa-shield-halved"></i> Solo Dec. 240
+                </button>
                 {% if tipo_area == 'BIBLIOTECA' %}
                     <button class="cat-btn" onclick="filtrarCategoria(this, 'Novela')"><i class="fas fa-book"></i> Novela</button>
                     <button class="cat-btn" onclick="filtrarCategoria(this, 'Ensayo')"><i class="fas fa-book-open"></i> Ensayo</button>
@@ -650,7 +673,7 @@
                         {% for item in items %}
                         {% set d = item.porcentaje_desgaste %}
                         {% set d_color = '#10b981' if d is not none and d < 50 else ('#eab308' if d is not none and d < 80 else '#dc2626') %}
-                        <tr class="fila-item" data-categoria="{{ item.categoria }}">
+                        <tr class="fila-item" data-categoria="{{ item.categoria }}" data-decreto240="{{ '1' if item.decreto_240 else '0' }}">
                             {% set _uso_cell %}
                                 {% if d is not none %}
                                     <div style="background:#f3f4f6; border-radius:8px; height:10px; width:60px; margin:0 auto; overflow:hidden;">
@@ -706,7 +729,16 @@
                                         <div class="thumb-placeholder"><i class="fas fa-image"></i></div>
                                     {% endif %}
                                     <div>
-                                        <strong>{{ item.nombre }}</strong> <br>
+                                        <strong>{{ item.nombre }}</strong>
+                                        {% if item.decreto_240 %}
+                                        <span title="Sujeto al Decreto 240 (auditoria patrimonial MINEDUC)"
+                                              style="background:#B45309; color:white; padding:1px 6px; border-radius:8px;
+                                                     font-size:0.62rem; font-weight:800; letter-spacing:0.3px;
+                                                     margin-left:4px; vertical-align:middle;">
+                                            DEC. 240
+                                        </span>
+                                        {% endif %}
+                                        <br>
                                         <span style="font-size: 0.7rem; color:var(--secondary);">{{ item.categoria }}</span>
                                     </div>
                                 </td>
@@ -1815,6 +1847,8 @@
 
     // --- FILTRO DEL INVENTARIO (buscador + categorías) ---
     let categoriaActiva = 'TODOS';
+    let soloDecreto240 = false;
+
     function filtrarInventario() {
         const inp = document.getElementById('buscadorInventario');
         const texto = (inp ? inp.value : '').toLowerCase().trim();
@@ -1822,13 +1856,28 @@
             const cat = (tr.getAttribute('data-categoria') || '');
             const matchCat = (categoriaActiva === 'TODOS' || cat === categoriaActiva);
             const matchTexto = (texto === '' || tr.innerText.toLowerCase().includes(texto));
-            tr.style.display = (matchCat && matchTexto) ? '' : 'none';
+            const esDec240 = tr.getAttribute('data-decreto240') === '1';
+            const matchDec = (!soloDecreto240 || esDec240);
+            tr.style.display = (matchCat && matchTexto && matchDec) ? '' : 'none';
         });
     }
     function filtrarCategoria(btn, categoria) {
         categoriaActiva = categoria;
         document.querySelectorAll('.cat-btn').forEach(function(b) { b.classList.remove('active'); });
         if (btn) btn.classList.add('active');
+        // Al elegir una categoria distinta de "Dec. 240", limpiamos el filtro Dec.
+        soloDecreto240 = false;
+        filtrarInventario();
+    }
+    function filtrarDecreto240(btn) {
+        soloDecreto240 = !soloDecreto240;
+        if (soloDecreto240) {
+            btn.style.background = '#B45309';
+            btn.style.color = 'white';
+        } else {
+            btn.style.background = '#FEF3C7';
+            btn.style.color = '#78350F';
+        }
         filtrarInventario();
     }
 

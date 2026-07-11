@@ -2528,6 +2528,7 @@ def exportar_excel():
         'Especialidad': i.especialidad.nombre if i.especialidad else '',
         'Disponible': i.cantidad_disponible,
         'Mermada': i.cantidad_mermada,
+        'Dec. 240': 'SI' if i.decreto_240 else 'NO',
     } for i in items])
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine='openpyxl') as writer:
