@@ -5,125 +5,138 @@
 <title>Supervisión · PanolERP</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
     :root {
-        --navy: #0F2C5C; --gold: #B45309; --green: #047857;
-        --red: #B91C1C; --grey-500: #64748B; --grey-100: #F1F5F9;
-        --grey-50: #F8FAFC;
+        --brand: #1e3a8a; --brand-2: #2563eb; --brand-light: #dbeafe;
+        --gold: #b45309; --gold-light: #fef3c7;
+        --green: #047857; --green-light: #d1fae5;
+        --red: #b91c1c; --info: #6366f1; --info-light: #e0e7ff;
+        --ink: #0f172a; --muted: #64748b; --line: #e2e8f0; --bg: #f1f5f9;
+        --card: #fff; --radius: 14px;
+        --shadow: 0 1px 3px rgba(15,23,42,.06), 0 8px 24px -12px rgba(15,23,42,.12);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-           background: #F8FAFC; color: #0F172A; }
+    body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--ink); }
 
     .top-bar {
-        background: linear-gradient(135deg, var(--navy), #1E40AF);
-        color: white; padding: 14px 26px;
-        display: flex; justify-content: space-between; align-items: center;
+        background: linear-gradient(135deg, var(--brand), var(--brand-2));
+        color: #fff; padding: 16px 26px; display: flex; justify-content: space-between; align-items: center; gap: 14px;
+        box-shadow: 0 10px 30px -14px rgba(37,99,235,.55);
     }
-    .top-bar h1 { font-size: 18px; font-weight: 800; }
-    .top-bar a { color: white; text-decoration: none; font-size: 13px; margin-left: 12px; }
+    .top-bar .brand { display: flex; align-items: center; gap: 12px; }
+    .top-bar .brand .mark {
+        width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center;
+        background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.25); font-size: 1.05rem;
+    }
+    .top-bar h1 { font-size: 1.15rem; font-weight: 800; }
+    .top-bar h1 small { display: block; font-size: .7rem; font-weight: 500; opacity: .82; letter-spacing: .5px; }
+    .top-bar .links { display: flex; gap: 8px; }
+    .top-bar a {
+        color: #fff; text-decoration: none; font-size: .82rem; font-weight: 600;
+        padding: 8px 13px; border-radius: 8px; background: rgba(255,255,255,.12);
+        border: 1px solid rgba(255,255,255,.2); display: inline-flex; align-items: center; gap: 7px; transition: background .15s;
+    }
+    .top-bar a:hover { background: rgba(255,255,255,.24); }
 
     .container { padding: 22px 26px; max-width: 1200px; margin: 0 auto; }
 
+    /* ===== KPIs ===== */
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 22px; }
+    .kpi {
+        background: var(--card); border-radius: var(--radius); padding: 16px 18px;
+        box-shadow: var(--shadow); border: 1px solid var(--line);
+        display: flex; align-items: center; gap: 14px;
+    }
+    .kpi .kpi-icon { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; font-size: 1.15rem; flex-shrink: 0; }
+    .kpi.brand   .kpi-icon { background: var(--brand-light);  color: var(--brand-2); }
+    .kpi.info    .kpi-icon { background: var(--info-light);   color: var(--info); }
+    .kpi.gold    .kpi-icon { background: var(--gold-light);   color: var(--gold); }
+    .kpi.green   .kpi-icon { background: var(--green-light);  color: var(--green); }
+    .kpi .kpi-value { font-size: 1.7rem; font-weight: 800; line-height: 1; }
+    .kpi .kpi-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 700; margin-top: 3px; }
+
+    .section-label { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--muted); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+
     .filtros {
-        background: white; padding: 14px 18px; border-radius: 10px;
-        margin-bottom: 20px;
-        display: flex; gap: 14px; align-items: center;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        background: var(--card); padding: 14px 18px; border-radius: var(--radius);
+        margin-bottom: 22px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+        box-shadow: var(--shadow); border: 1px solid var(--line);
     }
-    .filtros select, .filtros button {
-        padding: 8px 12px; border: 1px solid #CBD5E1; border-radius: 6px;
-        font-size: 13px;
+    .filtros select {
+        padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 8px; font-size: .85rem; font-family: inherit; background: #f8fafc;
     }
-    .filtros button { background: var(--navy); color: white; border: none; cursor: pointer; font-weight: 700; }
+    .filtros select:focus { outline: none; border-color: var(--brand-2); background: #fff; }
+    .filtros button { padding: 9px 16px; background: var(--brand-2); color: #fff; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: .85rem; font-family: inherit; }
 
     .form-comentario {
-        background: white; padding: 20px; border-radius: 12px;
-        margin-bottom: 24px; border-left: 4px solid var(--gold);
+        background: var(--card); padding: 20px; border-radius: var(--radius);
+        margin-bottom: 24px; border: 1px solid var(--line); border-left: 4px solid var(--gold); box-shadow: var(--shadow);
     }
-    .form-comentario h3 { color: var(--navy); font-size: 15px; margin-bottom: 14px; }
+    .form-comentario h3 { color: var(--brand); font-size: 1rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
     .form-comentario textarea {
-        width: 100%; padding: 10px; border: 1px solid #CBD5E1;
-        border-radius: 6px; font-family: inherit; font-size: 13px;
-        min-height: 90px; resize: vertical;
+        width: 100%; padding: 11px; border: 1.5px solid var(--line); border-radius: 8px;
+        font-family: inherit; font-size: .88rem; min-height: 90px; resize: vertical;
     }
-    .form-comentario .row {
-        display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
-        margin-bottom: 12px;
-    }
-    .form-comentario select {
-        width: 100%; padding: 9px 10px; border: 1px solid #CBD5E1;
-        border-radius: 6px; font-size: 13px;
-    }
+    .form-comentario textarea:focus { outline: none; border-color: var(--brand-2); }
+    .form-comentario .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .form-comentario select { width: 100%; padding: 10px; border: 1.5px solid var(--line); border-radius: 8px; font-size: .85rem; font-family: inherit; background: #f8fafc; }
+    .form-comentario select:focus { outline: none; border-color: var(--brand-2); background: #fff; }
     .form-comentario button {
-        background: var(--gold); color: white; padding: 10px 20px;
-        border: none; border-radius: 6px; font-weight: 700; cursor: pointer;
-        margin-top: 10px;
+        background: var(--gold); color: #fff; padding: 11px 20px; border: none; border-radius: 8px;
+        font-weight: 700; cursor: pointer; margin-top: 12px; font-family: inherit; font-size: .88rem;
+        display: inline-flex; align-items: center; gap: 8px;
     }
 
     .comentario {
-        background: white; padding: 16px 18px; border-radius: 10px;
-        margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-        border-left: 4px solid var(--gold);
+        background: var(--card); padding: 16px 18px; border-radius: var(--radius);
+        margin-bottom: 12px; box-shadow: var(--shadow); border: 1px solid var(--line); border-left: 4px solid var(--gold);
     }
-    .comentario.resuelto { border-left-color: var(--green); opacity: 0.7; }
-    .comentario .meta {
-        display: flex; justify-content: space-between; align-items: center;
-        margin-bottom: 8px; flex-wrap: wrap; gap: 8px;
+    .comentario.resuelto { border-left-color: var(--green); background: #fafefb; }
+    .comentario .meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+    .comentario .autor { font-size: .78rem; color: var(--muted); }
+    .comentario .autor strong { color: var(--brand); }
+    .badges { display: flex; gap: 6px; align-items: center; }
+    .chip {
+        font-size: .64rem; text-transform: uppercase; letter-spacing: .5px; padding: 4px 10px;
+        border-radius: 12px; font-weight: 800;
     }
-    .comentario .autor {
-        font-size: 12px; color: var(--grey-500);
-    }
-    .comentario .autor strong { color: var(--navy); }
-    .comentario .contexto {
-        font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
-        background: var(--grey-100); padding: 3px 10px; border-radius: 12px;
-        font-weight: 700; color: var(--grey-500);
-    }
-    .comentario .contenido {
-        font-size: 14px; line-height: 1.5; color: #0F172A;
-        padding: 6px 0;
-    }
+    .chip.ctx { background: var(--brand-light); color: var(--brand-2); }
+    .chip.open { background: var(--gold-light); color: var(--gold); }
+    .chip.done { background: var(--green-light); color: var(--green); }
+    .comentario .contenido { font-size: .92rem; line-height: 1.55; color: var(--ink); padding: 6px 0; }
     .comentario .respuesta {
-        background: #ECFDF5; border-left: 3px solid var(--green);
-        padding: 10px 12px; margin-top: 10px; border-radius: 0 6px 6px 0;
-        font-size: 13px;
+        background: var(--green-light); border-left: 3px solid var(--green);
+        padding: 11px 13px; margin-top: 10px; border-radius: 0 8px 8px 0; font-size: .85rem;
     }
     .comentario .respuesta strong { color: var(--green); }
-    .comentario form.resolver {
-        margin-top: 10px; padding: 10px; background: var(--grey-50);
-        border-radius: 6px;
-    }
-    .comentario form.resolver textarea {
-        width: 100%; padding: 8px; border: 1px solid #CBD5E1;
-        border-radius: 4px; font-size: 12px; min-height: 60px;
-    }
+    .comentario form.resolver { margin-top: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid var(--line); }
+    .comentario form.resolver textarea { width: 100%; padding: 9px; border: 1.5px solid var(--line); border-radius: 6px; font-size: .82rem; min-height: 58px; font-family: inherit; resize: vertical; }
     .comentario form.resolver button {
-        background: var(--green); color: white; padding: 6px 14px;
-        border: none; border-radius: 4px; font-size: 12px; cursor: pointer;
-        margin-top: 6px; font-weight: 700;
+        background: var(--green); color: #fff; padding: 8px 15px; border: none; border-radius: 7px;
+        font-size: .82rem; cursor: pointer; margin-top: 8px; font-weight: 700; font-family: inherit;
+        display: inline-flex; align-items: center; gap: 7px;
     }
-    .empty {
-        text-align: center; padding: 60px 20px; color: var(--grey-500);
-    }
+    .empty { text-align: center; padding: 60px 20px; color: var(--muted); background: var(--card); border-radius: var(--radius); border: 1px dashed var(--line); }
     .empty i { font-size: 40px; color: var(--green); margin-bottom: 14px; }
 
-    .flashes {
-        max-width: 1200px; margin: 10px auto; padding: 0 26px;
-    }
+    .flashes { max-width: 1200px; margin: 12px auto 0; padding: 0 26px; }
     .flashes li {
-        background: #ECFDF5; color: #065F46; padding: 10px 16px;
-        border-left: 4px solid var(--green); border-radius: 6px;
-        font-size: 13px; list-style: none; margin-bottom: 8px;
+        background: var(--green-light); color: #065f46; padding: 11px 16px;
+        border-left: 4px solid var(--green); border-radius: 8px; font-size: .85rem; list-style: none; margin-bottom: 8px;
     }
+    @media (max-width: 600px) { .form-comentario .row { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 
 <div class="top-bar">
-    <h1><i class="fas fa-comment-dots"></i> Comentarios de Supervisión</h1>
-    <div>
-        <a href="/dashboard"><i class="fas fa-arrow-left"></i> Dashboard</a>
+    <div class="brand">
+        <span class="mark"><i class="fas fa-clipboard-check"></i></span>
+        <h1>Supervisión Técnica <small>PANOLERP · JEFE TÉCNICO</small></h1>
+    </div>
+    <div class="links">
+        <a href="/dashboard"><i class="fas fa-chart-line"></i> Dashboard</a>
         <a href="/logout"><i class="fas fa-sign-out-alt"></i> Salir</a>
     </div>
 </div>
@@ -137,6 +150,27 @@
 {% endwith %}
 
 <div class="container">
+
+    <!-- KPIs -->
+    <div class="section-label"><i class="fas fa-gauge-high"></i> Resumen de tu alcance</div>
+    <div class="kpis">
+        <div class="kpi brand">
+            <div class="kpi-icon"><i class="fas fa-layer-group"></i></div>
+            <div><div class="kpi-value">{{ jt_stats.areas if jt_stats else 0 }}</div><div class="kpi-label">Áreas supervisadas</div></div>
+        </div>
+        <div class="kpi info">
+            <div class="kpi-icon"><i class="fas fa-boxes-stacked"></i></div>
+            <div><div class="kpi-value">{{ jt_stats.items if jt_stats else 0 }}</div><div class="kpi-label">Ítems en inventario</div></div>
+        </div>
+        <div class="kpi gold">
+            <div class="kpi-icon"><i class="fas fa-hourglass-half"></i></div>
+            <div><div class="kpi-value">{{ jt_stats.abiertas if jt_stats else 0 }}</div><div class="kpi-label">Observaciones abiertas</div></div>
+        </div>
+        <div class="kpi green">
+            <div class="kpi-icon"><i class="fas fa-circle-check"></i></div>
+            <div><div class="kpi-value">{{ jt_stats.resueltas if jt_stats else 0 }}</div><div class="kpi-label">Observaciones resueltas</div></div>
+        </div>
+    </div>
 
     <!-- FORMULARIO NUEVO COMENTARIO -->
     <div class="form-comentario">
@@ -163,7 +197,7 @@
 
     <!-- FILTROS -->
     <form class="filtros" method="get" action="/supervision/comentarios">
-        <label style="font-size:12px; color:var(--grey-500); font-weight:700;">FILTRAR:</label>
+        <label style="font-size:.72rem; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.5px;">Filtrar</label>
         <select name="estado">
             <option value="pendientes" {% if filtro_estado == 'pendientes' %}selected{% endif %}>Pendientes</option>
             <option value="resueltos" {% if filtro_estado == 'resueltos' %}selected{% endif %}>Resueltos</option>
@@ -175,8 +209,8 @@
             <option value="{{ e.id }}" {% if filtro_esp == e.id %}selected{% endif %}>{{ e.nombre }}</option>
             {% endfor %}
         </select>
-        <button type="submit">Aplicar</button>
-        <span style="margin-left:auto; color:var(--grey-500); font-size:12px;">
+        <button type="submit"><i class="fas fa-filter"></i> Aplicar</button>
+        <span style="margin-left:auto; color:var(--muted); font-size:.8rem; font-weight:600;">
             {{ comentarios|length }} observaciones
         </span>
     </form>
@@ -192,7 +226,11 @@
                 &nbsp;·&nbsp; Área: <strong>{{ c.especialidad.nombre }}</strong>
                 {% endif %}
             </div>
-            <span class="contexto">{{ c.tabla }}</span>
+            <div class="badges">
+                {% if c.resuelto %}<span class="chip done"><i class="fas fa-check"></i> Resuelto</span>
+                {% else %}<span class="chip open"><i class="fas fa-clock"></i> Abierto</span>{% endif %}
+                <span class="chip ctx">{{ c.tabla }}</span>
+            </div>
         </div>
         <div class="contenido">{{ c.contenido }}</div>
 

@@ -3,91 +3,179 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Acceso Sistema ERP | Pañol</title>
+    <title>Acceso · PanolERP</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body { 
-            font-family: 'Inter', sans-serif; 
-            margin: 0; 
-            background-color: #0f172a; 
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+        /* ===== Tokens de marca — cambia estos valores para rebrandear ===== */
+        :root {
+            --brand:        #1e3a8a;   /* azul institucional */
+            --brand-2:      #2563eb;   /* azul secundario */
+            --brand-accent: #38bdf8;   /* acento claro */
+            --ink:          #0f172a;
+            --muted:        #64748b;
+            --line:         #e2e8f0;
+            --bg:           #f8fafc;
+            --radius:       14px;
         }
-        .login-box {
-            background: white;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
-            width: 100%;
-            max-width: 380px;
-            text-align: center;
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif; margin: 0; min-height: 100vh;
+            background: var(--bg); color: var(--ink);
+            display: grid; grid-template-columns: 1.05fr 1fr;
         }
-        h2 { color: #0f172a; margin-bottom: 5px; }
-        p { color: #64748b; font-size: 0.9rem; margin-bottom: 30px; }
-        .input-group { text-align: left; margin-bottom: 15px; }
-        label { display: block; font-size: 0.85rem; font-weight: 600; color: #64748b; margin-bottom: 5px; }
-        input { 
-            width: 100%; 
-            padding: 12px; 
-            border: 1px solid #cbd5e1; 
-            border-radius: 6px; 
-            box-sizing: border-box;
-            font-size: 1rem;
+
+        /* ===== Panel izquierdo (marca) ===== */
+        .brand-side {
+            position: relative; overflow: hidden; color: #fff;
+            background: linear-gradient(150deg, var(--brand) 0%, var(--brand-2) 60%, #1d4ed8 100%);
+            padding: 56px 60px; display: flex; flex-direction: column; justify-content: space-between;
         }
-        input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
-        button {
-            width: 100%;
-            padding: 12px;
-            background: #2563eb;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            margin-top: 10px;
+        .brand-side::before {
+            content: ""; position: absolute; inset: 0;
+            background:
+                radial-gradient(650px 380px at 85% -10%, rgba(56,189,248,.35), transparent 60%),
+                radial-gradient(500px 400px at -10% 110%, rgba(255,255,255,.12), transparent 60%);
         }
-        button:hover { background: #1d4ed8; }
+        .brand-side > * { position: relative; z-index: 1; }
+        .brand-logo {
+            display: inline-flex; align-items: center; gap: 12px;
+            font-weight: 800; font-size: 1.35rem; letter-spacing: .3px;
+        }
+        .brand-logo .mark {
+            width: 46px; height: 46px; border-radius: 12px;
+            background: rgba(255,255,255,.15); backdrop-filter: blur(6px);
+            display: grid; place-items: center; font-size: 1.3rem;
+            border: 1px solid rgba(255,255,255,.25);
+        }
+        .brand-hero h1 { font-size: 2.5rem; line-height: 1.1; margin: 0 0 16px; font-weight: 800; }
+        .brand-hero p { font-size: 1.05rem; color: rgba(255,255,255,.82); max-width: 38ch; line-height: 1.6; margin: 0; }
+        .brand-features { display: flex; flex-direction: column; gap: 14px; margin-top: 28px; }
+        .brand-features .feat { display: flex; align-items: center; gap: 12px; font-size: .95rem; color: rgba(255,255,255,.9); }
+        .brand-features .feat i {
+            width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+            background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.2);
+        }
+        .brand-foot { font-size: .8rem; color: rgba(255,255,255,.7); }
+
+        /* ===== Panel derecho (formulario) ===== */
+        .form-side { display: flex; align-items: center; justify-content: center; padding: 40px; }
+        .login-card { width: 100%; max-width: 400px; }
+        .login-card .eyebrow { font-size: .78rem; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--brand-2); }
+        .login-card h2 { font-size: 1.8rem; margin: 6px 0 6px; color: var(--ink); }
+        .login-card .sub { color: var(--muted); font-size: .95rem; margin: 0 0 28px; }
+
+        .input-group { text-align: left; margin-bottom: 18px; }
+        .input-group label { display: block; font-size: .82rem; font-weight: 600; color: var(--ink); margin-bottom: 7px; }
+        .field { position: relative; }
+        .field .fld-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: .95rem; }
+        .field input {
+            width: 100%; padding: 13px 44px 13px 40px; border: 1.5px solid var(--line);
+            border-radius: 10px; font-size: 1rem; font-family: inherit; transition: border-color .15s, box-shadow .15s;
+        }
+        .field input:focus { outline: none; border-color: var(--brand-2); box-shadow: 0 0 0 4px rgba(37,99,235,.12); }
+        .toggle-pw { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--muted); cursor: pointer; padding: 8px; font-size: .95rem; }
+        .toggle-pw:hover { color: var(--brand-2); }
+
+        .btn-login {
+            width: 100%; padding: 13px; margin-top: 6px; border: none; border-radius: 10px;
+            background: linear-gradient(135deg, var(--brand-2), var(--brand)); color: #fff;
+            font-size: 1rem; font-weight: 700; font-family: inherit; cursor: pointer;
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            transition: transform .08s, box-shadow .2s; box-shadow: 0 8px 20px -8px rgba(37,99,235,.6);
+        }
+        .btn-login:hover { box-shadow: 0 12px 26px -8px rgba(37,99,235,.7); }
+        .btn-login:active { transform: translateY(1px); }
+
         .flash-msg {
-            background: #fee2e2;
-            color: #b91c1c;
-            padding: 10px;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            margin-bottom: 20px;
+            display: flex; align-items: center; gap: 9px; background: #fef2f2; color: #b91c1c;
+            border: 1px solid #fecaca; padding: 11px 13px; border-radius: 10px; font-size: .85rem; margin-bottom: 18px;
+        }
+        .hint { margin-top: 22px; font-size: .78rem; color: var(--muted); text-align: center; line-height: 1.5; }
+        .hint i { color: var(--brand-2); }
+
+        @media (max-width: 860px) {
+            body { grid-template-columns: 1fr; }
+            .brand-side { display: none; }
+            .form-side { padding: 28px 20px; }
         }
     </style>
 </head>
 <body>
 
-<div class="login-box">
-    <i class="fas fa-shield-alt" style="font-size: 3rem; color: #2563eb; margin-bottom: 10px;"></i>
-    <h2>Sistema Pañol</h2>
-    <p>Ingrese sus credenciales para continuar</p>
-
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        {% for message in messages %}
-          <div class="flash-msg"><i class="fas fa-exclamation-triangle"></i> {{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-
-    <form action="/login" method="POST">
-        <div class="input-group">
-            <label>Usuario del sistema</label>
-            <input type="text" name="username" placeholder="Ej: admin" required autofocus>
+    <!-- Marca -->
+    <aside class="brand-side">
+        <div class="brand-logo">
+            <span class="mark"><i class="fas fa-cube"></i></span>
+            PanolERP
         </div>
-        <div class="input-group">
-            <label>Contraseña</label>
-            <input type="password" name="password" placeholder="••••••••" required>
-        </div>
-        <button type="submit"><i class="fas fa-sign-in-alt"></i> Iniciar Sesión</button>
-    </form>
-</div>
 
+        <div class="brand-hero">
+            <h1>Control de inventario<br>de pañoles</h1>
+            <p>Gestiona herramientas, materiales y préstamos de todas las áreas del establecimiento desde un solo lugar.</p>
+            <div class="brand-features">
+                <div class="feat"><i class="fas fa-boxes-stacked"></i> Inventario por área en tiempo real</div>
+                <div class="feat"><i class="fas fa-hand-holding-hand"></i> Préstamos y devoluciones con trazabilidad</div>
+                <div class="feat"><i class="fas fa-chart-line"></i> Reportes y supervisión técnica</div>
+            </div>
+        </div>
+
+        <div class="brand-foot">© <span id="yr"></span> · Sistema de gestión de pañoles</div>
+    </aside>
+
+    <!-- Formulario -->
+    <main class="form-side">
+        <div class="login-card">
+            <div class="eyebrow">Acceso al sistema</div>
+            <h2>Bienvenido de vuelta</h2>
+            <p class="sub">Ingresa tus credenciales para continuar.</p>
+
+            {% with messages = get_flashed_messages() %}
+              {% if messages %}
+                {% for message in messages %}
+                  <div class="flash-msg"><i class="fas fa-circle-exclamation"></i> {{ message }}</div>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+
+            <form action="/login" method="POST">
+                <div class="input-group">
+                    <label for="username">Usuario</label>
+                    <div class="field">
+                        <i class="fas fa-user fld-icon"></i>
+                        <input type="text" id="username" name="username" placeholder="Ej: admin_central" required autofocus autocomplete="username">
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label for="password">Contraseña</label>
+                    <div class="field">
+                        <i class="fas fa-lock fld-icon"></i>
+                        <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+                        <button type="button" class="toggle-pw" id="togglePw" aria-label="Mostrar u ocultar contraseña">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <button type="submit" class="btn-login"><i class="fas fa-arrow-right-to-bracket"></i> Iniciar sesión</button>
+            </form>
+
+            <div class="hint">
+                <i class="fas fa-shield-halved"></i> Tras 5 intentos fallidos la cuenta se bloquea 15 minutos por seguridad.
+            </div>
+        </div>
+    </main>
+
+    <script>
+        document.getElementById('yr').textContent = new Date().getFullYear();
+        (function () {
+            var btn = document.getElementById('togglePw');
+            var pw = document.getElementById('password');
+            btn.addEventListener('click', function () {
+                var show = pw.type === 'password';
+                pw.type = show ? 'text' : 'password';
+                btn.querySelector('i').className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
+            });
+        })();
+    </script>
 </body>
 </html>

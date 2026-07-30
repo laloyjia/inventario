@@ -58,6 +58,11 @@ def registrar_rol_jefe_tecnico(app, db, Usuario, Especialidad, Item,
     # USUARIO POR DEFECTO: jefe_tecnico
     # ─────────────────────────────────────────────────────────────
     def crear_jefe_tecnico():
+        # Asegura que la tabla comentario_supervision exista. Es necesario porque
+        # este modelo se registra DESPUÉS del db.create_all() principal de app.py,
+        # así que en una BD nueva la tabla no se crearía al arranque. create_all
+        # es idempotente: solo crea lo que falta.
+        db.create_all()
         if not Usuario.query.filter_by(username='jefe_tecnico').first():
             db.session.add(Usuario(
                 nombre="Jefe Técnico UTP",
@@ -141,11 +146,31 @@ def registrar_rol_jefe_tecnico(app, db, Usuario, Especialidad, Item,
             q = q.filter_by(resuelto=True)
         comentarios = q.order_by(ComentarioSupervision.fecha.desc()).limit(200).all()
 
+        # ── KPIs de cabecera (alcance = especialidades visibles del rol) ──
+        if ids_visibles:
+            total_items_v = Item.query.filter(
+                Item.especialidad_id.in_(ids_visibles)).count()
+        else:
+            total_items_v = Item.query.count()
+        q_all = ComentarioSupervision.query
+        if rol == 'JefeTecnico' and ids_visibles:
+            q_all = q_all.filter(
+                (ComentarioSupervision.especialidad_id.in_(ids_visibles)) |
+                (ComentarioSupervision.especialidad_id.is_(None))
+            )
+        jt_stats = {
+            'areas': len(especialidades),
+            'items': total_items_v,
+            'abiertas': q_all.filter_by(resuelto=False).count(),
+            'resueltas': q_all.filter_by(resuelto=True).count(),
+        }
+
         return render_template('comentarios_supervision.html',
                                 comentarios=comentarios,
                                 especialidades=especialidades,
                                 filtro_esp=f_esp,
-                                filtro_estado=f_estado)
+                                filtro_estado=f_estado,
+                                jt_stats=jt_stats)
 
     @app.route('/supervision/comentar', methods=['POST'])
     @login_requerido
