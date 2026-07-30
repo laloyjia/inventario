@@ -580,24 +580,53 @@ def crear_admin_central():
         print(f"[SEC] Contraseña de admin_central RESETEADA por PANOL_RESET_ADMIN_PWD. "
               f"Debe cambiarse en el primer login. Recuerda quitar la variable de entorno.")
 
+def _slug_area(nombre):
+    """Nombre de usuario a partir del área: sin acentos, sin la palabra 'sede',
+    en minúsculas y con guion bajo.
+    Ej: 'Electrónica' -> 'electronica'; 'ACLE Sede Norte' -> 'acle_norte'."""
+    import unicodedata, re
+    s = ''.join(c for c in unicodedata.normalize('NFD', nombre)
+                if unicodedata.category(c) != 'Mn').lower()
+    s = re.sub(r'\bsede\b', ' ', s)            # quita la palabra "sede"
+    s = re.sub(r'[^a-z0-9]+', '_', s).strip('_')
+    return s
+
 def crear_pañoleros_por_especialidad():
-    import unicodedata
+    """Crea (o renombra) un usuario de área por cada especialidad.
+    Nombres nuevos sin prefijo 'pañolero_' ni la palabra 'sede'.
+    Renombra de forma idempotente los usuarios del esquema antiguo
+    (pañolero_*) conservando su contraseña y datos."""
     for esp in Especialidad.query.all():
-        nombre_norm = ''.join(c for c in unicodedata.normalize('NFD', esp.nombre)
-                              if unicodedata.category(c) != 'Mn').lower().replace(' ', '_')
-        username = f"pañolero_{nombre_norm}"
-        email = f"pañolero.{nombre_norm}@colegio.local"
-        existe = Usuario.query.filter(
-            (Usuario.username == username) | (Usuario.email == email) |
-            ((Usuario.rol == 'Pañolero') & (Usuario.especialidad_id == esp.id))
+        username = _slug_area(esp.nombre)
+        email = f"{username}@colegio.local"
+
+        # ¿Ya existe un usuario de área para esta especialidad? (aunque tenga
+        # el nombre antiguo pañolero_*). Lo identificamos por rol+especialidad.
+        existente = Usuario.query.filter(
+            (Usuario.rol == 'Pañolero') & (Usuario.especialidad_id == esp.id)
         ).first()
-        if not existe:
-            db.session.add(Usuario(
-                nombre=f"Instructor {esp.nombre}", username=username,
-                password_hash=generate_password_hash("pañol123"),
-                rol="Pañolero", email=email, especialidad_id=esp.id,
-                must_change_password=True,  # forzado a cambiar en primer login
-            ))
+        if existente:
+            # Renombrar al esquema nuevo si hace falta (sin tocar la contraseña).
+            if existente.username != username:
+                choca = Usuario.query.filter(
+                    Usuario.username == username, Usuario.id != existente.id
+                ).first()
+                if not choca:
+                    existente.username = username
+                    existente.email = email
+            continue
+
+        # No hay usuario para esta especialidad: crearlo con el nombre nuevo.
+        if Usuario.query.filter(
+            (Usuario.username == username) | (Usuario.email == email)
+        ).first():
+            continue
+        db.session.add(Usuario(
+            nombre=f"Instructor {esp.nombre}", username=username,
+            password_hash=generate_password_hash("pañol123"),
+            rol="Pañolero", email=email, especialidad_id=esp.id,
+            must_change_password=True,  # forzado a cambiar en primer login
+        ))
     db.session.commit()
 
 def _migrar_columnas_seguridad():
