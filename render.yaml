@@ -1,0 +1,44 @@
+# render.yaml — Blueprint de despliegue para PanolERP
+# Con esto Render crea el Web Service + la base de datos PostgreSQL de una sola vez.
+# Uso: en Render -> New -> Blueprint -> conecta el repo laloyjia/inventario.
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: panolerp
+    runtime: python
+    plan: free
+    region: oregon            # cámbialo si prefieres otra región
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --workers 2 --threads 2 --timeout 120 --bind 0.0.0.0:$PORT
+    healthCheckPath: /login
+    envVars:
+      # Conexión a la base de datos: se enlaza automáticamente a la DB de abajo
+      - key: DATABASE_URL
+        fromDatabase:
+          name: panolerp-db
+          property: connectionString
+      # Secretos: Render los genera aleatorios y seguros al crear el Blueprint
+      - key: PANOL_SECRET_KEY
+        generateValue: true
+      - key: PANOL_SYNC_TOKEN
+        generateValue: true
+      # Configuración de producción
+      - key: PANOL_NODO
+        value: admin_central
+      - key: FORCE_HTTPS
+        value: "true"
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: FLASK_ENV
+        value: production
+      - key: PYTHON_VERSION
+        value: "3.11.10"
+
+databases:
+  - name: panolerp-db
+    plan: free
+    region: oregon            # debe coincidir con la región del web service
+    databaseName: panolerp
+    user: panolerp
