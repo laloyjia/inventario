@@ -43,6 +43,10 @@ CREDENCIALES_NUEVAS.md
 CREDENCIALES_*.md
 reset_passwords.sql
 reset_passwords_*.sql
+reset_passwords.py
+
+# Scripts de un solo uso archivados (quedan localmente, fuera del repo)
+_archivo/
 
 # Archivos generados
 inventario_exportado_*.xlsx
