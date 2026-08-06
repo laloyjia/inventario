@@ -1119,20 +1119,17 @@
             <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 12px;">
                 <h3 style="margin: 0 0 10px 0; color: #065f46; font-size: 1rem;"><i class="fas fa-upload"></i> Cargar inventario desde Excel</h3>
                 <p style="font-size: 0.85rem; color: #555; margin: 0 0 12px 0;">
-                    Formato esperado (13 columnas en orden):
-                    <strong>1.</strong> Código de barra (vacío = autogenerar) ·
-                    <strong>2.</strong> Nombre ·
-                    <strong>3.</strong> Descripción ·
-                    <strong>4.</strong> Marca ·
-                    <strong>5.</strong> Modelo ·
-                    <strong>6.</strong> Categoría ·
-                    <strong>7.</strong> Cantidad ·
-                    <strong>8.</strong> Ubicación ·
-                    <strong>9.</strong> Fecha adquisición ·
-                    <strong>10.</strong> Desgaste ($) ·
-                    <strong>11.</strong> Costo unitario ($) ·
-                    <strong>12.</strong> Costo total (ignorado) ·
-                    <strong>13.</strong> Imagen de referencia.
+                    Se lee <strong>por nombre de columna</strong> (el orden puede variar). Columnas admitidas:
+                    <strong>Código de barra</strong> (vacío = autogenerar) ·
+                    <strong>Nombre</strong> (obligatorio) · <strong>Descripción</strong> ·
+                    <strong>Marca</strong> · <strong>Modelo</strong> · <strong>Categoría</strong> ·
+                    <strong>Cantidad</strong> (obligatorio) · <strong>Ubicación</strong> ·
+                    <strong>Dependencia</strong> · <strong>Fecha adquisición</strong> ·
+                    <strong>Stock mínimo</strong> · <strong>Desgaste ($)</strong> ·
+                    <strong>Costo unitario ($)</strong> · <strong>Estado</strong> ·
+                    <strong>N° Serie</strong> · <strong>Dec. 240</strong> (SI/NO) ·
+                    <strong>Imagen de referencia</strong>.
+                    Descarga la plantilla para tener el formato exacto.
                 </p>
                 <form action="/cargar_excel" method="POST" enctype="multipart/form-data"
                       style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">

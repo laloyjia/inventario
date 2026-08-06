@@ -2428,13 +2428,52 @@ def cargar_excel():
         flash("⚠️ El Excel está vacío.")
         return redirect(url_for('ver_inventario'))
 
-    # Detectar si la primera fila es cabecera (columna G = índice 6 = Cantidad, no numérica)
-    inicio = 0
+    # ── Detección de columnas: por NOMBRE de cabecera si existe; si no, por posición (legado) ──
+    import unicodedata, re as _re
+    def _norm_h(v):
+        s = '' if v is None else str(v)
+        s = ''.join(ch for ch in unicodedata.normalize('NFD', s)
+                    if unicodedata.category(ch) != 'Mn')
+        s = s.lower()
+        s = _re.sub(r'[^a-z0-9 ]+', ' ', s)   # quita °, ($), ., etc.
+        s = _re.sub(r'\s+', ' ', s).strip()
+        return s
+    HEADER_MAP = {
+        'codigo de barra': 'codigo', 'codigo de barras': 'codigo', 'codigo': 'codigo',
+        'nombre': 'nombre', 'descripcion': 'descripcion',
+        'marca': 'marca', 'modelo': 'modelo', 'categoria': 'categoria',
+        'cantidad': 'cantidad', 'ubicacion': 'ubicacion', 'dependencia': 'dependencia',
+        'fecha adquisicion': 'fecha', 'fecha': 'fecha',
+        'desgaste': 'desgaste', 'desgaste ($)': 'desgaste',
+        'costo unitario': 'precio', 'costo unitario ($)': 'precio',
+        'precio unitario': 'precio', 'precio': 'precio',
+        'costo total': 'ignorar', 'costo total ($)': 'ignorar',
+        'stock minimo': 'minima', 'minimo': 'minima', 'stock min': 'minima',
+        'estado': 'estado',
+        'n serie': 'serie', 'numero de serie': 'serie', 'n serie (serial)': 'serie', 'serie': 'serie',
+        'dec 240': 'dec240', 'dec. 240': 'dec240', 'decreto 240': 'dec240', 'dec240': 'dec240',
+        'imagen de referencia': 'imagen', 'imagen': 'imagen', 'url imagen': 'imagen',
+    }
+    POS_LEGACY = {'codigo': 0, 'nombre': 1, 'descripcion': 2, 'marca': 3, 'modelo': 4,
+                  'categoria': 5, 'cantidad': 6, 'ubicacion': 7, 'fecha': 8,
+                  'desgaste': 9, 'precio': 10, 'imagen': 12}
     primera = df.iloc[0]
-    try:
-        int(float(str(primera[6]).strip()))
-    except (ValueError, TypeError, IndexError):
-        inicio = 1  # primera fila es cabecera, saltarla
+    hdr = {}
+    for _i, _v in enumerate(primera):
+        _k = _norm_h(_v)
+        if _k in HEADER_MAP and HEADER_MAP[_k] != 'ignorar':
+            hdr.setdefault(HEADER_MAP[_k], _i)
+    usar_hdr = ('nombre' in hdr and 'cantidad' in hdr)
+    if usar_hdr:
+        colmap = hdr
+        inicio = 1
+    else:
+        colmap = POS_LEGACY
+        inicio = 0
+        try:
+            int(float(str(primera[6]).strip()))
+        except (ValueError, TypeError, IndexError):
+            inicio = 1  # primera fila es cabecera, saltarla
 
     # ── Resolución de la especialidad destino ────────────────────────────
     # Prioridad: (1) la del usuario logueado si tiene; (2) la que venga por
@@ -2472,27 +2511,34 @@ def cargar_excel():
             return default
         return s
 
+    def getf(fila, campo, default=''):
+        """Devuelve el valor de un campo lógico según el mapeo (por nombre o posición)."""
+        i = colmap.get(campo)
+        if i is None:
+            return default
+        return col(fila, i, default)
+
     creados = actualizados = 0
     errores = []
 
     for idx in range(inicio, len(df)):
         fila = df.iloc[idx]
-        nombre = col(fila, 1)  # B
+        nombre = getf(fila, 'nombre')
         if not nombre:
             continue  # filas vacías al final del Excel
 
-        codigo = col(fila, 0)  # A
+        codigo = getf(fila, 'codigo')
         if not codigo:
             # Autogenerar único: timestamp + idx para evitar colisiones
             codigo = datetime.now().strftime('%y%m%d%H%M%S') + f"{idx:04d}"
 
-        descripcion = col(fila, 2, '') or None  # C
-        marca = col(fila, 3, '') or None        # D — NUEVO
-        modelo = col(fila, 4, '') or None       # E — NUEVO
-        categoria = col(fila, 5, 'General')     # F
+        descripcion = getf(fila, 'descripcion', '') or None
+        marca = getf(fila, 'marca', '') or None
+        modelo = getf(fila, 'modelo', '') or None
+        categoria = getf(fila, 'categoria', 'General')
 
         try:
-            cantidad = int(float(col(fila, 6, '0')))  # G
+            cantidad = int(float(getf(fila, 'cantidad', '0')))
         except Exception:
             errores.append(f"Fila {idx + 1}: cantidad inválida")
             continue
@@ -2500,10 +2546,25 @@ def cargar_excel():
             errores.append(f"Fila {idx + 1}: cantidad negativa")
             continue
 
-        ubicacion = col(fila, 7, '')  # H
+        ubicacion = getf(fila, 'ubicacion', '')
+        dependencia = getf(fila, 'dependencia', '') or None      # NUEVO
+        estado = getf(fila, 'estado', '') or None                # NUEVO
+        serie = getf(fila, 'serie', '') or None                  # NUEVO
 
-        # Fecha adquisición (I) — opcional
-        fecha_raw = col(fila, 8, '')
+        # Stock mínimo (opcional) — solo se aplica si viene un número
+        min_raw = getf(fila, 'minima', '')
+        try:
+            minima = int(float(min_raw)) if str(min_raw).strip() != '' else None
+        except Exception:
+            minima = None
+
+        # Dec. 240 (opcional): SI/NO, 1/0, true/false, x
+        dec240_raw = getf(fila, 'dec240', '')
+        dec240_provisto = str(dec240_raw).strip() != ''
+        decreto_240 = str(dec240_raw).strip().lower() in ('si', 'sí', '1', 'true', 'x', 'verdadero', 'yes')
+
+        # Fecha adquisición — opcional
+        fecha_raw = getf(fila, 'fecha', '')
         fecha_adq = None
         if fecha_raw:
             try:
@@ -2514,18 +2575,17 @@ def cargar_excel():
             except Exception:
                 fecha_adq = None
 
-        # Desgaste $ (J) y costo unitario $ (K) — opcionales
+        # Desgaste $ y costo unitario $ — opcionales
         try:
-            desgaste_val = float(col(fila, 9, '0') or 0)
+            desgaste_val = float(getf(fila, 'desgaste', '0') or 0)
         except Exception:
             desgaste_val = 0.0
         try:
-            precio_val = float(col(fila, 10, '0') or 0)
+            precio_val = float(getf(fila, 'precio', '0') or 0)
         except Exception:
             precio_val = 0.0
 
-        # Col L (costo total) se ignora: lo calcula la app
-        imagen = col(fila, 12, '')  # M
+        imagen = getf(fila, 'imagen', '')
 
         codigo    = tr(codigo,    'codigo_barras', idx)
         nombre    = tr(nombre,    'nombre',        idx)
@@ -2560,6 +2620,16 @@ def cargar_excel():
                 existente.desgaste = desgaste_val
             if precio_val:
                 existente.precio_unitario = precio_val
+            if dependencia:
+                existente.dependencia = dependencia
+            if estado:
+                existente.estado = estado
+            if serie:
+                existente.numero_serie = serie
+            if minima is not None:
+                existente.cantidad_minima = minima
+            if dec240_provisto:
+                existente.decreto_240 = decreto_240
             registrar_cambio_sync('item', existente.id, 'actualizar', existente)
             actualizados += 1
         else:
@@ -2570,9 +2640,13 @@ def cargar_excel():
                 especialidad_id=especialidad_id,
                 cantidad_total=cantidad, cantidad_disponible=cantidad,
                 ubicacion=ubicacion, imagen_url=imagen,
+                dependencia=dependencia, estado=estado, numero_serie=serie,
+                decreto_240=decreto_240,
                 fecha_adquisicion=fecha_adq,
                 desgaste=desgaste_val, precio_unitario=precio_val,
             )
+            if minima is not None:
+                nuevo.cantidad_minima = minima
             db.session.add(nuevo)
             db.session.flush()
             registrar_cambio_sync('item', nuevo.id, 'crear', nuevo)
@@ -2630,25 +2704,28 @@ def exportar_excel():
         ).order_by(Item.categoria.asc(), Item.nombre.asc()).all()
     # Formato estándar A–M (13 columnas) — coincide con cargar_excel para roundtrip exacto
     df = pd.DataFrame([{
-        'Código de barra': i.codigo_barras,                                      # A
-        'Nombre': i.nombre,                                                       # B
-        'Descripción': i.descripcion or '',                                       # C
-        'Marca': i.marca or '',                                                   # D
-        'Modelo': i.modelo or '',                                                 # E
-        'Categoría': i.categoria,                                                 # F
-        'Cantidad': i.cantidad_total,                                             # G
-        'Ubicación': i.ubicacion,                                                 # H
-        'Fecha adquisición': i.fecha_adquisicion.isoformat() if i.fecha_adquisicion else '',  # I
-        'Desgaste ($)': i.desgaste or 0,                                          # J
-        'Costo unitario ($)': i.precio_unitario or 0,                             # K
-        'Costo total ($)': (i.precio_unitario or 0) * (i.cantidad_total or 0),    # L
-        'Imagen de referencia': i.imagen_url or '',                               # M
-        # Columnas auxiliares (informativas; el importador las ignora porque
-        # solo lee las primeras 13 columnas en orden)
+        'Código de barra': i.codigo_barras,
+        'Nombre': i.nombre,
+        'Descripción': i.descripcion or '',
+        'Marca': i.marca or '',
+        'Modelo': i.modelo or '',
+        'Categoría': i.categoria,
+        'Cantidad': i.cantidad_total,
+        'Ubicación': i.ubicacion,
+        'Dependencia': i.dependencia or '',
+        'Fecha adquisición': i.fecha_adquisicion.isoformat() if i.fecha_adquisicion else '',
+        'Stock mínimo': i.cantidad_minima,
+        'Desgaste ($)': i.desgaste or 0,
+        'Costo unitario ($)': i.precio_unitario or 0,
+        'Costo total ($)': (i.precio_unitario or 0) * (i.cantidad_total or 0),
+        'Estado': i.estado or '',
+        'N° Serie': i.numero_serie or '',
+        'Dec. 240': 'SI' if i.decreto_240 else 'NO',
+        'Imagen de referencia': i.imagen_url or '',
+        # Columnas auxiliares (informativas; el importador las ignora por nombre)
         'Especialidad': i.especialidad.nombre if i.especialidad else '',
         'Disponible': i.cantidad_disponible,
         'Mermada': i.cantidad_mermada,
-        'Dec. 240': 'SI' if i.decreto_240 else 'NO',
     } for i in items])
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine='openpyxl') as writer:
@@ -3268,21 +3345,32 @@ def descargar_plantilla():
         ws = wb.active
         ws.title = 'Inventario'
         headers = ['Código de barra', 'Nombre', 'Descripción', 'Marca', 'Modelo',
-                   'Categoría', 'Cantidad', 'Ubicación', 'Fecha adquisición',
-                   'Desgaste ($)', 'Costo unitario ($)', 'Costo total ($)',
-                   'Imagen de referencia']
+                   'Categoría', 'Cantidad', 'Ubicación', 'Dependencia',
+                   'Fecha adquisición', 'Stock mínimo', 'Desgaste ($)',
+                   'Costo unitario ($)', 'Costo total ($)', 'Estado', 'N° Serie',
+                   'Dec. 240', 'Imagen de referencia']
         for c, h in enumerate(headers, 1):
             ws.cell(row=1, column=c, value=h)
-        # Filas de ejemplo (orientativas; el usuario las reemplaza)
+        # Filas de ejemplo (orientativas; el usuario las reemplaza).
+        # Nota: el importador lee por NOMBRE de columna, así que el orden puede variar.
         ejemplos = [
             ['', 'Taladro percutor', 'Herramienta eléctrica', 'Bosch', 'GSB 13 RE',
-             'Herramientas', 5, 'Estante A1', '2024-03-15', 0, 54990, '', ''],
+             'Herramientas', 5, 'Estante A1', 'Taller', '2024-03-15', 3, 0, 54990,
+             '', 'Bueno', 'SN-12345', 'SI', ''],
             ['', 'Multímetro digital', 'Medición', 'Fluke', '101',
-             'Componentes', 10, 'Vitrina B1', '2024-01-20', 0, 39990, '', ''],
+             'Componentes', 10, 'Vitrina B1', 'Taller', '2024-01-20', 4, 0, 39990,
+             '', 'Bueno', '', 'NO', ''],
         ]
         for r, fila in enumerate(ejemplos, start=2):
-            for c, val in enumerate(fila[:13], 1):
+            for c, val in enumerate(fila, 1):
                 ws.cell(row=r, column=c, value=val)
+        # Fila-guía de ayuda (comentario en la primera celda)
+        try:
+            from openpyxl.comments import Comment
+            ws['Q1'].comment = Comment("Dec. 240: escribe SI o NO", "PanolERP")
+            ws['I1'].comment = Comment("Dependencia: taller, oficina, sede, etc.", "PanolERP")
+        except Exception:
+            pass
         buf = io.BytesIO()
         wb.save(buf)
         buf.seek(0)
