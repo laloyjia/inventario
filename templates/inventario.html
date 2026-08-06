@@ -723,15 +723,16 @@
                     <button class="cat-btn" onclick="filtrarCategoria(this, 'Mobiliario')"><i class="fas fa-chair"></i> Mobiliario</button>
                     <button class="cat-btn" onclick="filtrarCategoria(this, 'Consumible')"><i class="fas fa-box"></i> Consumible</button>
                 {% endif %}
-                {# Filtro por Dependencia: desplegable con las dependencias existentes en el área #}
+                {# Filtro por Dependencia: siempre visible; se llena con las dependencias existentes en el área #}
                 {% set deps = [] %}
                 {% for it in items %}{% if it.dependencia and it.dependencia not in deps %}{% set _ = deps.append(it.dependencia) %}{% endif %}{% endfor %}
-                {% if deps %}
                 <select id="filtroDependencia" onchange="filtrarDependencia(this)" title="Filtrar por dependencia"
-                        style="padding:6px 12px; border-radius:20px; border:1px solid #cbd5e1; background:white; color:var(--secondary); font-weight:700; font-size:0.78rem; cursor:pointer;">
+                        style="padding:6px 12px; border-radius:20px; border:1px solid #7c3aed; background:#f5f3ff; color:#5b21b6; font-weight:700; font-size:0.78rem; cursor:pointer;">
                     <option value="">🏷️ Dependencia: todas</option>
                     {% for d in deps|sort %}<option value="{{ d|lower }}">{{ d }}</option>{% endfor %}
                 </select>
+                {% if not deps %}
+                <span style="font-size:0.72rem; color:#9ca3af; align-self:center;">(asigna dependencias a los ítems para filtrar por ellas)</span>
                 {% endif %}
             </div>
 
