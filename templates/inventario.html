@@ -695,6 +695,16 @@
                     <button class="cat-btn" onclick="filtrarCategoria(this, 'Mobiliario')"><i class="fas fa-chair"></i> Mobiliario</button>
                     <button class="cat-btn" onclick="filtrarCategoria(this, 'Consumible')"><i class="fas fa-box"></i> Consumible</button>
                 {% endif %}
+                {# Filtro por Dependencia: desplegable con las dependencias existentes en el área #}
+                {% set deps = [] %}
+                {% for it in items %}{% if it.dependencia and it.dependencia not in deps %}{% set _ = deps.append(it.dependencia) %}{% endif %}{% endfor %}
+                {% if deps %}
+                <select id="filtroDependencia" onchange="filtrarDependencia(this)" title="Filtrar por dependencia"
+                        style="padding:6px 12px; border-radius:20px; border:1px solid #cbd5e1; background:white; color:var(--secondary); font-weight:700; font-size:0.78rem; cursor:pointer;">
+                    <option value="">🏷️ Dependencia: todas</option>
+                    {% for d in deps|sort %}<option value="{{ d|lower }}">{{ d }}</option>{% endfor %}
+                </select>
+                {% endif %}
             </div>
 
             <div class="table-responsive">
@@ -757,7 +767,7 @@
                         {% for item in items %}
                         {% set d = item.porcentaje_desgaste %}
                         {% set d_color = '#10b981' if d is not none and d < 50 else ('#eab308' if d is not none and d < 80 else '#dc2626') %}
-                        <tr class="fila-item" data-categoria="{{ item.categoria }}" data-decreto240="{{ '1' if item.decreto_240 else '0' }}" data-stockbajo="{{ '1' if item.cantidad_disponible <= item.cantidad_minima else '0' }}" data-enuso="{{ '1' if (item.cantidad_total - item.cantidad_disponible) > 0 else '0' }}">
+                        <tr class="fila-item" data-categoria="{{ item.categoria }}" data-decreto240="{{ '1' if item.decreto_240 else '0' }}" data-stockbajo="{{ '1' if item.cantidad_disponible <= item.cantidad_minima else '0' }}" data-enuso="{{ '1' if (item.cantidad_total - item.cantidad_disponible) > 0 else '0' }}" data-dependencia="{{ (item.dependencia or '')|lower }}">
                             {% set _uso_cell %}
                                 {% if d is not none %}
                                     <div style="background:#f3f4f6; border-radius:8px; height:10px; width:60px; margin:0 auto; overflow:hidden;">
@@ -2053,6 +2063,7 @@
     let categoriaActiva = 'TODOS';
     let soloDecreto240 = false;
     let filtroEspecial = 'NINGUNO';   // NINGUNO | STOCKBAJO | ENUSO | DISPONIBLE
+    let dependenciaActiva = '';       // '' = todas
 
     function filtrarInventario() {
         const inp = document.getElementById('buscadorInventario');
@@ -2072,8 +2083,14 @@
             if (filtroEspecial === 'STOCKBAJO') matchEsp = stockBajo;
             else if (filtroEspecial === 'ENUSO') matchEsp = enUso;
             else if (filtroEspecial === 'DISPONIBLE') matchEsp = !stockBajo;
-            tr.style.display = (matchCat && matchTexto && matchDec && matchEsp) ? '' : 'none';
+            const dep = (tr.getAttribute('data-dependencia') || '');
+            const matchDep = (dependenciaActiva === '' || dep === dependenciaActiva);
+            tr.style.display = (matchCat && matchTexto && matchDec && matchEsp && matchDep) ? '' : 'none';
         });
+    }
+    function filtrarDependencia(sel) {
+        dependenciaActiva = (sel && sel.value ? sel.value : '').toLowerCase();
+        filtrarInventario();
     }
     function filtrarCategoria(btn, categoria) {
         categoriaActiva = categoria;
