@@ -755,6 +755,9 @@ TIPO_AREA_POR_NOMBRE = {
     'Salas de Clase Sede Sur':         'GENERAL',
     'Oficina Sede Norte':              'GENERAL',
     'Oficina Sede Sur':                'GENERAL',
+    # Área de demostración para presentaciones: se trata como pañol TP para
+    # mostrar todas las funciones (órdenes de trabajo, pañoleros del día, etc.)
+    'Demostración':                    'PANOL_TP',
 }
 
 
@@ -3185,29 +3188,41 @@ def _upsert_prestamo(nodo, p, accion):
 @app.route('/descargar_plantilla')
 @login_requerido
 def descargar_plantilla():
-    """Descarga el archivo inventario_muestra.xlsx como plantilla."""
-    aqui = os.path.dirname(os.path.abspath(__file__))
-    plantilla = os.path.join(aqui, 'inventario_muestra.xlsx')
-    if os.path.exists(plantilla):
-        return send_file(plantilla, as_attachment=True,
-                         download_name='plantilla_inventario.xlsx')
-    # Fallback: generar al vuelo con las 11 columnas
-    from openpyxl import Workbook
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Inventario'
-    headers = ['Codigo de barra', 'Nombre', 'Descripcion', 'Categoria',
-               'Cantidad', 'Ubicacion', 'Fecha adquisicion',
-               'Desgaste ($)', 'Costo unitario ($)', 'Costo total ($)',
-               'Imagen de referencia']
-    for c, h in enumerate(headers, 1):
-        ws.cell(row=1, column=c, value=h)
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return send_file(buf, as_attachment=True,
-                     download_name='plantilla_inventario.xlsx',
-                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    """Genera y descarga una plantilla de inventario vacía SIEMPRE al vuelo,
+    con las 13 columnas (A–M) EXACTAS que espera la carga masiva (cargar_excel),
+    más 2 filas de ejemplo. No depende de ningún archivo en disco, de modo que
+    nunca falla por archivo faltante (p. ej. en el despliegue de Render)."""
+    try:
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Inventario'
+        headers = ['Código de barra', 'Nombre', 'Descripción', 'Marca', 'Modelo',
+                   'Categoría', 'Cantidad', 'Ubicación', 'Fecha adquisición',
+                   'Desgaste ($)', 'Costo unitario ($)', 'Costo total ($)',
+                   'Imagen de referencia']
+        for c, h in enumerate(headers, 1):
+            ws.cell(row=1, column=c, value=h)
+        # Filas de ejemplo (orientativas; el usuario las reemplaza)
+        ejemplos = [
+            ['', 'Taladro percutor', 'Herramienta eléctrica', 'Bosch', 'GSB 13 RE',
+             'Herramientas', 5, 'Estante A1', '2024-03-15', 0, 54990, '', ''],
+            ['', 'Multímetro digital', 'Medición', 'Fluke', '101',
+             'Componentes', 10, 'Vitrina B1', '2024-01-20', 0, 39990, '', ''],
+        ]
+        for r, fila in enumerate(ejemplos, start=2):
+            for c, val in enumerate(fila[:13], 1):
+                ws.cell(row=r, column=c, value=val)
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return send_file(buf, as_attachment=True,
+                         download_name='plantilla_inventario.xlsx',
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    except Exception as e:
+        print(f"[PLANTILLA] Error generando plantilla: {e}")
+        flash(f"❌ No se pudo generar la plantilla: {str(e)[:150]}")
+        return redirect(url_for('ver_inventario'))
 
 
 @app.route('/descargar_plantilla_alumnos')
