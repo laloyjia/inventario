@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Orden de Trabajo (en blanco)</title>
+    <style>
+        body { font-family: 'Arial', sans-serif; padding: 20px; max-width: 800px; margin: auto; color: #333; }
+        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 25px; }
+        .header h1 { margin: 0 0 5px 0; font-size: 24px; text-transform: uppercase; }
+        .header p { margin: 0; font-size: 14px; color: #555; }
+        .info-box { border: 1px solid #ccc; padding: 15px; border-radius: 6px; margin-bottom: 20px; background-color: #f9f9f9; }
+        .campo { margin: 14px 0; font-size: 15px; }
+        .campo strong { color: #000; }
+        .linea { display: inline-block; border-bottom: 1px solid #333; min-width: 60%; height: 18px; }
+        .linea-larga { border-bottom: 1px solid #333; height: 22px; margin-top: 6px; }
+        h3 { border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 26px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { border: 1px solid #aaa; padding: 12px 10px; text-align: left; }
+        th { background: #eee; font-weight: bold; }
+        td { height: 26px; }
+        .firmas { margin-top: 55px; display: flex; justify-content: space-around; text-align: center; }
+        .firma-linea { border-top: 1px solid #000; width: 250px; padding-top: 10px; font-weight: bold; }
+
+        .botones-accion { display: flex; gap: 10px; margin-bottom: 25px; }
+        .btn { flex: 1; border: none; padding: 15px; font-size: 16px; font-weight: bold; border-radius: 6px; cursor: pointer; text-align: center; text-decoration: none; }
+        .btn-imprimir { background: #2563eb; color: white; }
+        .btn-volver { background: #64748b; color: white; }
+
+        @media print {
+            .botones-accion { display: none !important; }
+            body { padding: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="botones-accion">
+        <button class="btn btn-imprimir" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+        <a href="/inventario" class="btn btn-volver">⬅️ Volver al Pañol</a>
+    </div>
+
+    <div class="header">
+        <h1>Orden de Trabajo - Pañol</h1>
+        <p>
+            <strong>N° Documento:</strong> OT-__________
+            &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Fecha:</strong> ____ / ____ / ______
+            {% if area %}&nbsp;&nbsp;|&nbsp;&nbsp; <strong>Área:</strong> {{ area }}{% endif %}
+        </p>
+    </div>
+
+    <div class="info-box">
+        <div class="campo"><strong>📝 Título OT:</strong> <span class="linea"></span></div>
+        <div class="campo"><strong>👨‍🔧 Profesional a Cargo:</strong> <span class="linea"></span></div>
+        <div class="campo"><strong>🎓 Alumnos Asignados:</strong> <span class="linea"></span></div>
+        <div class="campo"><strong>📋 Descripción:</strong></div>
+        <div class="linea-larga"></div>
+        <div class="linea-larga"></div>
+    </div>
+
+    <h3>🔧 Herramientas Solicitadas (Préstamo)</h3>
+    <table>
+        <tr><th style="width: 120px;">Código</th><th>Herramienta</th><th style="width: 90px; text-align: center;">Cantidad</th></tr>
+        {% for i in range(filas) %}
+        <tr><td></td><td></td><td></td></tr>
+        {% endfor %}
+    </table>
+    <p style="font-size: 12px; color: #555;"><i>* Las herramientas deben ser devueltas al pañol al finalizar la Orden de Trabajo.</i></p>
+
+    <h3>⚙️ Repuestos e Insumos (Merma / Consumo)</h3>
+    <table>
+        <tr><th style="width: 120px;">Código</th><th>Insumo/Repuesto</th><th style="width: 90px; text-align: center;">Cantidad</th></tr>
+        {% for i in range(filas) %}
+        <tr><td></td><td></td><td></td></tr>
+        {% endfor %}
+    </table>
+    <p style="font-size: 12px; color: #555;"><i>* Estos componentes se descuentan del inventario (Merma) para su uso en este trabajo.</i></p>
+
+    <div class="firmas">
+        <div class="firma-linea">Firma Profesional a Cargo</div>
+        <div class="firma-linea">Firma Encargado de Pañol</div>
+    </div>
+
+</body>
+</html>

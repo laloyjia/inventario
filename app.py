@@ -1979,6 +1979,20 @@ def imprimir_ot(ot_id):
                            herramientas=parse(ot.herramientas_utilizadas),
                            repuestos=parse(ot.repuestos_utilizados))
 
+
+@app.route('/imprimir_ot_blanco')
+@login_requerido
+def imprimir_ot_blanco():
+    """Imprime una Orden de Trabajo EN BLANCO, con líneas y filas vacías para
+    llenar a mano. Útil cuando se quiere levantar la OT en papel en el taller."""
+    esp = None
+    esp_id = session.get('usuario_especialidad_id')
+    if esp_id:
+        esp = Especialidad.query.get(esp_id)
+    return render_template('imprimir_ot_blanco.html',
+                           area=(esp.nombre if esp else ''),
+                           filas=8)
+
 @app.route('/imprimir_externo/<int:ext_id>')
 @login_requerido
 def imprimir_externo(ext_id):

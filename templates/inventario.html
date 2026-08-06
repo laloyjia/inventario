@@ -1312,9 +1312,16 @@
             <div class="card v-ot" style="border-left: 4px solid var(--info);">
                 <h2>
                     <i class="fas fa-clipboard-check"></i> Órdenes de Trabajo (OT)
+                    <span style="display:inline-flex; gap:6px;">
+                    <a href="/imprimir_ot_blanco" target="_blank" class="btn-add"
+                       style="font-size: 0.8rem; background:#0ea5e9; text-decoration:none;"
+                       title="Imprimir una Orden de Trabajo en blanco para llenar a mano">
+                        <i class="fas fa-print"></i> Imprimir OT en blanco
+                    </a>
                     {% if session['usuario_rol'] in ['Administrador', 'Admin', 'Profesor', 'Pañolero'] %}
                         <button onclick="abrirModalOT()" class="btn-add" style="font-size: 0.8rem;"><i class="fas fa-plus"></i> Nueva OT</button>
                     {% endif %}
+                    </span>
                 </h2>
 
                 <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
@@ -1339,7 +1346,13 @@
                                         <button type="submit" style="background: var(--success); color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer;" title="Cerrar y Devolver Herramientas"><i class="fas fa-check"></i></button>
                                     </form>
                                     {% endif %}
-                                    <a href="/imprimir_ot/{{ ot.id }}" target="_blank" style="background: var(--info); color: white; padding: 6px 10px; border-radius: 4px; text-decoration: none; text-align: center;" title="Imprimir Documento OT"><i class="fas fa-print"></i></a>
+                                    <a href="/imprimir_ot/{{ ot.id }}" target="_blank" style="background: var(--info); color: white; padding: 6px 10px; border-radius: 4px; text-decoration: none; text-align: center; white-space:nowrap;" title="Imprimir esta Orden de Trabajo"><i class="fas fa-print"></i> Imprimir</a>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="3" style="text-align:center; color:#6b7280; padding:16px;">
+                                    <i class="fas fa-inbox"></i> Aún no hay órdenes de trabajo. Crea una con <strong>“Nueva OT”</strong> o imprime una <strong>en blanco</strong> con el botón de arriba.
                                 </td>
                             </tr>
                             {% endfor %}
