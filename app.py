@@ -492,6 +492,46 @@ def _panoleros_dia_activos(especialidad_id):
         return []
 
 
+class RegistroBaja(db.Model):
+    """Registro persistente de cada MERMA o BAJA de inventario, para generar
+    nóminas descargables. Origen:
+        'merma_practica' → declarada al cerrar una práctica (hoja de vida).
+        'baja_manual'    → dada de baja desde la tarjeta "Dar de Baja".
+    Nota de negocio: la merma cuenta también como baja (aparece en ambas
+    nóminas según el filtro de origen)."""
+    __tablename__ = 'registro_baja'
+    id = db.Column(db.Integer, primary_key=True)
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=True)
+    item_nombre = db.Column(db.String(150))          # snapshot por si se borra el ítem
+    especialidad_id = db.Column(db.Integer, db.ForeignKey('especialidad.id'), nullable=True)
+    cantidad = db.Column(db.Integer, nullable=False, default=0)
+    motivo = db.Column(db.String(300))
+    origen = db.Column(db.String(20), nullable=False, default='baja_manual', index=True)
+    prestamo_id = db.Column(db.Integer, nullable=True)
+    nombre_practica = db.Column(db.String(200), nullable=True)
+    usuario_id = db.Column(db.Integer, nullable=True)
+    usuario_nombre = db.Column(db.String(100))
+    fecha = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    item = db.relationship('Item', lazy=True)
+    especialidad = db.relationship('Especialidad', lazy=True)
+
+
+def _registrar_baja(item, cantidad, motivo, origen, prestamo=None):
+    """Agrega una fila a RegistroBaja. NO hace commit (lo hace el llamador)."""
+    try:
+        db.session.add(RegistroBaja(
+            item_id=item.id, item_nombre=item.nombre,
+            especialidad_id=item.especialidad_id,
+            cantidad=int(cantidad or 0), motivo=(motivo or '')[:300], origen=origen,
+            prestamo_id=(prestamo.id if prestamo else None),
+            nombre_practica=(prestamo.nombre_practica if prestamo else None),
+            usuario_id=session.get('usuario_id'),
+            usuario_nombre=session.get('usuario_nombre'),
+        ))
+    except Exception as e:
+        print(f"[REGISTRO_BAJA] No se pudo registrar: {e}")
+
+
 # 11. SYNC LOG (registro de cambios para sincronización entre nodos y admin central)
 class SyncLog(db.Model):
     __tablename__ = 'sync_log'
@@ -2046,7 +2086,12 @@ def hoja_vida(est_id):
     est = Estudiante.query.get_or_404(est_id)
     prestamos = Prestamo.query.filter_by(estudiante_id=est.id, estado='Pendiente') \
                               .order_by(Prestamo.fecha_prestamo.desc()).all()
-    return render_template('hoja_vida.html', estudiante=est, prestamos=prestamos)
+    # Profesores del área (para el formulario "Crear OT" desde el cierre)
+    esp_id = session.get('usuario_especialidad_id')
+    profesores_area = Profesor.query.filter_by(
+        especialidad_id=esp_id, activo=True).all() if esp_id else []
+    return render_template('hoja_vida.html', estudiante=est, prestamos=prestamos,
+                           profesores_area=profesores_area)
 
 @app.route('/procesar_hoja_vida', methods=['POST'])
 @login_requerido
@@ -2067,6 +2112,9 @@ def procesar_hoja_vida():
             prest.item.cantidad_mermada += cm
             prest.item.cantidad_total -= cm
             prest.cantidad_mermada = cm
+            # La merma queda registrada en la nómina (y cuenta como baja automática)
+            _registrar_baja(prest.item, cm, 'Merma declarada en cierre de práctica',
+                            'merma_practica', prestamo=prest)
         if cb + cm >= prest.cantidad:
             prest.estado = 'Devuelto'
             prest.fecha_devolucion = datetime.utcnow()
@@ -3680,6 +3728,7 @@ def dar_baja():
     item.cantidad_total = max(0, (item.cantidad_total or 0) - cantidad)
     item.cantidad_disponible = max(0, (item.cantidad_disponible or 0) - cantidad)
     item.cantidad_mermada = (item.cantidad_mermada or 0) + cantidad
+    _registrar_baja(item, cantidad, motivo, 'baja_manual')
     db.session.commit()
     registrar_cambio_sync('item', item.id, 'actualizar', item)
     registrar_auditoria('dar_baja', 'Item', item.id,
@@ -3691,6 +3740,59 @@ def dar_baja():
     flash(f"✅ Baja registrada: {cantidad} unidad(es) de '{item.nombre}'. "
           f"Motivo: {motivo or 'sin especificar'}.")
     return redirect(url_for('ver_inventario'))
+
+
+def _nomina_registros(origenes):
+    """RegistroBaja del área del usuario (o de todas si es Admin), por origen."""
+    q = RegistroBaja.query.filter(RegistroBaja.origen.in_(origenes))
+    if session.get('usuario_rol') != 'Admin':
+        q = q.filter_by(especialidad_id=session.get('usuario_especialidad_id'))
+    return q.order_by(RegistroBaja.fecha.desc()).all()
+
+
+def _exportar_nomina(registros, hoja, fname):
+    filas = []
+    for r in registros:
+        filas.append({
+            'Fecha': r.fecha.strftime('%d/%m/%Y %H:%M') if r.fecha else '',
+            'Ítem': r.item_nombre or (r.item.nombre if r.item else ''),
+            'Cantidad': r.cantidad,
+            'Motivo': r.motivo or '',
+            'Origen': 'Merma de práctica' if r.origen == 'merma_practica' else 'Baja manual',
+            'Práctica': r.nombre_practica or '',
+            'Área': r.especialidad.nombre if r.especialidad else '',
+            'Registrado por': r.usuario_nombre or '',
+        })
+    if not filas:
+        filas = [{'Aviso': 'No hay registros para exportar todavía.'}]
+    df = pd.DataFrame(filas)
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        df.to_excel(w, sheet_name=hoja[:31], index=False)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/descargar_nomina_mermas')
+@login_requerido
+@pañolero_o_admin
+def descargar_nomina_mermas():
+    """Nómina de MERMAS (declaradas en cierres de práctica)."""
+    regs = _nomina_registros(['merma_practica'])
+    fname = f"nomina_mermas_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return _exportar_nomina(regs, 'Mermas', fname)
+
+
+@app.route('/descargar_nomina_bajas')
+@login_requerido
+@pañolero_o_admin
+def descargar_nomina_bajas():
+    """Nómina de BAJAS. Como la merma cuenta como baja automática, incluye
+    tanto las bajas manuales como las mermas de práctica."""
+    regs = _nomina_registros(['merma_practica', 'baja_manual'])
+    fname = f"nomina_bajas_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return _exportar_nomina(regs, 'Bajas', fname)
 
 
 @app.route('/admin/buscar')

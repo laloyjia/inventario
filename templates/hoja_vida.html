@@ -95,6 +95,44 @@
             </div>
             {% endif %}
         </div>
+
+        {# ===== Crear Orden de Trabajo desde el cierre ===== #}
+        <div class="card" style="border-top: 5px solid #0ea5e9;">
+            <h2 style="color:#075985;"><i class="fas fa-clipboard-check"></i> Dejar una Orden de Trabajo</h2>
+            <p style="color: var(--secondary); margin-top:0;">Levanta una OT asociada a esta práctica o al alumno, sin salir de esta pantalla.</p>
+            <form action="/agregar_ot" method="POST" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; align-items:end;">
+                <div>
+                    <label style="font-weight:600; font-size:0.85rem; color:#334155;">Título de la OT *</label>
+                    <input type="text" name="titulo" required placeholder="Ej: Reparación de equipo"
+                           style="width:100%; box-sizing:border-box; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+                </div>
+                <div>
+                    <label style="font-weight:600; font-size:0.85rem; color:#334155;">Profesional a Cargo *</label>
+                    {% if profesores_area %}
+                    <select name="profesional_cargo" required style="width:100%; box-sizing:border-box; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+                        <option value="" disabled selected>-- Selecciona --</option>
+                        {% for prof in profesores_area %}<option value="{{ prof.nombre }}">{{ prof.nombre }}</option>{% endfor %}
+                    </select>
+                    {% else %}
+                    <input type="text" name="profesional_cargo" required placeholder="Nombre del profesional"
+                           style="width:100%; box-sizing:border-box; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+                    {% endif %}
+                </div>
+                <div>
+                    <label style="font-weight:600; font-size:0.85rem; color:#334155;">Alumno a cargo</label>
+                    <input type="text" name="alumnos_cargo" value="{{ estudiante.nombre }}"
+                           style="width:100%; box-sizing:border-box; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+                </div>
+                <div style="grid-column: 1 / -1;">
+                    <label style="font-weight:600; font-size:0.85rem; color:#334155;">Descripción</label>
+                    <input type="text" name="descripcion" placeholder="Detalle del trabajo a realizar..."
+                           style="width:100%; box-sizing:border-box; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+                </div>
+                <div style="grid-column: 1 / -1; text-align:right;">
+                    <button type="submit" class="btn" style="background:#0ea5e9;"><i class="fas fa-plus"></i> Crear OT</button>
+                </div>
+            </form>
+        </div>
     </div>
 </body>
 </html>
