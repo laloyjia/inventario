@@ -629,6 +629,13 @@
                 <span><i class="fas fa-cubes"></i> Existencias Físicas en Taller</span>
                 <span style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                     <input type="text" id="buscadorInventario" onkeyup="filtrarInventario()" placeholder="🔍 Buscar equipo..." style="width: auto; min-width: 200px;">
+                    {% if tipo_area == 'PANOL_TP' %}
+                    <a href="/inventario_visita"
+                       style="background:#0ea5e9; color:white; padding:8px 14px; border-radius:6px; text-decoration:none; font-size:0.85rem; font-weight:600;"
+                       title="Ver el inventario de otras especialidades TP (solo lectura)">
+                        <i class="fas fa-eye"></i> Ver otras especialidades
+                    </a>
+                    {% endif %}
                     {% if session['usuario_rol'] in ['Pañolero', 'Admin'] and items %}
                     <a href="/etiquetas_lote{% if session['usuario_rol'] == 'Admin' %}?especialidad_id={{ session.get('usuario_especialidad_id') }}{% endif %}"
                        target="_blank"

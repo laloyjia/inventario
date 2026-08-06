@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventario (solo lectura) — {{ esp.nombre }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root { --primary:#1e3a8a; --secondary:#64748b; --success:#16a34a; --danger:#dc2626; --dark:#0f172a; --bg:#f8fafc; }
+        * { box-sizing: border-box; }
+        body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--bg); color:var(--dark); margin:0; padding:20px; }
+        .container { max-width:1200px; margin:0 auto; }
+        .card { background:white; padding:22px; border-radius:12px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.08); margin-bottom:18px; }
+        h1 { margin:0; font-size:1.5rem; color:var(--primary); }
+        .ro-badge { background:#eef2ff; color:#3730a3; padding:4px 12px; border-radius:20px; font-size:0.78rem; font-weight:700; }
+        .top { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; border-top:5px solid var(--primary); }
+        .btn { padding:10px 18px; border:none; border-radius:8px; cursor:pointer; font-weight:bold; color:white; display:inline-flex; align-items:center; gap:8px; text-decoration:none; }
+        .btn-secondary { background:var(--secondary); }
+        select, input { padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-family:inherit; font-size:0.95rem; }
+        .controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+        .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:12px; }
+        .stat { background:white; border-radius:10px; padding:14px 16px; box-shadow:0 2px 4px rgba(0,0,0,0.06); }
+        .stat .n { font-size:1.5rem; font-weight:800; line-height:1; }
+        .stat .l { font-size:0.72rem; color:var(--secondary); text-transform:uppercase; font-weight:600; margin-top:4px; }
+        .table-responsive { overflow-x:auto; border:1px solid #eef; border-radius:8px; }
+        table { width:100%; border-collapse:collapse; min-width:820px; }
+        th, td { padding:11px 12px; text-align:left; border-bottom:1px solid #eef2f7; }
+        th { background:#f1f5f9; font-size:0.72rem; text-transform:uppercase; color:#334155; position:sticky; top:0; }
+        tbody tr:nth-child(even){ background:#fafbfd; }
+        tbody tr:hover { background:#eff6ff; }
+        .chip { padding:3px 8px; border-radius:6px; font-size:0.8rem; white-space:nowrap; }
+        .chip-dep { background:#eef2ff; color:#3730a3; }
+        .chip-ubi { background:#f0fdf4; color:#166534; }
+        .badge240 { background:#B45309; color:white; padding:1px 6px; border-radius:8px; font-size:0.62rem; font-weight:800; }
+        .disp { color:var(--success); font-weight:bold; text-align:center; font-size:1.05rem; }
+        .enuso { color:#ca8a04; font-weight:bold; text-align:center; }
+        .tot { color:#334155; font-weight:bold; text-align:center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card top">
+            <div>
+                <h1><i class="fas fa-cubes"></i> Inventario TP <span class="ro-badge"><i class="fas fa-lock"></i> Solo lectura</span></h1>
+                <p style="margin:6px 0 0; color:var(--secondary);">Consulta del inventario de otras especialidades técnico-profesionales. No se puede editar ni realizar movimientos.</p>
+            </div>
+            <a href="/inventario" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Volver a mi pañol</a>
+        </div>
+
+        <div class="card">
+            <div class="controls">
+                <label style="font-weight:700; color:#334155;"><i class="fas fa-sitemap"></i> Especialidad:</label>
+                <select onchange="if(this.value) window.location.href='/inventario_visita?especialidad_id='+this.value;">
+                    {% for a in tp_areas %}
+                    <option value="{{ a.id }}" {% if a.id == esp.id %}selected{% endif %}>{{ a.nombre }}</option>
+                    {% endfor %}
+                </select>
+                <input type="text" id="buscar" onkeyup="filtrar()" placeholder="🔍 Buscar por nombre, marca, ubicación..." style="flex:1; min-width:220px;">
+            </div>
+            <div class="stats" style="margin-top:16px;">
+                <div class="stat"><div class="n" style="color:#2563eb;">{{ items|length }}</div><div class="l">Ítems únicos</div></div>
+                <div class="stat"><div class="n" style="color:#16a34a;">{{ total_disp }}</div><div class="l">Disponibles</div></div>
+                <div class="stat"><div class="n" style="color:#ca8a04;">{{ en_uso }}</div><div class="l">En uso</div></div>
+                <div class="stat"><div class="n" style="color:#334155;">{{ total_stock }}</div><div class="l">Stock total</div></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-top:0; font-size:1.1rem; color:var(--primary);"><i class="fas fa-list"></i> {{ esp.nombre }} — {{ items|length }} ítem(s)</h2>
+            {% if items %}
+            <div class="table-responsive">
+                <table id="tabla">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th><th>Marca / Modelo</th><th>Dependencia</th><th>Ubicación</th>
+                            <th style="text-align:center;">Disponible</th><th style="text-align:center;">En uso</th><th style="text-align:center;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr class="fila">
+                            <td>
+                                <strong>{{ item.nombre }}</strong>
+                                {% if item.decreto_240 %}<span class="badge240" title="Decreto 240">DEC. 240</span>{% endif %}
+                                <br><span style="font-size:0.7rem; color:var(--secondary);">{{ item.categoria }}</span>
+                                <span style="font-size:0.66rem; color:#9ca3af; font-family:monospace; margin-left:5px;">{{ item.codigo_barras }}</span>
+                            </td>
+                            <td style="font-size:0.85rem;">
+                                {% if item.marca %}<strong>{{ item.marca }}</strong>{% endif %}
+                                {% if item.modelo %}<br><span style="color:#6b7280;">{{ item.modelo }}</span>{% endif %}
+                                {% if not item.marca and not item.modelo %}<span style="color:#9ca3af;">—</span>{% endif %}
+                            </td>
+                            <td><span class="chip chip-dep"><i class="fas fa-sitemap"></i> {{ item.dependencia or (item.especialidad.nombre if item.especialidad else '—') }}</span></td>
+                            <td><span class="chip chip-ubi"><i class="fas fa-map-marker-alt"></i> {{ item.ubicacion or 'Sin especificar' }}</span></td>
+                            <td class="disp">{{ item.cantidad_disponible }}</td>
+                            <td class="enuso">{{ item.cantidad_total - item.cantidad_disponible }}</td>
+                            <td class="tot">{{ item.cantidad_total }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p style="text-align:center; color:var(--secondary); padding:40px;"><i class="fas fa-box-open" style="font-size:2rem;"></i><br>Esta especialidad aún no tiene ítems en su inventario.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+    function filtrar(){
+        var q = (document.getElementById('buscar').value || '').toLowerCase().trim();
+        document.querySelectorAll('#tabla tbody tr.fila').forEach(function(tr){
+            tr.style.display = (q === '' || tr.innerText.toLowerCase().indexOf(q) !== -1) ? '' : 'none';
+        });
+    }
+    </script>
+</body>
+</html>

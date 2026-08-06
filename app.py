@@ -3784,6 +3784,40 @@ def panoleros_dia_limpiar():
     return redirect(url_for('ver_inventario'))
 
 
+@app.route('/inventario_visita')
+@login_requerido
+def inventario_visita():
+    """Vista de SOLO LECTURA del inventario de las especialidades Técnico-Profesionales
+    (Electrónica, Mecánica Automotriz, Mecánica Industrial, Electricidad, Gráfica).
+    Cualquier pañolero/profesor/admin puede mirar el inventario de otra área TP,
+    pero NO puede editar, prestar ni dar de baja: es solo consulta."""
+    if session.get('usuario_rol') == 'Estudiante':
+        flash("❌ Acceso no permitido.")
+        return redirect(url_for('ver_inventario'))
+    # Áreas TP disponibles para visualizar
+    tp_areas = Especialidad.query.filter(
+        Especialidad.tipo_area == 'PANOL_TP',
+        Especialidad.activa == True
+    ).order_by(Especialidad.nombre.asc()).all()
+    if not tp_areas:
+        flash("No hay especialidades TP disponibles para visualizar.")
+        return redirect(url_for('ver_inventario'))
+    sel = request.args.get('especialidad_id', type=int)
+    esp = Especialidad.query.get(sel) if sel else tp_areas[0]
+    if not esp or esp.tipo_area != 'PANOL_TP':
+        flash("❌ Esa especialidad no está disponible para visualización.")
+        return redirect(url_for('inventario_visita'))
+    items = Item.query.filter_by(especialidad_id=esp.id) \
+        .order_by(Item.categoria.asc(), Item.nombre.asc()).all()
+    total_stock = sum(i.cantidad_total for i in items)
+    total_disp = sum(i.cantidad_disponible for i in items)
+    en_uso = sum((i.cantidad_total - i.cantidad_disponible) for i in items)
+    return render_template('inventario_visita.html',
+                           esp=esp, items=items, tp_areas=tp_areas,
+                           total_stock=total_stock, total_disp=total_disp,
+                           en_uso=en_uso)
+
+
 @app.route('/dar_baja', methods=['POST'])
 @login_requerido
 @pañolero_o_admin
