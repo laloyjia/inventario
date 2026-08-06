@@ -560,10 +560,9 @@
                 <div><label>Cant.</label><input type="number" name="cantidad" id="agregar_cantidad" min="1" value="1" required></div>
                 <div><label>Ubicación</label><input type="text" name="ubicacion" id="agregar_ubicacion" placeholder="Estante A, Armario 1..."></div>
                 <div><label>Fecha adquisición</label><input type="date" name="fecha_adquisicion" id="agregar_fecha"></div>
-                <div><label>Desgaste ($)</label><input type="number" name="desgaste" id="agregar_desgaste" min="0" step="any" value="0"></div>
+                <div><label>Dependencia</label><input type="text" name="dependencia" id="agregar_dependencia" placeholder="Ej: Taller, Oficina, Sede..."></div>
                 <div><label>Costo unitario ($)</label><input type="number" name="precio_unitario" id="agregar_precio" min="0" step="any" value="0"></div>
                 <div><label>URL Imagen (Opcional)</label><input type="text" name="imagen_url" id="agregar_imagen" placeholder="Pegar link..."></div>
-                <div><label>Máx. usos (desgaste)</label><input type="number" name="max_usos" id="agregar_max_usos" min="0" placeholder="Opcional"></div>
                 <div style="display:flex; align-items:center; padding-top: 22px;">
                     <label style="display:flex; align-items:center; gap:6px; font-weight:600; color:#B45309; cursor:pointer;">
                         <input type="checkbox" name="decreto_240" id="agregar_decreto_240" value="1" style="width:16px; height:16px; accent-color:#B45309;">
@@ -813,7 +812,7 @@
                                         {% if item.modelo %}<br><span style="color:#6b7280;">{{ item.modelo }}</span>{% endif %}
                                     {% else %}<span style="color:#9ca3af;">—</span>{% endif %}
                                 </td>
-                                <td style="font-size:0.82rem;"><span style="background:#eef2ff; color:#3730a3; padding:3px 8px; border-radius:4px; white-space:nowrap;"><i class="fas fa-sitemap"></i> {{ item.especialidad.nombre if item.especialidad else '—' }}</span></td>
+                                <td style="font-size:0.82rem;"><span style="background:#eef2ff; color:#3730a3; padding:3px 8px; border-radius:4px; white-space:nowrap;"><i class="fas fa-sitemap"></i> {{ item.dependencia or (item.especialidad.nombre if item.especialidad else '—') }}</span></td>
                                 <td><span style="font-size: 0.85rem; background:#f0fdf4; padding:4px 8px; border-radius:4px; color:#166534;"><i class="fas fa-map-marker-alt"></i> {{ item.ubicacion or 'Sin especificar' }}</span></td>
                                 <td style="color: var(--success); font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_disponible }}</td>
                                 <td style="color: #ca8a04; font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_total - item.cantidad_disponible }}</td>

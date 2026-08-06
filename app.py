@@ -284,6 +284,9 @@ class Item(db.Model):
     cantidad_minima = db.Column(db.Integer, default=5)
     imagen_url = db.Column(db.String(500), default="")
     ubicacion = db.Column(db.String(200), default="Sin especificar")
+    # Dependencia: unidad/repartición a la que pertenece el bien (ej. taller, oficina,
+    # sede). Si queda vacía, en las vistas se muestra el nombre del área (especialidad).
+    dependencia = db.Column(db.String(200), nullable=True)
     precio_unitario = db.Column(db.Float, default=0.0)
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
     fecha_ultima_modificacion = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -677,6 +680,8 @@ def _migrar_columnas_seguridad():
                 statements.append("ALTER TABLE item ADD COLUMN numero_serie VARCHAR(100) NULL")
             if 'estado' not in cols:
                 statements.append("ALTER TABLE item ADD COLUMN estado VARCHAR(50) NULL")
+            if 'dependencia' not in cols:
+                statements.append("ALTER TABLE item ADD COLUMN dependencia VARCHAR(200) NULL")
             if 'fecha_adquisicion' not in cols:
                 statements.append(f"ALTER TABLE item ADD COLUMN fecha_adquisicion {date_type} NULL")
             if 'max_usos' not in cols:
@@ -1241,6 +1246,7 @@ def agregar_item():
     ubicacion = request.form.get('ubicacion', 'Sin especificar').strip()
     nombre = request.form.get('nombre', '').strip()
     categoria = request.form.get('categoria', '').strip()
+    dependencia = request.form.get('dependencia', '').strip() or None
 
     # Campos opcionales tipo-específicos
     autor = request.form.get('autor', '').strip() or None
@@ -1286,6 +1292,7 @@ def agregar_item():
         if descripcion: item_existente.descripcion = descripcion
         if precio_unitario: item_existente.precio_unitario = precio_unitario
         if desgaste: item_existente.desgaste = desgaste
+        if dependencia: item_existente.dependencia = dependencia
         item_existente.decreto_240 = decreto_240
     else:
         nuevo_item = Item(codigo_barras=codigo, nombre=nombre, categoria=categoria,
@@ -1293,6 +1300,7 @@ def agregar_item():
                           especialidad_id=especialidad_id,
                           cantidad_total=cantidad, cantidad_disponible=cantidad,
                           imagen_url=imagen, ubicacion=ubicacion,
+                          dependencia=dependencia,
                           precio_unitario=precio_unitario, desgaste=desgaste,
                           autor=autor, isbn=isbn, editorial=editorial,
                           anio_publicacion=anio_pub,
