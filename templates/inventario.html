@@ -60,9 +60,20 @@
         .varios-intro { display:flex; align-items:center; gap:10px; margin: 4px 0 14px 0; color:#334155; }
         .varios-intro h3 { margin:0; font-size:1.05rem; }
         .varios-intro span { font-size:0.82rem; color:#64748b; }
-        .varios-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; align-items: start; }
+        .varios-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; align-items: start; grid-auto-flow: row dense; }
         .varios-grid > .card { margin-bottom: 0; height: 100%; }
-        @media (max-width: 760px) { .varios-grid { grid-template-columns: 1fr; } }
+        /* Ubicación exacta: fila 1 → OT · Préstamo · Bajas ; fila 2 → Profesores · Asignar pañoleros ; fila 3 → Cargar inventario · Cargar alumnos */
+        .v-ot        { grid-column: span 2; order: 1; }
+        .v-prestamo  { grid-column: span 2; order: 2; }
+        .v-bajas     { grid-column: span 2; order: 3; }
+        .v-profes    { grid-column: span 3; order: 4; }
+        .v-panoleros { grid-column: span 3; order: 5; }
+        .v-cargarinv { grid-column: span 3; order: 6; }
+        .v-alumnos   { grid-column: span 3; order: 7; }
+        @media (max-width: 900px) {
+            .varios-grid { grid-template-columns: 1fr; }
+            .varios-grid > .card { grid-column: 1 / -1 !important; }
+        }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
         .card { background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
@@ -1054,8 +1065,10 @@
             </div>
         </div>
 
+        <div class="varios-grid">
+
         <!-- Tarjeta Carga/Descarga de Excel -->
-        <div class="card" style="border-left: 4px solid #10b981; background: #ecfdf5;">
+        <div class="card v-cargarinv" style="border-left: 4px solid #10b981; background: #ecfdf5;">
             <h2 style="color: #065f46;"><i class="fas fa-file-excel"></i> Inventario Excel</h2>
 
             <!-- Cargar Excel -->
@@ -1149,11 +1162,9 @@
             </div>
         </div>
 
-        <div class="varios-grid">
-
         {# === Carga masiva de Alumnos por curso (solo Pañolero) === #}
         {% if session['usuario_rol'] == 'Pañolero' %}
-        <div class="card" style="border-left: 4px solid #6366f1; background: #eef2ff;">
+        <div class="card v-alumnos" style="border-left: 4px solid #6366f1; background: #eef2ff;">
             <h2 style="color: #3730a3;"><i class="fas fa-users"></i> Alumnos por Curso (Excel)</h2>
 
             <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 12px;">
@@ -1228,7 +1239,7 @@
 
         {# ===== CARD: PROFESORES SUPERVISORES (gestión en Varios) ===== #}
         {% if session['usuario_rol'] in ['Pañolero', 'Admin'] %}
-        <div class="card" style="border-left: 4px solid #0ea5e9; background: #f0f9ff;">
+        <div class="card v-profes" style="border-left: 4px solid #0ea5e9; background: #f0f9ff;">
             <h2 style="color:#075985;">
                 <i class="fas fa-chalkboard-teacher"></i> Profesores Supervisores del Área
                 <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
@@ -1279,7 +1290,7 @@
         <div style="display: contents;">
 
             {% if tipo_area in ['PANOL_TP', 'INFORMATICA'] %}
-            <div class="card" style="border-left: 4px solid var(--info);">
+            <div class="card v-ot" style="border-left: 4px solid var(--info);">
                 <h2>
                     <i class="fas fa-clipboard-check"></i> Órdenes de Trabajo (OT)
                     {% if session['usuario_rol'] in ['Administrador', 'Admin', 'Profesor', 'Pañolero'] %}
@@ -1320,7 +1331,7 @@
 
             {% endif %}{# fin if OT solo en PANOL_TP+INFORMATICA #}
 
-            <div class="card" style="border-left: 4px solid var(--purple);">
+            <div class="card v-prestamo" style="border-left: 4px solid var(--purple);">
                 <h2><i class="fas fa-exchange-alt"></i> Préstamos a Especialidades</h2>
 
                 {% if session['usuario_rol'] in ['Administrador', 'Pañolero'] %}
@@ -1390,6 +1401,79 @@
             </div>
 
         </div>
+
+        {# ===== NUEVO: Dar de Baja de ítems ===== #}
+        <div class="card v-bajas" style="border-left: 4px solid #ef4444; background:#fef2f2;">
+            <h2 style="color:#991b1b;"><i class="fas fa-trash-alt"></i> Dar de Baja</h2>
+            <p style="font-size:0.83rem; color:#7f1d1d; margin:0 0 12px 0;">
+                Descarta unidades dañadas, perdidas u obsoletas. Se descuentan del stock y queda registrado en la auditoría.
+            </p>
+            <form action="/dar_baja" method="POST" style="display:flex; flex-direction:column; gap:10px;"
+                  onsubmit="return confirm('¿Confirmas dar de baja estas unidades? Se descuentan del stock.');">
+                <div>
+                    <label style="color:#991b1b;">Ítem</label>
+                    <select name="item_id" required>
+                        <option value="">— Selecciona ítem —</option>
+                        {% for it in items %}
+                        <option value="{{ it.id }}">{{ it.nombre }} (disp: {{ it.cantidad_disponible }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label style="color:#991b1b;">Cantidad a dar de baja</label>
+                    <input type="number" name="cantidad" min="1" value="1" required>
+                </div>
+                <div>
+                    <label style="color:#991b1b;">Motivo</label>
+                    <input type="text" name="motivo" placeholder="Ej: dañado / perdido / obsoleto" maxlength="200">
+                </div>
+                <button type="submit"
+                        style="background:#ef4444; color:white; padding:10px; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">
+                    <i class="fas fa-trash-alt"></i> Registrar baja
+                </button>
+            </form>
+        </div>
+
+        {# ===== NUEVO: Asignar Pañoleros del Día ===== #}
+        <div class="card v-panoleros" style="border-left: 4px solid #8b5cf6; background:#f5f3ff;">
+            <h2 style="color:#5b21b6;">
+                <i class="fas fa-user-shield"></i> Asignar Pañoleros del Día
+                <span style="font-size:0.75rem; color:#6b7280; font-weight:normal;">({{ (panoleros_dia or [])|length }}/6)</span>
+            </h2>
+            <p style="font-size:0.83rem; color:#4c1d95; margin:0 0 12px 0;">
+                Estudiantes autorizados a entregar insumos en el pañol. Máximo 6 activos por área.
+            </p>
+            <form action="/panoleros_dia/agregar" method="POST" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
+                <div style="flex:1; min-width:180px;">
+                    <label style="color:#5b21b6;">Estudiante</label>
+                    <select name="estudiante_id" required>
+                        <option value="">— Selecciona estudiante —</option>
+                        {% for est in estudiantes %}
+                        <option value="{{ est.id }}">{{ est.etiqueta_display }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" style="background:#8b5cf6; color:white; padding:10px 16px; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">
+                    <i class="fas fa-plus"></i> Designar
+                </button>
+            </form>
+            {% if panoleros_dia %}
+            <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;">
+                {% for pd in panoleros_dia %}
+                <div style="background:#ede9fe; border:1px solid #c4b5fd; border-radius:20px; padding:6px 12px; display:inline-flex; align-items:center; gap:8px; font-size:0.85rem;">
+                    <i class="fas fa-user-shield" style="color:#7c3aed;"></i>
+                    <strong style="color:#5b21b6;">{{ pd.estudiante.nombre }}</strong>
+                    <form action="/panoleros_dia/quitar/{{ pd.id }}" method="POST" style="display:inline; margin:0;">
+                        <button type="submit" style="background:none; border:none; color:#b91c1c; cursor:pointer; padding:0;" title="Quitar"><i class="fas fa-times-circle"></i></button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p style="font-size:0.82rem; color:#6b7280; margin:10px 0 0 0;"><i class="fas fa-info-circle"></i> Aún no hay pañoleros del día designados.</p>
+            {% endif %}
+        </div>
+
         </div>{# /varios-grid #}
     </div>
     </div>{# /panel-main #}

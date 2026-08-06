@@ -3626,6 +3626,51 @@ def panoleros_dia_limpiar():
     return redirect(url_for('ver_inventario'))
 
 
+@app.route('/dar_baja', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def dar_baja():
+    """Da de baja (descarta) una cantidad de un ítem: la descuenta del stock
+    total y disponible, la acumula como merma y deja registro en auditoría."""
+    especialidad_id = session.get('usuario_especialidad_id')
+    item_id = request.form.get('item_id', type=int)
+    cantidad = request.form.get('cantidad', type=int) or 0
+    motivo = (request.form.get('motivo') or '').strip()
+
+    item = Item.query.get(item_id) if item_id else None
+    if not item:
+        flash("❌ Selecciona un ítem válido para dar de baja.")
+        return redirect(url_for('ver_inventario'))
+    # Seguridad: fuera de Admin, solo se pueden dar de baja ítems del área propia
+    if session.get('usuario_rol') != 'Admin' and item.especialidad_id != especialidad_id:
+        flash("❌ No puedes dar de baja ítems de otra área.")
+        return redirect(url_for('ver_inventario'))
+    if cantidad <= 0:
+        flash("❌ La cantidad a dar de baja debe ser mayor a 0.")
+        return redirect(url_for('ver_inventario'))
+    if cantidad > (item.cantidad_disponible or 0):
+        flash(f"❌ No puedes dar de baja {cantidad}; solo hay {item.cantidad_disponible} "
+              f"disponible(s) de '{item.nombre}'.")
+        return redirect(url_for('ver_inventario'))
+
+    antes = {'total': item.cantidad_total, 'disponible': item.cantidad_disponible,
+             'mermada': item.cantidad_mermada}
+    item.cantidad_total = max(0, (item.cantidad_total or 0) - cantidad)
+    item.cantidad_disponible = max(0, (item.cantidad_disponible or 0) - cantidad)
+    item.cantidad_mermada = (item.cantidad_mermada or 0) + cantidad
+    db.session.commit()
+    registrar_cambio_sync('item', item.id, 'actualizar', item)
+    registrar_auditoria('dar_baja', 'Item', item.id,
+                        valores_anteriores=antes,
+                        valores_nuevos={'baja': cantidad, 'motivo': motivo,
+                                        'total': item.cantidad_total,
+                                        'disponible': item.cantidad_disponible},
+                        especialidad_id=item.especialidad_id)
+    flash(f"✅ Baja registrada: {cantidad} unidad(es) de '{item.nombre}'. "
+          f"Motivo: {motivo or 'sin especificar'}.")
+    return redirect(url_for('ver_inventario'))
+
+
 @app.route('/admin/buscar')
 @login_requerido
 @admin_requerido
