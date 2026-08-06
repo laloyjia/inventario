@@ -311,6 +311,10 @@ class Item(db.Model):
     # Decreto Supremo N° 240 (MINEDUC): auditoria patrimonial
     decreto_240 = db.Column(db.Boolean, default=False, nullable=False,
                              server_default='false')
+    # Campos específicos del área Gráfica
+    fecha_caducidad = db.Column(db.Date, nullable=True)     # vencimiento de insumos
+    es_cest = db.Column(db.Boolean, default=False, nullable=False,
+                        server_default='false')             # marca "Elemento CEST"
 
     @property
     def porcentaje_desgaste(self):
@@ -722,6 +726,12 @@ def _migrar_columnas_seguridad():
                 statements.append("ALTER TABLE item ADD COLUMN estado VARCHAR(50) NULL")
             if 'dependencia' not in cols:
                 statements.append("ALTER TABLE item ADD COLUMN dependencia VARCHAR(200) NULL")
+            if 'fecha_caducidad' not in cols:
+                statements.append(f"ALTER TABLE item ADD COLUMN fecha_caducidad {date_type} NULL")
+            if 'es_cest' not in cols:
+                statements.append(
+                    f"ALTER TABLE item ADD COLUMN es_cest BOOLEAN NOT NULL DEFAULT {bool_default}"
+                )
             if 'fecha_adquisicion' not in cols:
                 statements.append(f"ALTER TABLE item ADD COLUMN fecha_adquisicion {date_type} NULL")
             if 'max_usos' not in cols:
@@ -1198,6 +1208,8 @@ def ver_inventario():
     # Tipo de área: define qué campos del formulario y columnas de la lista se muestran
     esp_obj_actual = Especialidad.query.get(especialidad_id)
     tipo_area = (esp_obj_actual.tipo_area or 'GENERAL') if esp_obj_actual else 'GENERAL'
+    # Área Gráfica: habilita campos extra (fecha de caducidad + Elemento CEST)
+    es_grafica = bool(esp_obj_actual and esp_obj_actual.nombre == 'Gráfica')
     # Pañoleros del día activos para esta especialidad (máx. 6)
     panoleros_dia = _panoleros_dia_activos(especialidad_id) if especialidad_id else []
     # Cursos disponibles en esta especialidad (para datalist/dropdowns)
@@ -1222,6 +1234,8 @@ def ver_inventario():
                            prestamos_activos=prestamos_activos,
                            alertas=alertas,
                            tipo_area=tipo_area,
+                           es_grafica=es_grafica,
+                           hoy=datetime.utcnow().date(),
                            panoleros_dia=panoleros_dia,
                            cursos_disponibles=cursos_disponibles,
                            cursos_a_cargo=cursos_a_cargo,
@@ -1287,6 +1301,15 @@ def agregar_item():
     nombre = request.form.get('nombre', '').strip()
     categoria = request.form.get('categoria', '').strip()
     dependencia = request.form.get('dependencia', '').strip() or None
+    # Campos específicos Gráfica: Elemento CEST + fecha de caducidad
+    es_cest = request.form.get('es_cest') in ('on', '1', 'true', 'True')
+    fecha_cad_raw = request.form.get('fecha_caducidad', '').strip()
+    fecha_cad = None
+    if fecha_cad_raw:
+        try:
+            fecha_cad = datetime.fromisoformat(fecha_cad_raw).date()
+        except Exception:
+            fecha_cad = None
 
     # Campos opcionales tipo-específicos
     autor = request.form.get('autor', '').strip() or None
@@ -1334,6 +1357,8 @@ def agregar_item():
         if desgaste: item_existente.desgaste = desgaste
         if dependencia: item_existente.dependencia = dependencia
         item_existente.decreto_240 = decreto_240
+        item_existente.es_cest = es_cest
+        if fecha_cad: item_existente.fecha_caducidad = fecha_cad
     else:
         nuevo_item = Item(codigo_barras=codigo, nombre=nombre, categoria=categoria,
                           descripcion=descripcion,
@@ -1347,7 +1372,8 @@ def agregar_item():
                           marca=marca, modelo=modelo, numero_serie=numero_serie,
                           estado=estado, fecha_adquisicion=fecha_adq,
                           max_usos=max_usos,
-                          decreto_240=decreto_240)
+                          decreto_240=decreto_240,
+                          es_cest=es_cest, fecha_caducidad=fecha_cad)
         db.session.add(nuevo_item)
     db.session.commit()
     rid = item_existente.id if item_existente else nuevo_item.id
@@ -2452,6 +2478,9 @@ def cargar_excel():
         'estado': 'estado',
         'n serie': 'serie', 'numero de serie': 'serie', 'n serie (serial)': 'serie', 'serie': 'serie',
         'dec 240': 'dec240', 'dec. 240': 'dec240', 'decreto 240': 'dec240', 'dec240': 'dec240',
+        'cest': 'cest', 'elemento cest': 'cest', 'elementos cest': 'cest', 'es cest': 'cest',
+        'fecha caducidad': 'caducidad', 'fecha de caducidad': 'caducidad',
+        'caducidad': 'caducidad', 'vencimiento': 'caducidad',
         'imagen de referencia': 'imagen', 'imagen': 'imagen', 'url imagen': 'imagen',
     }
     POS_LEGACY = {'codigo': 0, 'nombre': 1, 'descripcion': 2, 'marca': 3, 'modelo': 4,
@@ -2563,6 +2592,21 @@ def cargar_excel():
         dec240_provisto = str(dec240_raw).strip() != ''
         decreto_240 = str(dec240_raw).strip().lower() in ('si', 'sí', '1', 'true', 'x', 'verdadero', 'yes')
 
+        # Gráfica: Elemento CEST (SI/NO) + Fecha de caducidad
+        cest_raw = getf(fila, 'cest', '')
+        cest_provisto = str(cest_raw).strip() != ''
+        es_cest = str(cest_raw).strip().lower() in ('si', 'sí', '1', 'true', 'x', 'verdadero', 'yes')
+        cad_raw = getf(fila, 'caducidad', '')
+        fecha_cad = None
+        if cad_raw:
+            try:
+                if hasattr(cad_raw, 'date'):
+                    fecha_cad = cad_raw.date()
+                else:
+                    fecha_cad = datetime.fromisoformat(str(cad_raw)[:10]).date()
+            except Exception:
+                fecha_cad = None
+
         # Fecha adquisición — opcional
         fecha_raw = getf(fila, 'fecha', '')
         fecha_adq = None
@@ -2630,6 +2674,10 @@ def cargar_excel():
                 existente.cantidad_minima = minima
             if dec240_provisto:
                 existente.decreto_240 = decreto_240
+            if cest_provisto:
+                existente.es_cest = es_cest
+            if fecha_cad:
+                existente.fecha_caducidad = fecha_cad
             registrar_cambio_sync('item', existente.id, 'actualizar', existente)
             actualizados += 1
         else:
@@ -2641,7 +2689,7 @@ def cargar_excel():
                 cantidad_total=cantidad, cantidad_disponible=cantidad,
                 ubicacion=ubicacion, imagen_url=imagen,
                 dependencia=dependencia, estado=estado, numero_serie=serie,
-                decreto_240=decreto_240,
+                decreto_240=decreto_240, es_cest=es_cest, fecha_caducidad=fecha_cad,
                 fecha_adquisicion=fecha_adq,
                 desgaste=desgaste_val, precio_unitario=precio_val,
             )
@@ -2721,6 +2769,8 @@ def exportar_excel():
         'Estado': i.estado or '',
         'N° Serie': i.numero_serie or '',
         'Dec. 240': 'SI' if i.decreto_240 else 'NO',
+        'CEST': 'SI' if i.es_cest else 'NO',
+        'Fecha caducidad': i.fecha_caducidad.isoformat() if i.fecha_caducidad else '',
         'Imagen de referencia': i.imagen_url or '',
         # Columnas auxiliares (informativas; el importador las ignora por nombre)
         'Especialidad': i.especialidad.nombre if i.especialidad else '',
@@ -3349,10 +3399,6 @@ def descargar_plantilla():
                    'Fecha adquisición', 'Stock mínimo', 'Desgaste ($)',
                    'Costo unitario ($)', 'Costo total ($)', 'Estado', 'N° Serie',
                    'Dec. 240', 'Imagen de referencia']
-        for c, h in enumerate(headers, 1):
-            ws.cell(row=1, column=c, value=h)
-        # Filas de ejemplo (orientativas; el usuario las reemplaza).
-        # Nota: el importador lee por NOMBRE de columna, así que el orden puede variar.
         ejemplos = [
             ['', 'Taladro percutor', 'Herramienta eléctrica', 'Bosch', 'GSB 13 RE',
              'Herramientas', 5, 'Estante A1', 'Taller', '2024-03-15', 3, 0, 54990,
@@ -3361,6 +3407,17 @@ def descargar_plantilla():
              'Componentes', 10, 'Vitrina B1', 'Taller', '2024-01-20', 4, 0, 39990,
              '', 'Bueno', '', 'NO', ''],
         ]
+        # Columnas extra SOLO para el área Gráfica: Fecha caducidad + CEST
+        esp_u = Especialidad.query.get(session.get('usuario_especialidad_id')) \
+            if session.get('usuario_especialidad_id') else None
+        if esp_u and esp_u.nombre == 'Gráfica':
+            headers += ['Fecha caducidad', 'CEST']
+            ejemplos[0] += ['2026-12-31', 'SI']
+            ejemplos[1] += ['', 'NO']
+        for c, h in enumerate(headers, 1):
+            ws.cell(row=1, column=c, value=h)
+        # Filas de ejemplo (orientativas; el usuario las reemplaza).
+        # Nota: el importador lee por NOMBRE de columna, así que el orden puede variar.
         for r, fila in enumerate(ejemplos, start=2):
             for c, val in enumerate(fila, 1):
                 ws.cell(row=r, column=c, value=val)

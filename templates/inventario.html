@@ -586,6 +586,15 @@
                         Dec. 240
                     </label>
                 </div>
+                {% if es_grafica %}
+                <div><label>Fecha de caducidad</label><input type="date" name="fecha_caducidad" id="agregar_fecha_caducidad"></div>
+                <div style="display:flex; align-items:center; padding-top: 22px;">
+                    <label style="display:flex; align-items:center; gap:6px; font-weight:600; color:#7c3aed; cursor:pointer;">
+                        <input type="checkbox" name="es_cest" id="agregar_es_cest" value="1" style="width:16px; height:16px; accent-color:#7c3aed;">
+                        Elemento CEST
+                    </label>
+                </div>
+                {% endif %}
 
                 {# === GENERAL (ACLE, Salas, Oficina) === #}
                 {% else %}
@@ -670,6 +679,18 @@
                         title="Ítems con stock disponible">
                     <i class="fas fa-circle-check"></i> Disponibles
                 </button>
+                {% if es_grafica %}
+                <button class="cat-btn" onclick="filtrarCest(this)"
+                        style="background:#f5f3ff; color:#5b21b6; border:1px solid #7c3aed; font-weight:700;"
+                        title="Mostrar solo Elementos CEST">
+                    <i class="fas fa-star"></i> Solo CEST
+                </button>
+                <button class="cat-btn" onclick="filtrarEspecial(this, 'CADUCADO')"
+                        style="background:#fef2f2; color:#991b1b; border:1px solid #ef4444; font-weight:700;"
+                        title="Ítems con fecha de caducidad vencida">
+                    <i class="fas fa-hourglass-end"></i> Caducados
+                </button>
+                {% endif %}
                 {% if tipo_area == 'BIBLIOTECA' %}
                     <button class="cat-btn" onclick="filtrarCategoria(this, 'Novela')"><i class="fas fa-book"></i> Novela</button>
                     <button class="cat-btn" onclick="filtrarCategoria(this, 'Ensayo')"><i class="fas fa-book-open"></i> Ensayo</button>
@@ -757,6 +778,7 @@
                                 <th style="text-align: center;">Disponible</th>
                                 <th style="text-align: center;">En uso</th>
                                 <th style="text-align: center;">Total</th>
+                                {% if es_grafica %}<th style="text-align: center;">Caducidad</th>{% endif %}
                             {% else %}
                                 <th>Nombre</th>
                                 <th>Categoría</th>
@@ -774,7 +796,7 @@
                         {% for item in items %}
                         {% set d = item.porcentaje_desgaste %}
                         {% set d_color = '#10b981' if d is not none and d < 50 else ('#eab308' if d is not none and d < 80 else '#dc2626') %}
-                        <tr class="fila-item" data-categoria="{{ item.categoria }}" data-decreto240="{{ '1' if item.decreto_240 else '0' }}" data-stockbajo="{{ '1' if item.cantidad_disponible <= item.cantidad_minima else '0' }}" data-enuso="{{ '1' if (item.cantidad_total - item.cantidad_disponible) > 0 else '0' }}" data-dependencia="{{ (item.dependencia or '')|lower }}">
+                        <tr class="fila-item" data-categoria="{{ item.categoria }}" data-decreto240="{{ '1' if item.decreto_240 else '0' }}" data-stockbajo="{{ '1' if item.cantidad_disponible <= item.cantidad_minima else '0' }}" data-enuso="{{ '1' if (item.cantidad_total - item.cantidad_disponible) > 0 else '0' }}" data-dependencia="{{ (item.dependencia or '')|lower }}" data-cest="{{ '1' if item.es_cest else '0' }}" data-caducado="{{ '1' if (item.fecha_caducidad and item.fecha_caducidad < hoy) else '0' }}">
                             {% set _uso_cell %}
                                 {% if d is not none %}
                                     <div style="background:#f3f4f6; border-radius:8px; height:10px; width:60px; margin:0 auto; overflow:hidden;">
@@ -834,6 +856,13 @@
                                             DEC. 240
                                         </span>
                                         {% endif %}
+                                        {% if es_grafica and item.es_cest %}
+                                        <span title="Elemento CEST"
+                                              style="background:#7c3aed; color:white; padding:1px 6px; border-radius:8px;
+                                                     font-size:0.62rem; font-weight:800; letter-spacing:0.3px; margin-left:4px; vertical-align:middle;">
+                                            CEST
+                                        </span>
+                                        {% endif %}
                                         <br>
                                         <span style="font-size: 0.7rem; color:var(--secondary);">{{ item.categoria }}</span>
                                         <span style="font-size: 0.66rem; color:#9ca3af; font-family:monospace; margin-left:5px;">{{ item.codigo_barras }}</span>
@@ -851,6 +880,16 @@
                                 <td style="color: var(--success); font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_disponible }}</td>
                                 <td style="color: #ca8a04; font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_total - item.cantidad_disponible }}</td>
                                 <td style="color:#334155; font-weight: bold; font-size: 1.05rem; text-align: center;">{{ item.cantidad_total }}</td>
+                                {% if es_grafica %}
+                                <td style="text-align:center; font-size:0.82rem;">
+                                    {% if item.fecha_caducidad %}
+                                        {% set vencido = item.fecha_caducidad < hoy %}
+                                        <span style="padding:3px 8px; border-radius:6px; white-space:nowrap; {% if vencido %}background:#fee2e2; color:#991b1b; font-weight:700;{% else %}background:#f0fdf4; color:#166534;{% endif %}">
+                                            {% if vencido %}<i class="fas fa-triangle-exclamation"></i> {% endif %}{{ item.fecha_caducidad.strftime('%d/%m/%Y') }}
+                                        </span>
+                                    {% else %}<span style="color:#9ca3af;">—</span>{% endif %}
+                                </td>
+                                {% endif %}
                             {% else %}
                                 <td><strong>{{ item.nombre }}</strong></td>
                                 <td>{{ item.categoria or '—' }}</td>
@@ -2066,8 +2105,9 @@
     // --- FILTRO DEL INVENTARIO (buscador + categorías) ---
     let categoriaActiva = 'TODOS';
     let soloDecreto240 = false;
-    let filtroEspecial = 'NINGUNO';   // NINGUNO | STOCKBAJO | ENUSO | DISPONIBLE
+    let filtroEspecial = 'NINGUNO';   // NINGUNO | STOCKBAJO | ENUSO | DISPONIBLE | CADUCADO
     let dependenciaActiva = '';       // '' = todas
+    let soloCest = false;             // filtro "Solo CEST" (área Gráfica)
 
     function filtrarInventario() {
         const inp = document.getElementById('buscadorInventario');
@@ -2083,14 +2123,24 @@
             const matchDec = (!soloDecreto240 || esDec240);
             const stockBajo = tr.getAttribute('data-stockbajo') === '1';
             const enUso = tr.getAttribute('data-enuso') === '1';
+            const caducado = tr.getAttribute('data-caducado') === '1';
             let matchEsp = true;
             if (filtroEspecial === 'STOCKBAJO') matchEsp = stockBajo;
             else if (filtroEspecial === 'ENUSO') matchEsp = enUso;
             else if (filtroEspecial === 'DISPONIBLE') matchEsp = !stockBajo;
+            else if (filtroEspecial === 'CADUCADO') matchEsp = caducado;
             const dep = (tr.getAttribute('data-dependencia') || '');
             const matchDep = (dependenciaActiva === '' || dep === dependenciaActiva);
-            tr.style.display = (matchCat && matchTexto && matchDec && matchEsp && matchDep) ? '' : 'none';
+            const esCest = tr.getAttribute('data-cest') === '1';
+            const matchCest = (!soloCest || esCest);
+            tr.style.display = (matchCat && matchTexto && matchDec && matchEsp && matchDep && matchCest) ? '' : 'none';
         });
+    }
+    function filtrarCest(btn) {
+        soloCest = !soloCest;
+        if (soloCest) { btn.style.background = '#7c3aed'; btn.style.color = 'white'; }
+        else { btn.style.background = '#f5f3ff'; btn.style.color = '#5b21b6'; }
+        filtrarInventario();
     }
     function filtrarDependencia(sel) {
         dependenciaActiva = (sel && sel.value ? sel.value : '').toLowerCase();
