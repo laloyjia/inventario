@@ -100,6 +100,23 @@
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
         .modal-content { background: white; margin: 2% auto; padding: 20px; border-radius: 12px; width: 95%; max-width: 500px; max-height: 90vh; overflow-y: auto; box-sizing: border-box;}
 
+        /* ===== Modales mejorados (Salida / Recepción) ===== */
+        .modal-title { display:flex; align-items:center; gap:10px; margin:0 0 16px 0; padding-bottom:12px; font-size:1.25rem; }
+        .mstep { background:#fbfcfe; border:1px solid #e6eaf0; border-radius:10px; padding:14px; margin-bottom:12px; }
+        .mstep-head { display:flex; align-items:center; gap:9px; font-weight:700; font-size:0.88rem; color:#334155; margin-bottom:9px; }
+        .mstep-num { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--primary); color:#fff; font-size:0.72rem; font-weight:800; flex-shrink:0; }
+        .mstep-num.req { background:var(--danger); }
+        .mstep select, .mstep input { width:100%; box-sizing:border-box; }
+        .mscan { border:2px dashed #6366f1 !important; background:#eef2ff !important; font-family:monospace; padding:10px !important; border-radius:8px; }
+        .mhint { font-size:0.75rem; color:#6b7280; margin:6px 0 0 0; }
+        .mnote { border-radius:8px; padding:10px 12px; font-size:0.83rem; margin-bottom:14px; display:flex; gap:8px; align-items:flex-start; }
+        .mnote-warn { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+        .mnote-info { background:#fffbeb; color:#92400e; border:1px solid #fde68a; }
+        .mbtn-row { display:flex; gap:10px; margin-top:4px; }
+        .mbtn-primary { flex:1; background:var(--primary); color:#fff; padding:13px; border-radius:8px; font-size:0.95rem; }
+        .mbtn-warn { flex:1; background:var(--warning); color:#111827; padding:13px; border-radius:8px; font-size:0.95rem; }
+        .mbtn-cancel { background:#e5e7eb; color:#374151; padding:13px 18px; border-radius:8px; }
+
         /* Estilos para la imagen miniatura */
         .thumb-img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid #cbd5e1; transition: transform 0.2s; }
         .thumb-img:hover { transform: scale(1.1); border-color: var(--primary); }
@@ -1505,21 +1522,23 @@
     </div>{# /panel-layout #}
 </div>
 <div id="modalSalida" class="modal">
-    <div class="modal-content">
-        <h2 style="margin-top:0; border-bottom: 2px solid var(--primary); padding-bottom: 10px;"><i class="fas fa-shipping-fast"></i> Registrar Salida</h2>
-        <div style="background: #f8fafc; padding: 10px; border-radius: 6px; margin-bottom: 15px;">
-            <label style="color: var(--danger);">1. Profesor Supervisor a Cargo <span style="color:red;">*</span></label>
-            <select id="profesor_id_modal" required style="border: 2px solid var(--danger); margin-bottom: 10px;">
+    <div class="modal-content" style="max-width: 640px;">
+        <h2 class="modal-title" style="border-bottom: 2px solid var(--primary); color:var(--primary);"><i class="fas fa-shipping-fast"></i> Registrar Salida</h2>
+
+        <div class="mstep">
+            <div class="mstep-head"><span class="mstep-num req">1</span> Profesor Supervisor a Cargo</div>
+            <select id="profesor_id_modal" required>
                 <option value="" disabled selected>-- Seleccione al Profesor --</option>
                 {% for prof in profesores_area %}<option value="{{ prof.nombre }}">{{ prof.nombre }}</option>{% endfor %}
             </select>
             {% if not profesores_area %}
-            <p style="font-size:0.75rem; color:#b45309; margin:-6px 0 10px 0;">
-                <i class="fas fa-info-circle"></i> No hay profesores registrados. Agrégalos en la pestaña "Varios" → "Profesores Supervisores del Área".
-            </p>
+            <p class="mhint" style="color:#b45309;"><i class="fas fa-info-circle"></i> No hay profesores registrados. Agrégalos en "Varios" → "Profesores Supervisores del Área".</p>
             {% endif %}
-            <label>2. Filtro de Curso</label>
-            <select id="curso_salida" onchange="filtrarAlumnosModalSalida()" style="margin-bottom: 10px;">
+        </div>
+
+        <div class="mstep">
+            <div class="mstep-head"><span class="mstep-num" style="background:#64748b;">2</span> Filtro de Curso <span style="font-weight:400; color:#94a3b8; font-size:0.78rem;">(opcional)</span></div>
+            <select id="curso_salida" onchange="filtrarAlumnosModalSalida()">
                 <option value="ALL">📚 Mostrar Todos los Cursos</option>
                 {% if cursos_a_cargo %}
                 <optgroup label="── Cursos a mi cargo ──">
@@ -1537,18 +1556,17 @@
                 </optgroup>
                 {% endif %}
             </select>
-            <label>3. Estudiante Solicitante <span style="color:red;">*</span></label>
-            <div style="margin-bottom: 6px; display:flex; gap:6px; align-items:center;">
-                <i class="fas fa-barcode" style="color:#6366f1;"></i>
-                <input type="text" id="scan_alumno_modal" placeholder="🔍 Escanear código o digitar RUT del alumno..."
+        </div>
+
+        <div class="mstep">
+            <div class="mstep-head"><span class="mstep-num req">3</span> Estudiante Solicitante</div>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <input type="text" id="scan_alumno_modal" class="mscan" placeholder="🔍 Escanear código o digitar RUT del alumno..."
                        onkeypress="if(event.key==='Enter'){event.preventDefault(); buscarAlumnoPorCodigo();}"
-                       onblur="buscarAlumnoPorCodigo()"
-                       style="flex:1; padding:8px; border:2px dashed #6366f1; background:#eef2ff; font-family:monospace;">
-                <button type="button" onclick="buscarAlumnoPorCodigo()" class="btn-add" style="background:#6366f1; padding:8px 12px;" title="Buscar">
-                    <i class="fas fa-search"></i>
-                </button>
+                       onblur="buscarAlumnoPorCodigo()" style="flex:1;">
+                <button type="button" onclick="buscarAlumnoPorCodigo()" class="btn-add" style="background:#6366f1; padding:10px 14px;" title="Buscar"><i class="fas fa-search"></i></button>
             </div>
-            <small style="color:#6b7280; display:block; margin-bottom:4px;">— o selecciónalo de la lista —</small>
+            <p class="mhint" style="text-align:center;">— o selecciónalo de la lista —</p>
             <select id="estudiante_id_modal" required onchange="mostrarInfoEstudiante()">
                 <option value="" disabled selected>-- Seleccione al Estudiante --</option>
                 {% for est in estudiantes %}<option value="{{ est.id }}" class="opt-alumno"
@@ -1569,20 +1587,23 @@
                 </span>
             </div>
         </div>
-        <div style="border: 1px dashed var(--secondary); padding: 10px; border-radius: 6px; margin-bottom: 15px;">
-            <label>Pistolear Código y Cantidad</label>
-            <div style="display: flex; gap: 5px; margin-top: 5px;">
+
+        <div class="mstep" style="border-style:dashed;">
+            <div class="mstep-head"><span class="mstep-num" style="background:#0ea5e9;"><i class="fas fa-barcode" style="font-size:0.6rem;"></i></span> Pistolear Código y Cantidad</div>
+            <div style="display: flex; gap: 6px;">
                 <input type="text" id="inputScanSalida" placeholder="Código..." onkeypress="manejarEnterScan(event)" style="flex: 1;">
-                <input type="number" id="inputCantSalida" value="1" min="1" style="width: 60px;">
+                <input type="number" id="inputCantSalida" value="1" min="1" style="width: 70px;">
                 <button type="button" onclick="agregarAlPedido()" class="btn-add"><i class="fas fa-plus"></i></button>
             </div>
         </div>
+
         <div class="table-responsive" style="max-height: 180px; overflow-y: auto; margin-bottom: 15px;">
             <table style="min-width: 100%;">
                 <thead><tr><th style="width:120px;">Código</th><th>Nombre</th><th style="width:55px;">Cant.</th><th style="width:30px;">X</th></tr></thead>
                 <tbody id="lista_pedido_cuerpo"></tbody>
             </table>
         </div>
+
         <form action="/registrar_salida" method="POST" id="form_final_despacho">
             <input type="hidden" name="estudiante_id" id="hidden_estudiante_id">
             <input type="hidden" name="profesor_nombre" id="hidden_profesor_nombre">
@@ -1590,11 +1611,9 @@
 
             {# Selector de pañolero del día que está atendiendo este préstamo #}
             {% if panoleros_dia %}
-            <div style="margin-bottom: 15px; background: #fef3c7; padding: 10px; border-radius: 6px; border: 1px solid #fbbf24;">
-                <label style="font-weight: 600; color: #92400e;">
-                    <i class="fas fa-user-shield"></i> Instructor del Día que entrega:
-                </label>
-                <select name="panolero_dia_id" required style="width: 100%; padding: 8px; margin-top: 5px; border: 2px solid #fbbf24;">
+            <div class="mstep" style="background:#fffbeb; border-color:#fde68a;">
+                <div class="mstep-head" style="color:#92400e;"><i class="fas fa-user-shield"></i> Instructor del Día que entrega</div>
+                <select name="panolero_dia_id" required style="border:2px solid #fbbf24;">
                     <option value="" disabled selected>— Selecciona al pañolero del día que está atendiendo —</option>
                     {% for pd in panoleros_dia %}
                     <option value="{{ pd.estudiante.id }}">{{ pd.estudiante.etiqueta_display }}</option>
@@ -1602,46 +1621,38 @@
                 </select>
             </div>
             {% else %}
-            <div style="margin-bottom: 15px; background: #fee2e2; padding: 10px; border-radius: 6px; border: 1px solid #fca5a5;">
-                <p style="margin: 0; color: #991b1b; font-size: 0.85rem;">
-                    <i class="fas fa-exclamation-triangle"></i> No hay instructores del día designados.
-                    Este préstamo quedará registrado a tu nombre como encargado.
-                </p>
-            </div>
+            <div class="mnote mnote-warn"><i class="fas fa-triangle-exclamation" style="margin-top:2px;"></i><span>No hay instructores del día designados. Este préstamo quedará registrado a tu nombre como encargado.</span></div>
             {% endif %}
 
-            <div style="margin-bottom: 20px;">
-                <label style="font-weight: 600; color: var(--dark);">Práctica / Proyecto (Opcional):</label>
-                <input type="text" name="nombre_practica" placeholder="Ej: Taller de Motores..." style="width: 100%; padding: 10px; border: 2px solid var(--secondary);">
+            <div class="mstep">
+                <div class="mstep-head" style="color:#334155;"><i class="fas fa-clipboard-list" style="color:#64748b;"></i> Práctica / Proyecto <span style="font-weight:400; color:#94a3b8; font-size:0.78rem;">(opcional)</span></div>
+                <input type="text" name="nombre_practica" placeholder="Ej: Taller de Motores...">
             </div>
-            <div style="display: flex; gap: 10px;">
-                <button type="button" onclick="finalizarDespacho()" style="flex: 1; background: var(--primary); color: white; padding: 12px;"><i class="fas fa-check"></i> Confirmar Salida</button>
-                <button type="button" onclick="cerrarModalSalida()" style="background: #e2e8f0; color: var(--dark); padding: 12px;">Cancelar</button>
+            <div class="mbtn-row">
+                <button type="button" onclick="finalizarDespacho()" class="mbtn-primary"><i class="fas fa-check"></i> Confirmar Salida</button>
+                <button type="button" onclick="cerrarModalSalida()" class="mbtn-cancel">Cancelar</button>
             </div>
         </form>
     </div>
 </div>
 
 <div id="modalDevolucion" class="modal">
-    <div class="modal-content" style="text-align: center;">
-        <h2 style="margin-top:0; border-bottom: 2px solid var(--warning); padding-bottom: 10px;"><i class="fas fa-dolly-flatbed"></i> Recepción de Materiales</h2>
-        <p style="font-size: 0.9rem; color: #475569; margin-bottom: 8px;">
+    <div class="modal-content" style="text-align: center; max-width: 480px;">
+        <h2 class="modal-title" style="border-bottom: 2px solid var(--warning); justify-content:center; color:#92400e;"><i class="fas fa-dolly-flatbed"></i> Recepción de Materiales</h2>
+        <p style="font-size: 0.92rem; color: #475569; margin-bottom: 6px;">
             <i class="fas fa-barcode" style="color:#6366f1;"></i>
-            <strong>Escanea el código de barras del carnet</strong> del alumno,
-            o digita su RUT manualmente.
+            <strong>Escanea el código de barras del carnet</strong> del alumno, o digita su RUT manualmente.
         </p>
-        <p style="font-size: 0.8rem; color: var(--secondary); margin-bottom: 20px;">
+        <p style="font-size: 0.8rem; color: var(--secondary); margin-bottom: 18px;">
             El sistema acepta ambos formatos y te muestra todos sus préstamos pendientes.
         </p>
         <form action="/buscar_hoja_vida" method="POST">
-            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                <input type="text" name="scan_estudiante" id="scan_estudiante_devolver"
-                       placeholder="🔍 Código del carnet o RUT..." required autocomplete="off"
-                       style="flex: 1; font-size: 1.2rem; text-align: center; border: 2px dashed var(--warning); padding: 14px; border-radius: 6px; font-family: monospace; background:#fef3c7;">
-            </div>
-            <div style="display: flex; gap: 10px;">
-                <button type="submit" style="flex:1; background: var(--warning); color: var(--dark); padding: 12px;"><i class="fas fa-search"></i> Buscar Préstamos</button>
-                <button type="button" onclick="cerrarModalDevolucion()" style="background: #e2e8f0; color: var(--dark); padding: 12px;">Cancelar</button>
+            <input type="text" name="scan_estudiante" id="scan_estudiante_devolver"
+                   placeholder="🔍 Código del carnet o RUT..." required autocomplete="off"
+                   style="width:100%; box-sizing:border-box; font-size: 1.15rem; text-align: center; border: 2px dashed var(--warning); padding: 14px; border-radius: 8px; font-family: monospace; background:#fffbeb; margin-bottom:18px;">
+            <div class="mbtn-row">
+                <button type="submit" class="mbtn-warn"><i class="fas fa-search"></i> Buscar Préstamos</button>
+                <button type="button" onclick="cerrarModalDevolucion()" class="mbtn-cancel">Cancelar</button>
             </div>
         </form>
     </div>
