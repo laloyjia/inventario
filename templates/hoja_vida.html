@@ -57,6 +57,7 @@
                                 <th style="text-align: center;">Total Prestado</th>
                                 <th style="text-align: center;">Devolver Bueno <br><i class="fas fa-check-circle" style="color:var(--success);"></i></th>
                                 <th style="text-align: center;">Declarar Merma <br><i class="fas fa-times-circle" style="color:var(--danger);"></i></th>
+                                <th style="text-align: center;">Enviar a Mantenimiento <br><i class="fas fa-screwdriver-wrench" style="color:#0ea5e9;"></i></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -75,7 +76,14 @@
                                     <input type="number" name="cant_buena[]" class="input-number input-good" min="0" max="{{ p.cantidad }}" placeholder="0">
                                 </td>
                                 <td style="text-align: center;">
-                                    <input type="number" name="cant_mala[]" class="input-number input-bad" min="0" max="{{ p.cantidad }}" placeholder="0">
+                                    <input type="number" name="cant_mala[]" class="input-number input-bad" min="0" max="{{ p.cantidad }}" placeholder="0"
+                                           oninput="toggleMantPorMerma(this)">
+                                </td>
+                                <td style="text-align: center;">
+                                    <input type="checkbox" class="chk-mant" onchange="sincronizarMantenimiento()"
+                                           data-nombre="{{ p.item.nombre | replace('"','') }}"
+                                           data-codigo="{{ p.item.codigo_barras or '' }}"
+                                           style="width:22px; height:22px; accent-color:#0ea5e9; cursor:pointer;">
                                 </td>
                             </tr>
                             {% endfor %}
@@ -100,7 +108,14 @@
         <div class="card" style="border-top: 5px solid #0ea5e9;">
             <h2 style="color:#075985;"><i class="fas fa-clipboard-check"></i> Dejar una Orden de Trabajo</h2>
             <p style="color: var(--secondary); margin-top:0;">Levanta una OT asociada a esta práctica o al alumno, sin salir de esta pantalla.</p>
-            <form action="/agregar_ot" method="POST" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; align-items:end;">
+            <form action="/agregar_ot" method="POST" id="form_ot_cierre" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; align-items:end;">
+                <input type="hidden" name="herramientas_utilizadas" id="ot_herramientas">
+                <div style="grid-column: 1 / -1;">
+                    <label style="font-weight:600; font-size:0.85rem; color:#075985;"><i class="fas fa-screwdriver-wrench"></i> Equipos enviados a mantenimiento</label>
+                    <div id="ot_equipos_mant" style="min-height:38px; padding:10px; border:1px dashed #7dd3fc; border-radius:8px; background:#f0f9ff; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                        <span style="color:#94a3b8; font-size:0.85rem;">Marca equipos en la columna «Enviar a Mantenimiento» de la tabla y aparecerán aquí automáticamente.</span>
+                    </div>
+                </div>
                 <div>
                     <label style="font-weight:600; font-size:0.85rem; color:#334155;">Título de la OT *</label>
                     <input type="text" name="titulo" required placeholder="Ej: Reparación de equipo"
@@ -134,5 +149,39 @@
             </form>
         </div>
     </div>
+
+    <script>
+    // Al declarar merma (>0) el equipo se marca automáticamente para mantenimiento
+    function toggleMantPorMerma(inp){
+        var tr = inp.closest('tr');
+        var chk = tr ? tr.querySelector('.chk-mant') : null;
+        if(chk){ chk.checked = (parseInt(inp.value||'0',10) > 0); sincronizarMantenimiento(); }
+    }
+    // Reúne los equipos marcados y los inyecta en la OT (chips + campo oculto)
+    function sincronizarMantenimiento(){
+        var lineas=[];
+        document.querySelectorAll('.chk-mant').forEach(function(ch){
+            if(ch.checked){
+                var n=ch.getAttribute('data-nombre')||'';
+                var c=ch.getAttribute('data-codigo')||'';
+                lineas.push(c ? (c+' — '+n) : n);
+            }
+        });
+        var hidden=document.getElementById('ot_herramientas');
+        if(hidden){ hidden.value = lineas.join('\n'); }
+        var disp=document.getElementById('ot_equipos_mant');
+        if(disp){
+            if(lineas.length){
+                disp.innerHTML = lineas.map(function(l){
+                    return '<span style="background:#0ea5e9; color:#fff; padding:4px 10px; border-radius:20px; font-size:0.82rem; font-weight:600;"><i class="fas fa-screwdriver-wrench"></i> '+l+'</span>';
+                }).join('');
+            } else {
+                disp.innerHTML = '<span style="color:#94a3b8; font-size:0.85rem;">Marca equipos en la columna «Enviar a Mantenimiento» de la tabla y aparecerán aquí automáticamente.</span>';
+            }
+        }
+        var tit=document.querySelector('#form_ot_cierre input[name="titulo"]');
+        if(tit && !tit.value.trim() && lineas.length){ tit.value = 'Mantenimiento de equipo'; }
+    }
+    </script>
 </body>
 </html>
