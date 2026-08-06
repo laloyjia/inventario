@@ -717,14 +717,13 @@
                                 <th style="text-align: center;">Desgaste ($)</th>
                                 <th style="text-align: center;">Costo Total</th>
                             {% elif ta == 'PANOL_TP' %}
-                                <th>Código</th>
                                 <th>Nombre</th>
                                 <th>Marca / Modelo</th>
-                                <th>Descripción</th>
                                 <th>Dependencia</th>
                                 <th>Ubicación</th>
                                 <th style="text-align: center;">Disponible</th>
                                 <th style="text-align: center;">En uso</th>
+                                <th style="text-align: center;">Total</th>
                             {% else %}
                                 <th>Nombre</th>
                                 <th>Categoría</th>
@@ -782,13 +781,8 @@
                                 <td style="text-align:center; color:#b45309; font-weight:600;">{{ item.desgaste | clp }}</td>
                                 <td style="text-align:center; color:#0f766e; font-weight:bold;">{{ item.costo_total | clp }}</td>
                             {% elif ta == 'PANOL_TP' %}
-                                <td>
-                                    <div style="display:flex; flex-direction:column; gap:3px;">
-                                        <span style="font-family: monospace; background:#eee; padding:2px 4px; border-radius:3px; font-size:0.75rem;">{{ item.codigo_barras }}</span>
-                                        <svg class="barcode-mini" data-code="{{ item.codigo_barras }}" style="width:120px; height:30px;"></svg>
-                                    </div>
-                                </td>
-                                <td style="display: flex; align-items: center; gap: 10px;">
+                                <td style="min-width:220px;">
+                                    <div style="display: flex; align-items: center; gap: 10px;">
                                     {% if item.imagen_url %}
                                         <img src="{{ item.imagen_url }}" class="thumb-img"
                                              onmouseover="iniciarHoverImagen('{{ item.imagen_url }}')"
@@ -809,6 +803,8 @@
                                         {% endif %}
                                         <br>
                                         <span style="font-size: 0.7rem; color:var(--secondary);">{{ item.categoria }}</span>
+                                        <span style="font-size: 0.66rem; color:#9ca3af; font-family:monospace; margin-left:5px;">{{ item.codigo_barras }}</span>
+                                    </div>
                                     </div>
                                 </td>
                                 <td style="font-size:0.85rem;">
@@ -817,13 +813,11 @@
                                         {% if item.modelo %}<br><span style="color:#6b7280;">{{ item.modelo }}</span>{% endif %}
                                     {% else %}<span style="color:#9ca3af;">—</span>{% endif %}
                                 </td>
-                                <td style="font-size:0.8rem; max-width:220px; color:#4b5563;">
-                                    {{ (item.descripcion or '')[:120] }}{% if item.descripcion and item.descripcion|length > 120 %}…{% endif %}
-                                </td>
                                 <td style="font-size:0.82rem;"><span style="background:#eef2ff; color:#3730a3; padding:3px 8px; border-radius:4px; white-space:nowrap;"><i class="fas fa-sitemap"></i> {{ item.especialidad.nombre if item.especialidad else '—' }}</span></td>
                                 <td><span style="font-size: 0.85rem; background:#f0fdf4; padding:4px 8px; border-radius:4px; color:#166534;"><i class="fas fa-map-marker-alt"></i> {{ item.ubicacion or 'Sin especificar' }}</span></td>
                                 <td style="color: var(--success); font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_disponible }}</td>
                                 <td style="color: #ca8a04; font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_total - item.cantidad_disponible }}</td>
+                                <td style="color:#334155; font-weight: bold; font-size: 1.05rem; text-align: center;">{{ item.cantidad_total }}</td>
                             {% else %}
                                 <td><strong>{{ item.nombre }}</strong></td>
                                 <td>{{ item.categoria or '—' }}</td>
