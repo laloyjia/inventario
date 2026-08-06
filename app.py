@@ -2119,6 +2119,19 @@ def hoja_vida(est_id):
     return render_template('hoja_vida.html', estudiante=est, prestamos=prestamos,
                            profesores_area=profesores_area)
 
+# Categorías cuyos ítems se CONSUMEN (no se devuelven): al cerrar la práctica
+# lo no devuelto se descuenta automáticamente del stock.
+CATEGORIAS_CONSUMIBLES = ('fungible', 'consumible', 'material', 'insumo')
+
+
+def _es_consumible(item):
+    """True si el ítem es un fungible/consumible (se gasta, no se devuelve)."""
+    if not item:
+        return False
+    cat = (item.categoria or '').lower()
+    return any(k in cat for k in CATEGORIAS_CONSUMIBLES)
+
+
 @app.route('/procesar_hoja_vida', methods=['POST'])
 @login_requerido
 @pañolero_o_admin
@@ -2132,6 +2145,28 @@ def procesar_hoja_vida():
         except: continue
         if not prest or prest.estado != 'Pendiente': continue
         cb = int(cb or 0); cm = int(cm or 0)
+
+        # ── FUNGIBLES / CONSUMIBLES: se descuentan solos al cerrar la práctica ──
+        # Todo lo que NO vuelve como "bueno" se considera consumido y se descuenta
+        # del total automáticamente (sin declarar merma a mano). El préstamo se
+        # cierra siempre, porque estos insumos no se devuelven.
+        if _es_consumible(prest.item):
+            cb = max(0, min(cb, prest.cantidad))
+            consumido = prest.cantidad - cb
+            prest.item.cantidad_disponible += cb
+            if consumido > 0:
+                prest.item.cantidad_mermada += consumido
+                prest.item.cantidad_total -= consumido
+                prest.cantidad_mermada = consumido
+                _registrar_baja(prest.item, consumido,
+                                'Consumo automático de fungible al cerrar práctica',
+                                'merma_practica', prestamo=prest)
+            prest.estado = 'Devuelto'
+            prest.fecha_devolucion = datetime.utcnow()
+            procesados += 1
+            continue
+
+        # ── DURABLES (herramientas/equipos): devolución normal (bueno / merma) ──
         if cb + cm == 0: continue
         prest.item.cantidad_disponible += cb
         if cm > 0:
