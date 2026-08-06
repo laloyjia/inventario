@@ -1637,24 +1637,44 @@
 </div>
 
 <div id="modalDevolucion" class="modal">
-    <div class="modal-content" style="text-align: center; max-width: 480px;">
+    <div class="modal-content" style="max-width: 500px;">
         <h2 class="modal-title" style="border-bottom: 2px solid var(--warning); justify-content:center; color:#92400e;"><i class="fas fa-dolly-flatbed"></i> Recepción de Materiales</h2>
-        <p style="font-size: 0.92rem; color: #475569; margin-bottom: 6px;">
-            <i class="fas fa-barcode" style="color:#6366f1;"></i>
-            <strong>Escanea el código de barras del carnet</strong> del alumno, o digita su RUT manualmente.
+        <p style="font-size: 0.85rem; color: #475569; text-align:center; margin:0 0 16px 0;">
+            Busca al alumno para ver y recibir sus préstamos pendientes. Puedes hacerlo de dos formas:
         </p>
-        <p style="font-size: 0.8rem; color: var(--secondary); margin-bottom: 18px;">
-            El sistema acepta ambos formatos y te muestra todos sus préstamos pendientes.
-        </p>
-        <form action="/buscar_hoja_vida" method="POST">
-            <input type="text" name="scan_estudiante" id="scan_estudiante_devolver"
-                   placeholder="🔍 Código del carnet o RUT..." required autocomplete="off"
-                   style="width:100%; box-sizing:border-box; font-size: 1.15rem; text-align: center; border: 2px dashed var(--warning); padding: 14px; border-radius: 8px; font-family: monospace; background:#fffbeb; margin-bottom:18px;">
-            <div class="mbtn-row">
-                <button type="submit" class="mbtn-warn"><i class="fas fa-search"></i> Buscar Préstamos</button>
-                <button type="button" onclick="cerrarModalDevolucion()" class="mbtn-cancel">Cancelar</button>
-            </div>
-        </form>
+
+        {# --- Opción A: escanear carnet o digitar RUT --- #}
+        <div class="mstep">
+            <div class="mstep-head"><span class="mstep-num" style="background:#0ea5e9;"><i class="fas fa-barcode" style="font-size:0.6rem;"></i></span> Escanear carnet o digitar RUT</div>
+            <form action="/buscar_hoja_vida" method="POST">
+                <input type="text" name="scan_estudiante" id="scan_estudiante_devolver"
+                       placeholder="🔍 Código del carnet o RUT..." required autocomplete="off"
+                       style="width:100%; box-sizing:border-box; font-size: 1.1rem; text-align: center; border: 2px dashed var(--warning); padding: 13px; border-radius: 8px; font-family: monospace; background:#fffbeb; margin-bottom:10px;">
+                <button type="submit" class="mbtn-warn" style="width:100%;"><i class="fas fa-search"></i> Buscar Préstamos</button>
+            </form>
+        </div>
+
+        <div style="text-align:center; color:#94a3b8; font-weight:700; font-size:0.8rem; margin:6px 0 12px;">— o —</div>
+
+        {# --- Opción B: buscar por nombre --- #}
+        <div class="mstep">
+            <div class="mstep-head"><span class="mstep-num" style="background:#8b5cf6;"><i class="fas fa-user" style="font-size:0.6rem;"></i></span> Buscar por nombre</div>
+            <input type="text" id="filtro_devolver_nombre" onkeyup="filtrarSelectDevolver()"
+                   placeholder="Escribe para filtrar por nombre, N° lista o curso..."
+                   autocomplete="off" style="width:100%; box-sizing:border-box; margin-bottom:8px;">
+            <select id="select_devolver_nombre" size="6"
+                    onchange="if(this.value){ window.location.href='/hoja_vida/'+this.value; }"
+                    style="width:100%; box-sizing:border-box;">
+                {% for est in estudiantes %}
+                <option value="{{ est.id }}" data-buscar="{{ est.nombre|lower }} {{ (est.curso_display or '')|lower }} {{ est.numero_lista or '' }} {{ (est.rut_matricula or '')|lower }}">{% if est.numero_lista %}N°{{ est.numero_lista }} · {% endif %}{{ est.nombre }}{% if est.curso_display and est.curso_display != '—' %} · {{ est.curso_display }}{% endif %}</option>
+                {% endfor %}
+            </select>
+            <p class="mhint">Al elegir un alumno se abren directamente sus préstamos pendientes.</p>
+        </div>
+
+        <div class="mbtn-row">
+            <button type="button" onclick="cerrarModalDevolucion()" class="mbtn-cancel" style="width:100%;">Cancelar</button>
+        </div>
     </div>
 </div>
 
@@ -2062,6 +2082,16 @@
         document.querySelectorAll('.cat-btn').forEach(function(b) { b.classList.remove('active'); });
         if (filtroEspecial !== 'NINGUNO' && btn) btn.classList.add('active');
         filtrarInventario();
+    }
+
+    // Filtra la lista de alumnos del modal de Recepción por nombre/curso/RUT/N° lista
+    function filtrarSelectDevolver() {
+        var inp = document.getElementById('filtro_devolver_nombre');
+        var q = (inp ? inp.value : '').toLowerCase().trim();
+        document.querySelectorAll('#select_devolver_nombre option').forEach(function(op) {
+            var hay = (op.getAttribute('data-buscar') || '');
+            op.style.display = (q === '' || hay.indexOf(q) !== -1) ? '' : 'none';
+        });
     }
     function filtrarDecreto240(btn) {
         soloDecreto240 = !soloDecreto240;
