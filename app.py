@@ -3675,8 +3675,106 @@ def admin_exportar_completo():
 @app.route('/exportar_inventario')
 @login_requerido
 def exportar_inventario():
-    """Alias de /exportar_excel para mantener compatibilidad con la plantilla."""
-    return exportar_excel()
+    """Reporte de inventario profesional (Excel estilizado): portada con KPIs,
+    inventario detallado con totales y resumen por categoría con gráfico."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.chart import BarChart, Reference
+
+    if session.get('usuario_rol') == 'Admin':
+        items = Item.query.order_by(Item.especialidad_id, Item.categoria, Item.nombre).all()
+        alcance = "Todas las especialidades"
+    else:
+        items = Item.query.filter_by(
+            especialidad_id=session.get('usuario_especialidad_id')
+        ).order_by(Item.categoria, Item.nombre).all()
+        alcance = session.get('usuario_especialidad') or "Mi área"
+
+    stamp = datetime.now().strftime('%d/%m/%Y %H:%M')
+    total_stock = sum(i.cantidad_total or 0 for i in items)
+    valor_total = sum((i.precio_unitario or 0) * (i.cantidad_total or 0) for i in items)
+    n_bajo = sum(1 for i in items if (i.cantidad_disponible or 0) <= (i.cantidad_minima or 0))
+
+    filas = []
+    por_cat = {}
+    for i in items:
+        area = i.especialidad.nombre if i.especialidad else '—'
+        valor = round((i.precio_unitario or 0) * (i.cantidad_total or 0))
+        por_cat[i.categoria or 'Sin categoría'] = por_cat.get(i.categoria or 'Sin categoría', 0) + (i.cantidad_total or 0)
+        filas.append([i.codigo_barras, i.nombre, i.categoria, area, i.dependencia or '',
+                      i.cantidad_total, i.cantidad_disponible,
+                      (i.cantidad_total or 0) - (i.cantidad_disponible or 0),
+                      i.cantidad_minima, round(i.precio_unitario or 0), valor,
+                      i.ubicacion or '', 'SI' if i.decreto_240 else 'NO'])
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Portada'
+    ws.sheet_view.showGridLines = False
+    ws.merge_cells('A1:F1')
+    for col in 'ABCDEF':
+        ws[f'{col}1'].fill = PatternFill('solid', fgColor='065F46')
+    ws['A1'] = 'PanolERP · Reporte de Inventario'
+    ws['A1'].font = Font(size=20, bold=True, color='FFFFFF')
+    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[1].height = 40
+    ws.merge_cells('A2:F2')
+    ws['A2'] = f'{alcance} · Generado el {stamp}'
+    ws['A2'].font = Font(size=10, italic=True, color='64748B')
+    ws['A2'].alignment = Alignment(horizontal='center')
+    kpis = [('Ítems únicos', len(items), 'num', '2563EB'),
+            ('Stock total', total_stock, 'num', '16A34A'),
+            ('Valor inventario', valor_total, 'money', '0891B2'),
+            ('Bajo el mínimo', n_bajo, 'num', 'DC2626')]
+    for k, (lbl, val, tipo, color) in enumerate(kpis):
+        c0 = 1 + (k % 3) * 2
+        r0 = 4 + (k // 3) * 4
+        ws.merge_cells(start_row=r0, start_column=c0, end_row=r0, end_column=c0 + 1)
+        ws.merge_cells(start_row=r0 + 1, start_column=c0, end_row=r0 + 2, end_column=c0 + 1)
+        h = ws.cell(r0, c0, lbl)
+        h.fill = PatternFill('solid', fgColor=color); h.font = Font(size=10, bold=True, color='FFFFFF')
+        h.alignment = Alignment(horizontal='center', vertical='center')
+        v = ws.cell(r0 + 1, c0, val)
+        v.font = Font(size=22, bold=True, color=color)
+        v.alignment = Alignment(horizontal='center', vertical='center')
+        if tipo == 'money':
+            v.number_format = '"$" #,##0'
+    for col in 'ABCDEF':
+        ws.column_dimensions[col].width = 17
+
+    _estilizar_hoja(
+        wb.create_sheet('Inventario'),
+        'Inventario detallado', f'{alcance} · {stamp}',
+        ['Código', 'Nombre', 'Categoría', 'Área', 'Dependencia', 'Total', 'Disp.',
+         'En uso', 'Mín.', 'Costo unit. ($)', 'Costo total ($)', 'Ubicación', 'Dec. 240'],
+        filas or [['—'] * 13], money_cols=(10, 11), center_cols=(6, 7, 8, 9, 13),
+        total_row=['TOTAL', '', '', '', '', total_stock, '', '', '', '', round(valor_total), '', ''],
+        accent='065F46')
+
+    # Resumen por categoría + gráfico
+    rows_cat = sorted(por_cat.items(), key=lambda x: -x[1])
+    _estilizar_hoja(
+        wb.create_sheet('Por categoría'),
+        'Stock por categoría', f'{alcance} · {stamp}',
+        ['Categoría', 'Unidades'], [[c, n] for c, n in rows_cat],
+        center_cols=(2,), total_row=['TOTAL', total_stock], accent='065F46')
+    ws_cat = wb['Por categoría']
+    if rows_cat:
+        chart = BarChart(); chart.title = 'Stock por categoría'; chart.legend = None
+        chart.height = 8; chart.width = 16
+        data = Reference(ws_cat, min_col=2, min_row=4, max_row=4 + len(rows_cat))
+        cats = Reference(ws_cat, min_col=1, min_row=5, max_row=4 + len(rows_cat))
+        chart.add_data(data, titles_from_data=True); chart.set_categories(cats)
+        try:
+            chart.series[0].graphicalProperties.solidFill = '16A34A'
+        except Exception:
+            pass
+        ws_cat.add_chart(chart, 'D4')
+
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    fname = f"reporte_inventario_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
 # ========================================================================
@@ -4032,49 +4130,194 @@ def item_historial(item_id):
                            prestamos=prestamos, bajas=bajas, externos=externos)
 
 
+def _estilizar_hoja(ws, titulo, subtitulo, headers, rows, money_cols=(),
+                    center_cols=(), total_row=None, accent='1F3864'):
+    """Aplica un diseño profesional a una hoja: título con banda de color,
+    subtítulo, encabezados de color, filas zebra, formato moneda, totales,
+    anchos automáticos y panel congelado. Devuelve la fila donde terminan los datos."""
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    thin = Side(style='thin', color='D6DEEC')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    ncol = max(1, len(headers))
+    ws.sheet_view.showGridLines = False
+
+    # Banda de título
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncol)
+    for c in range(1, ncol + 1):
+        ws.cell(1, c).fill = PatternFill('solid', fgColor=accent)
+    t = ws.cell(1, 1, titulo)
+    t.font = Font(size=16, bold=True, color='FFFFFF')
+    t.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+    ws.row_dimensions[1].height = 30
+    # Subtítulo
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=ncol)
+    s = ws.cell(2, 1, subtitulo)
+    s.font = Font(size=9, italic=True, color='64748B')
+    s.alignment = Alignment(horizontal='left', indent=1)
+
+    hr = 4
+    for c, h in enumerate(headers, 1):
+        cell = ws.cell(hr, c, h)
+        cell.font = Font(size=10, bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor=accent)
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell.border = border
+    ws.row_dimensions[hr].height = 24
+
+    for i, row in enumerate(rows):
+        r = hr + 1 + i
+        for c, val in enumerate(row, 1):
+            cell = ws.cell(r, c, val)
+            cell.border = border
+            cell.font = Font(size=10, color='1E293B')
+            if i % 2:
+                cell.fill = PatternFill('solid', fgColor='F4F7FC')
+            if c in money_cols:
+                cell.number_format = '"$" #,##0'
+                cell.alignment = Alignment(horizontal='right')
+            elif c in center_cols:
+                cell.alignment = Alignment(horizontal='center')
+
+    fin = hr + len(rows)
+    if total_row:
+        r = fin + 1
+        for c, val in enumerate(total_row, 1):
+            cell = ws.cell(r, c, val)
+            cell.font = Font(size=11, bold=True, color='1F3864')
+            cell.fill = PatternFill('solid', fgColor='DBEAFE')
+            cell.border = border
+            if c in money_cols:
+                cell.number_format = '"$" #,##0'
+                cell.alignment = Alignment(horizontal='right')
+        fin = r
+
+    for c in range(1, ncol + 1):
+        vals = [len(str(headers[c - 1]))] + [len(str(row[c - 1])) for row in rows if c - 1 < len(row)]
+        ws.column_dimensions[get_column_letter(c)].width = min(46, max(11, max(vals) + 3))
+    ws.freeze_panes = ws.cell(hr + 1, 1)
+    return fin
+
+
 @app.route('/reporte_valorizacion')
 @login_requerido
 @pañolero_o_admin
 def reporte_valorizacion():
-    """Excel con 2 hojas: 'Valorización' (costo total del inventario por ítem y
-    resumen por área) y 'Decreto 240' (listado patrimonial de los bienes marcados
-    Dec. 240, para la auditoría MINEDUC). Admin/JefeTecnico ven todo; el resto,
-    solo su área."""
+    """Excel profesional: portada con KPIs y gráfico, valorización por ítem con
+    totales, y listado patrimonial Decreto 240. Admin/JefeTecnico ven todo."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.chart import BarChart, Reference
+
     if session.get('usuario_rol') in ('Admin', 'JefeTecnico'):
         items = Item.query.order_by(Item.especialidad_id, Item.nombre).all()
+        alcance = "Todas las especialidades"
     else:
         items = Item.query.filter_by(
-            especialidad_id=session.get('usuario_especialidad_id')
-        ).order_by(Item.nombre).all()
+            especialidad_id=session.get('usuario_especialidad_id')).order_by(Item.nombre).all()
+        alcance = session.get('usuario_especialidad') or "Mi área"
 
-    filas = []
     resumen = {}
+    filas_val, filas_240 = [], []
+    valor_total = 0
     for i in items:
         area = i.especialidad.nombre if i.especialidad else '—'
         valor = (i.precio_unitario or 0) * (i.cantidad_total or 0)
+        valor_total += valor
         resumen[area] = resumen.get(area, 0) + valor
-        filas.append({
-            'Área': area, 'Código': i.codigo_barras, 'Nombre': i.nombre,
-            'Categoría': i.categoria, 'Cantidad': i.cantidad_total,
-            'Costo unitario ($)': round(i.precio_unitario or 0),
-            'Costo total ($)': round(valor),
-            'Ubicación': i.ubicacion or '', 'Dec. 240': 'SI' if i.decreto_240 else 'NO',
-        })
-    df_val = pd.DataFrame(filas) if filas else pd.DataFrame([{'Aviso': 'Sin ítems.'}])
-    df_res = pd.DataFrame(
-        [{'Área': a, 'Valor total ($)': round(v)} for a, v in sorted(resumen.items(), key=lambda x: -x[1])]
-        + [{'Área': 'TOTAL GENERAL', 'Valor total ($)': round(sum(resumen.values()))}]
-    ) if resumen else pd.DataFrame([{'Aviso': 'Sin datos.'}])
+        fila = [area, i.codigo_barras, i.nombre, i.categoria, i.cantidad_total,
+                round(i.precio_unitario or 0), round(valor), i.ubicacion or '',
+                'SI' if i.decreto_240 else 'NO']
+        filas_val.append(fila)
+        if i.decreto_240:
+            filas_240.append([area, i.codigo_barras, i.nombre, i.categoria,
+                              i.cantidad_total, round(valor), i.ubicacion or '',
+                              i.numero_serie or '',
+                              i.fecha_adquisicion.isoformat() if i.fecha_adquisicion else ''])
 
-    d240 = [f for f in filas if f['Dec. 240'] == 'SI']
-    df_240 = pd.DataFrame(d240) if d240 else pd.DataFrame([{'Aviso': 'No hay bienes marcados con Decreto 240.'}])
+    stamp = datetime.now().strftime('%d/%m/%Y %H:%M')
+    wb = Workbook()
 
-    buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine='openpyxl') as w:
-        df_res.to_excel(w, sheet_name='Resumen por área', index=False)
-        df_val.to_excel(w, sheet_name='Valorización', index=False)
-        df_240.to_excel(w, sheet_name='Decreto 240', index=False)
-    buf.seek(0)
+    # ---- Hoja 1: PORTADA ----
+    ws = wb.active
+    ws.title = 'Portada'
+    ws.sheet_view.showGridLines = False
+    ws.merge_cells('A1:F1')
+    for col in 'ABCDEF':
+        ws[f'{col}1'].fill = PatternFill('solid', fgColor='1F3864')
+    ws['A1'] = 'PanolERP · Valorización de Inventario'
+    ws['A1'].font = Font(size=20, bold=True, color='FFFFFF')
+    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[1].height = 40
+    ws.merge_cells('A2:F2')
+    ws['A2'] = f'{alcance} · Generado el {stamp}'
+    ws['A2'].font = Font(size=10, italic=True, color='64748B')
+    ws['A2'].alignment = Alignment(horizontal='center')
+
+    # KPIs
+    kpis = [('Valor total del inventario', valor_total, 'money', '2563EB'),
+            ('Ítems únicos', len(items), 'num', '16A34A'),
+            ('Bienes Decreto 240', len(filas_240), 'num', 'B45309')]
+    r0 = 4
+    for k, (lbl, val, tipo, color) in enumerate(kpis):
+        c0 = 1 + k * 2
+        ws.merge_cells(start_row=r0, start_column=c0, end_row=r0, end_column=c0 + 1)
+        ws.merge_cells(start_row=r0 + 1, start_column=c0, end_row=r0 + 2, end_column=c0 + 1)
+        h = ws.cell(r0, c0, lbl)
+        h.fill = PatternFill('solid', fgColor=color); h.font = Font(size=10, bold=True, color='FFFFFF')
+        h.alignment = Alignment(horizontal='center', vertical='center')
+        v = ws.cell(r0 + 1, c0, val)
+        v.font = Font(size=22, bold=True, color=color)
+        v.alignment = Alignment(horizontal='center', vertical='center')
+        if tipo == 'money':
+            v.number_format = '"$" #,##0'
+        ws.cell(r0, c0).border = None
+    for col in 'ABCDEF':
+        ws.column_dimensions[col].width = 17
+    ws.row_dimensions[r0 + 1].height = 34
+
+    # Tabla resumen por área + gráfico
+    res_sorted = sorted(resumen.items(), key=lambda x: -x[1])
+    rows_res = [[a, round(v)] for a, v in res_sorted]
+    fin = _estilizar_hoja(
+        ws if False else wb.create_sheet('Resumen por área'),
+        'Valor del inventario por área', f'{alcance} · {stamp}',
+        ['Área', 'Valor total ($)'], rows_res, money_cols=(2,),
+        total_row=['TOTAL GENERAL', round(valor_total)])
+    ws_res = wb['Resumen por área']
+    if rows_res:
+        chart = BarChart(); chart.type = 'bar'; chart.title = 'Valor por área ($)'
+        chart.height = 8; chart.width = 20; chart.legend = None
+        data = Reference(ws_res, min_col=2, min_row=4, max_row=4 + len(rows_res))
+        cats = Reference(ws_res, min_col=1, min_row=5, max_row=4 + len(rows_res))
+        chart.add_data(data, titles_from_data=True); chart.set_categories(cats)
+        try:
+            chart.series[0].graphicalProperties.solidFill = '2563EB'
+        except Exception:
+            pass
+        ws_res.add_chart(chart, f'D4')
+
+    # Hoja Valorización
+    _estilizar_hoja(
+        wb.create_sheet('Valorización'),
+        'Valorización detallada del inventario', f'{alcance} · {stamp}',
+        ['Área', 'Código', 'Nombre', 'Categoría', 'Cantidad', 'Costo unit. ($)',
+         'Costo total ($)', 'Ubicación', 'Dec. 240'],
+        filas_val or [['—'] * 9], money_cols=(6, 7), center_cols=(5, 9),
+        total_row=['TOTAL', '', '', '', sum(i.cantidad_total or 0 for i in items), '',
+                   round(valor_total), '', ''])
+
+    # Hoja Decreto 240
+    _estilizar_hoja(
+        wb.create_sheet('Decreto 240'),
+        'Listado patrimonial · Decreto Supremo N° 240',
+        'Bienes sujetos a auditoría patrimonial MINEDUC · ' + stamp,
+        ['Área', 'Código', 'Nombre', 'Categoría', 'Cantidad', 'Valor ($)',
+         'Ubicación', 'N° Serie', 'Fecha adquisición'],
+        filas_240 or [['No hay bienes marcados con Decreto 240.', '', '', '', '', '', '', '', '']],
+        money_cols=(6,), center_cols=(5,), accent='B45309')
+
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     fname = f"valorizacion_inventario_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
     return send_file(buf, as_attachment=True, download_name=fname,
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
