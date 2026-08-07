@@ -2851,6 +2851,24 @@ def exportar_excel():
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine='openpyxl') as writer:
         df.to_excel(writer, sheet_name='Inventario', index=False)
+        # Estilo ligero manteniendo encabezados en la fila 1 (para re-importar):
+        # banda de color, filtros automáticos, panel congelado y anchos.
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+        ws = writer.book['Inventario']
+        ws.sheet_view.showGridLines = False
+        ncol = len(df.columns)
+        for c in range(1, ncol + 1):
+            cell = ws.cell(1, c)
+            cell.font = Font(size=10, bold=True, color='FFFFFF')
+            cell.fill = PatternFill('solid', fgColor='1F3864')
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            w = max([len(str(df.columns[c - 1]))] + [len(str(v)) for v in df.iloc[:, c - 1].tolist()[:200]])
+            ws.column_dimensions[get_column_letter(c)].width = min(40, max(11, w + 2))
+        ws.row_dimensions[1].height = 24
+        ws.freeze_panes = 'A2'
+        if len(df):
+            ws.auto_filter.ref = f"A1:{get_column_letter(ncol)}{len(df) + 1}"
     buf.seek(0)
     fname = f"inventario_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
     return send_file(buf, as_attachment=True, download_name=fname,
@@ -3630,6 +3648,7 @@ def admin_reporte_mermas():
             # Nombre de hoja máx 31 chars en Excel
             sheet = (esp.nombre[:28] + '...') if len(esp.nombre) > 31 else esp.nombre
             df.to_excel(writer, sheet_name=sheet, index=False)
+            _estilo_pandas_ws(writer.book[sheet], accent='B45309')
             creadas += 1
 
         if creadas == 0:
@@ -3665,6 +3684,7 @@ def admin_exportar_completo():
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine='openpyxl') as writer:
         df.to_excel(writer, sheet_name='Consolidado', index=False)
+        _estilo_pandas_ws(writer.book['Consolidado'], accent='065F46')
     buf.seek(0)
     fname = f"inventario_consolidado_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
     return send_file(buf, as_attachment=True, download_name=fname,
@@ -4105,6 +4125,11 @@ def descargar_respaldo():
             'cantidad': r.cantidad, 'motivo': r.motivo, 'origen': r.origen,
             'area': r.especialidad.nombre if r.especialidad else '',
         } for r in RegistroBaja.query.all()] or [{'Aviso': 'sin registros'}]).to_excel(w, 'Bajas y Mermas', index=False)
+        for _hoja in ('Items', 'Estudiantes', 'Usuarios (sin claves)', 'Prestamos', 'Bajas y Mermas'):
+            try:
+                _estilo_pandas_ws(w.book[_hoja], accent='475569')
+            except Exception:
+                pass
     buf.seek(0)
     fname = f"respaldo_panolerp_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
     return send_file(buf, as_attachment=True, download_name=fname,
@@ -4131,7 +4156,7 @@ def item_historial(item_id):
 
 
 def _estilizar_hoja(ws, titulo, subtitulo, headers, rows, money_cols=(),
-                    center_cols=(), total_row=None, accent='1F3864'):
+                    center_cols=(), total_row=None, accent='1F3864', autofilter=True):
     """Aplica un diseño profesional a una hoja: título con banda de color,
     subtítulo, encabezados de color, filas zebra, formato moneda, totales,
     anchos automáticos y panel congelado. Devuelve la fila donde terminan los datos."""
@@ -4196,7 +4221,30 @@ def _estilizar_hoja(ws, titulo, subtitulo, headers, rows, money_cols=(),
         vals = [len(str(headers[c - 1]))] + [len(str(row[c - 1])) for row in rows if c - 1 < len(row)]
         ws.column_dimensions[get_column_letter(c)].width = min(46, max(11, max(vals) + 3))
     ws.freeze_panes = ws.cell(hr + 1, 1)
+    # Filtros automáticos sobre encabezados + datos (no incluye la fila de total)
+    if autofilter and rows:
+        ws.auto_filter.ref = f"A{hr}:{get_column_letter(ncol)}{hr + len(rows)}"
     return fin
+
+
+def _estilo_pandas_ws(ws, accent='1F3864'):
+    """Da estilo (banda de color en la fila 1, filtros, panel congelado, anchos)
+    a una hoja YA escrita por pandas, dejando los encabezados en la fila 1."""
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+    ws.sheet_view.showGridLines = False
+    ncol, nrow = ws.max_column, ws.max_row
+    for c in range(1, ncol + 1):
+        cell = ws.cell(1, c)
+        cell.font = Font(size=10, bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor=accent)
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        maxlen = max([len(str(ws.cell(r, c).value or '')) for r in range(1, min(nrow, 150) + 1)] or [10])
+        ws.column_dimensions[get_column_letter(c)].width = min(42, max(11, maxlen + 2))
+    ws.row_dimensions[1].height = 22
+    ws.freeze_panes = 'A2'
+    if nrow > 1:
+        ws.auto_filter.ref = f"A1:{get_column_letter(ncol)}{nrow}"
 
 
 @app.route('/reporte_valorizacion')
@@ -4488,26 +4536,98 @@ def _nomina_registros(origenes):
     return q.order_by(RegistroBaja.fecha.desc()).all()
 
 
-def _exportar_nomina(registros, hoja, fname):
-    filas = []
+def _exportar_nomina(registros, hoja, fname, accent='991B1B'):
+    """Reporte estilizado de mermas/bajas: portada con KPIs, detalle filtrable,
+    resumen por ítem (gráfico) y resumen por mes (gráfico)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.chart import BarChart, Reference
+    from collections import defaultdict
+
+    filas, por_item, por_mes = [], defaultdict(int), defaultdict(int)
+    total_unid = 0
+    MESES_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
     for r in registros:
-        filas.append({
-            'Fecha': r.fecha.strftime('%d/%m/%Y %H:%M') if r.fecha else '',
-            'Ítem': r.item_nombre or (r.item.nombre if r.item else ''),
-            'Cantidad': r.cantidad,
-            'Motivo': r.motivo or '',
-            'Origen': 'Merma de práctica' if r.origen == 'merma_practica' else 'Baja manual',
-            'Práctica': r.nombre_practica or '',
-            'Área': r.especialidad.nombre if r.especialidad else '',
-            'Registrado por': r.usuario_nombre or '',
-        })
-    if not filas:
-        filas = [{'Aviso': 'No hay registros para exportar todavía.'}]
-    df = pd.DataFrame(filas)
-    buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine='openpyxl') as w:
-        df.to_excel(w, sheet_name=hoja[:31], index=False)
-    buf.seek(0)
+        nom = r.item_nombre or (r.item.nombre if r.item else '')
+        total_unid += (r.cantidad or 0)
+        por_item[nom] += (r.cantidad or 0)
+        if r.fecha:
+            por_mes[(r.fecha.year, r.fecha.month)] += (r.cantidad or 0)
+        filas.append([
+            r.fecha.strftime('%d/%m/%Y %H:%M') if r.fecha else '', nom, r.cantidad,
+            r.motivo or '', 'Merma de práctica' if r.origen == 'merma_practica' else 'Baja manual',
+            r.nombre_practica or '', r.especialidad.nombre if r.especialidad else '',
+            r.usuario_nombre or ''])
+
+    stamp = datetime.now().strftime('%d/%m/%Y %H:%M')
+    n_merma = sum(1 for r in registros if r.origen == 'merma_practica')
+    n_baja = len(registros) - n_merma
+    wb = Workbook()
+
+    ws = wb.active
+    ws.title = 'Portada'
+    ws.sheet_view.showGridLines = False
+    ws.merge_cells('A1:F1')
+    for col in 'ABCDEF':
+        ws[f'{col}1'].fill = PatternFill('solid', fgColor=accent)
+    ws['A1'] = f'PanolERP · Nómina de {hoja}'
+    ws['A1'].font = Font(size=20, bold=True, color='FFFFFF')
+    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[1].height = 40
+    ws.merge_cells('A2:F2')
+    ws['A2'] = f'Generado el {stamp}'
+    ws['A2'].font = Font(size=10, italic=True, color='64748B')
+    ws['A2'].alignment = Alignment(horizontal='center')
+    for k, (lbl, val, color) in enumerate([
+            ('Registros', len(registros), '2563EB'),
+            ('Unidades totales', total_unid, 'B45309'),
+            ('Mermas / Bajas', f'{n_merma} / {n_baja}', '9333EA')]):
+        c0 = 1 + k * 2
+        ws.merge_cells(start_row=4, start_column=c0, end_row=4, end_column=c0 + 1)
+        ws.merge_cells(start_row=5, start_column=c0, end_row=6, end_column=c0 + 1)
+        h = ws.cell(4, c0, lbl); h.fill = PatternFill('solid', fgColor=color)
+        h.font = Font(size=10, bold=True, color='FFFFFF'); h.alignment = Alignment(horizontal='center', vertical='center')
+        v = ws.cell(5, c0, val); v.font = Font(size=22, bold=True, color=color)
+        v.alignment = Alignment(horizontal='center', vertical='center')
+    for col in 'ABCDEF':
+        ws.column_dimensions[col].width = 17
+
+    _estilizar_hoja(
+        wb.create_sheet('Detalle'), f'Detalle de {hoja.lower()}', f'{stamp}',
+        ['Fecha', 'Ítem', 'Cantidad', 'Motivo', 'Origen', 'Práctica', 'Área', 'Registrado por'],
+        filas or [['—'] * 8], center_cols=(3,), accent=accent)
+
+    # Resumen por ítem (top 15) + gráfico
+    top = sorted(por_item.items(), key=lambda x: -x[1])[:15]
+    _estilizar_hoja(wb.create_sheet('Por ítem'), f'{hoja} por ítem (top 15)', stamp,
+                    ['Ítem', 'Unidades'], [[k, v] for k, v in top], center_cols=(2,),
+                    total_row=['TOTAL', total_unid], accent=accent, autofilter=False)
+    wsi = wb['Por ítem']
+    if top:
+        ch = BarChart(); ch.type = 'bar'; ch.legend = None; ch.title = f'{hoja} por ítem'
+        ch.height = 9; ch.width = 18
+        ch.add_data(Reference(wsi, min_col=2, min_row=4, max_row=4 + len(top)), titles_from_data=True)
+        ch.set_categories(Reference(wsi, min_col=1, min_row=5, max_row=4 + len(top)))
+        try: ch.series[0].graphicalProperties.solidFill = accent
+        except Exception: pass
+        wsi.add_chart(ch, 'D4')
+
+    # Resumen por mes + gráfico
+    mk = sorted(por_mes.keys())
+    filas_mes = [[f"{MESES_ES[m-1]} {y}", por_mes[(y, m)]] for (y, m) in mk]
+    _estilizar_hoja(wb.create_sheet('Por mes'), f'{hoja} por mes', stamp,
+                    ['Mes', 'Unidades'], filas_mes or [['—', 0]], center_cols=(2,),
+                    accent=accent, autofilter=False)
+    wsm = wb['Por mes']
+    if filas_mes:
+        ch = BarChart(); ch.legend = None; ch.title = f'{hoja} por mes'; ch.height = 8; ch.width = 16
+        ch.add_data(Reference(wsm, min_col=2, min_row=4, max_row=4 + len(filas_mes)), titles_from_data=True)
+        ch.set_categories(Reference(wsm, min_col=1, min_row=5, max_row=4 + len(filas_mes)))
+        try: ch.series[0].graphicalProperties.solidFill = '9333EA'
+        except Exception: pass
+        wsm.add_chart(ch, 'D4')
+
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return send_file(buf, as_attachment=True, download_name=fname,
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
@@ -4519,7 +4639,7 @@ def descargar_nomina_mermas():
     """Nómina de MERMAS (declaradas en cierres de práctica)."""
     regs = _nomina_registros(['merma_practica'])
     fname = f"nomina_mermas_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
-    return _exportar_nomina(regs, 'Mermas', fname)
+    return _exportar_nomina(regs, 'Mermas', fname, accent='B45309')
 
 
 @app.route('/descargar_nomina_bajas')
@@ -4530,7 +4650,7 @@ def descargar_nomina_bajas():
     tanto las bajas manuales como las mermas de práctica."""
     regs = _nomina_registros(['merma_practica', 'baja_manual'])
     fname = f"nomina_bajas_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
-    return _exportar_nomina(regs, 'Bajas', fname)
+    return _exportar_nomina(regs, 'Bajas', fname, accent='7F1D1D')
 
 
 @app.route('/admin/buscar')
