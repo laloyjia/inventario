@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Gerencial — PanolERP</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root { --primary:#1e3a8a; --secondary:#64748b; --bg:#f1f5f9; }
+        * { box-sizing:border-box; }
+        body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--bg); color:#0f172a; margin:0; padding:22px; }
+        .container { max-width:1240px; margin:0 auto; }
+        .top { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+        h1 { margin:0; font-size:1.5rem; color:var(--primary); }
+        .btn { padding:10px 18px; border:none; border-radius:8px; cursor:pointer; font-weight:bold; color:white; display:inline-flex; align-items:center; gap:8px; text-decoration:none; }
+        .btn-secondary { background:var(--secondary); }
+        .kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:14px; margin-bottom:20px; }
+        .kpi { background:white; border-radius:14px; padding:18px; box-shadow:0 3px 10px rgba(0,0,0,0.06); display:flex; align-items:center; gap:14px; }
+        .kpi .ic { width:46px; height:46px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:1.3rem; flex-shrink:0; }
+        .kpi .n { font-size:1.5rem; font-weight:800; line-height:1; }
+        .kpi .l { font-size:0.72rem; color:var(--secondary); text-transform:uppercase; font-weight:700; margin-top:4px; }
+        .grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:16px; }
+        .card { background:white; border-radius:14px; padding:18px; box-shadow:0 3px 10px rgba(0,0,0,0.06); }
+        .card h2 { margin:0 0 14px; font-size:1rem; color:var(--primary); display:flex; align-items:center; gap:8px; }
+        .card-wide { grid-column:1 / -1; }
+        canvas { max-height:300px; }
+        @media (max-width:820px){ .grid { grid-template-columns:1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="top">
+            <h1><i class="fas fa-chart-line"></i> Panel Gerencial <span style="font-size:0.8rem; color:var(--secondary); font-weight:600;">— vista Administrador / Jefe Técnico</span></h1>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <a href="/reporte_valorizacion" class="btn" style="background:#0891b2;"><i class="fas fa-coins"></i> Valorización + Dec. 240</a>
+                <a href="/exportar_inventario" class="btn" style="background:#065f46;"><i class="fas fa-file-invoice-dollar"></i> Reporte contable</a>
+                <a href="/admin/respaldo" class="btn" style="background:#475569;"><i class="fas fa-database"></i> Respaldo</a>
+                <form action="/admin/enviar_aviso_stock" method="POST" style="margin:0;">
+                    <button type="submit" class="btn" style="background:#b45309;"><i class="fas fa-envelope"></i> Avisar stock bajo</button>
+                </form>
+                <a href="/" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Volver</a>
+            </div>
+        </div>
+
+        <div class="kpis">
+            <div class="kpi"><div class="ic" style="background:#eff6ff; color:#2563eb;"><i class="fas fa-boxes"></i></div><div><div class="n" style="color:#2563eb;">{{ total_items }}</div><div class="l">Ítems únicos</div></div></div>
+            <div class="kpi"><div class="ic" style="background:#f0fdf4; color:#16a34a;"><i class="fas fa-cubes"></i></div><div><div class="n" style="color:#16a34a;">{{ total_stock }}</div><div class="l">Stock total</div></div></div>
+            <div class="kpi"><div class="ic" style="background:#ecfeff; color:#0891b2;"><i class="fas fa-coins"></i></div><div><div class="n" style="color:#0891b2;" id="kpiValor">—</div><div class="l">Valor inventario</div></div></div>
+            <div class="kpi"><div class="ic" style="background:#fffbeb; color:#d97706;"><i class="fas fa-hand-holding"></i></div><div><div class="n" style="color:#d97706;">{{ prestamos_activos }}</div><div class="l">Préstamos activos</div></div></div>
+            <div class="kpi"><div class="ic" style="background:#fef2f2; color:#dc2626;"><i class="fas fa-triangle-exclamation"></i></div><div><div class="n" style="color:#dc2626;">{{ n_stock_bajo }}</div><div class="l">Bajo el mínimo</div></div></div>
+            <div class="kpi"><div class="ic" style="background:#faf5ff; color:#9333ea;"><i class="fas fa-recycle"></i></div><div><div class="n" style="color:#9333ea;">{{ total_mermado }}</div><div class="l">Merma acumulada</div></div></div>
+        </div>
+
+        <div class="grid">
+            <div class="card card-wide"><h2><i class="fas fa-recycle"></i> Consumo y mermas por mes</h2><canvas id="chartMeses"></canvas></div>
+            <div class="card"><h2><i class="fas fa-fire"></i> Top 10 insumos más gastados</h2><canvas id="chartTop"></canvas></div>
+            <div class="card"><h2><i class="fas fa-coins"></i> Valor del inventario por área</h2><canvas id="chartValor"></canvas></div>
+            <div class="card card-wide"><h2><i class="fas fa-layer-group"></i> Distribución de ítems por categoría</h2><canvas id="chartCat" style="max-height:260px;"></canvas></div>
+        </div>
+        <p style="text-align:center; color:var(--secondary); font-size:0.78rem; margin-top:18px;">PanolERP · Panel gerencial — datos en vivo del sistema.</p>
+    </div>
+
+    <script>
+        const clp = n => '$ ' + (n||0).toLocaleString('es-CL');
+        document.getElementById('kpiValor').textContent = clp({{ valor_total }});
+        const AZ = '#2563eb', VE='#16a34a', AM='#f59e0b', RO='#dc2626', MO='#9333ea', CY='#0891b2';
+
+        new Chart(document.getElementById('chartMeses'), {
+            type: 'line',
+            data: { labels: {{ meses_labels|tojson }},
+                datasets: [{ label:'Unidades consumidas/mermadas', data: {{ meses_data|tojson }},
+                    borderColor: MO, backgroundColor:'rgba(147,51,234,0.12)', fill:true, tension:0.3, pointRadius:4 }] },
+            options: { plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, ticks:{precision:0}}} }
+        });
+        new Chart(document.getElementById('chartTop'), {
+            type: 'bar',
+            data: { labels: {{ top_labels|tojson }},
+                datasets:[{ label:'Unidades', data: {{ top_data|tojson }}, backgroundColor: AM }] },
+            options: { indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true, ticks:{precision:0}}} }
+        });
+        new Chart(document.getElementById('chartValor'), {
+            type: 'bar',
+            data: { labels: {{ valor_area_labels|tojson }},
+                datasets:[{ label:'Valor ($)', data: {{ valor_area_data|tojson }}, backgroundColor: VE }] },
+            options: { plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>clp(c.raw)}}},
+                scales:{y:{beginAtZero:true, ticks:{callback:v=>clp(v)}}} }
+        });
+        new Chart(document.getElementById('chartCat'), {
+            type: 'doughnut',
+            data: { labels: {{ cat_labels|tojson }},
+                datasets:[{ data: {{ cat_data|tojson }}, backgroundColor:[AZ,CY,VE,AM,'#94a3b8'] }] },
+            options: { plugins:{legend:{position:'right'}} }
+        });
+    </script>
+</body>
+</html>

@@ -240,7 +240,7 @@
         <button class="tab-link active" onclick="abrirModulo(event, 'mod-fisico')"><i class="fas fa-boxes"></i> 1. Inventario Físico</button>
         <button class="tab-link" onclick="abrirModulo(event, 'mod-activos')"><i class="fas fa-hand-holding"></i> 2. Préstamos Activos</button>
         <button class="tab-link" onclick="abrirModulo(event, 'mod-merma')"><i class="fas fa-chart-pie"></i> 3. Merma por Práctica</button>
-        {% if session['usuario_rol'] in ['Administrador', 'Profesor'] %}
+        {% if session['usuario_rol'] in ['Admin', 'Profesor'] %}
         <button class="tab-link" onclick="abrirModulo(event, 'mod-admin')"><i class="fas fa-users-cog"></i> 4. Administración</button>
         {% endif %}
         <button class="tab-link" onclick="abrirModulo(event, 'mod-varios')"><i class="fas fa-folder-open"></i> 4. Varios</button>
@@ -252,6 +252,36 @@
             <button onclick="abrirModalSalida()" class="action-btn action-btn-success"><i class="fas fa-arrow-circle-up"></i> Sacar Cosas (Préstamo)</button>
             <button onclick="abrirModalDevolucion()" class="action-btn action-btn-warning"><i class="fas fa-arrow-circle-down"></i> Devolver Cosas</button>
         </div>
+
+        {# ===== PANEL DE ALERTAS ===== #}
+        {% if n_stock_bajo or (es_grafica and (n_por_vencer or n_caducados)) %}
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:18px;">
+            {% if n_stock_bajo %}
+            <div onclick="activarFiltroDesdeAlerta('STOCKBAJO')" title="Ver ítems bajo el mínimo"
+                 style="flex:1; min-width:210px; cursor:pointer; background:#fef2f2; border:1px solid #fecaca; border-left:5px solid #ef4444; border-radius:10px; padding:12px 16px; display:flex; align-items:center; gap:12px;">
+                <i class="fas fa-triangle-exclamation" style="color:#ef4444; font-size:1.5rem;"></i>
+                <div><div style="font-size:1.5rem; font-weight:800; color:#991b1b; line-height:1;">{{ n_stock_bajo }}</div>
+                <div style="font-size:0.75rem; color:#991b1b; text-transform:uppercase; font-weight:700;">Ítems bajo el mínimo</div></div>
+            </div>
+            {% endif %}
+            {% if es_grafica and n_por_vencer %}
+            <div onclick="activarFiltroDesdeAlerta('PORVENCER')" title="Ver ítems que caducan pronto"
+                 style="flex:1; min-width:210px; cursor:pointer; background:#fffbeb; border:1px solid #fde68a; border-left:5px solid #f59e0b; border-radius:10px; padding:12px 16px; display:flex; align-items:center; gap:12px;">
+                <i class="fas fa-hourglass-half" style="color:#f59e0b; font-size:1.5rem;"></i>
+                <div><div style="font-size:1.5rem; font-weight:800; color:#92400e; line-height:1;">{{ n_por_vencer }}</div>
+                <div style="font-size:0.75rem; color:#92400e; text-transform:uppercase; font-weight:700;">Por vencer (30 días)</div></div>
+            </div>
+            {% endif %}
+            {% if es_grafica and n_caducados %}
+            <div onclick="activarFiltroDesdeAlerta('CADUCADO')" title="Ver ítems caducados"
+                 style="flex:1; min-width:210px; cursor:pointer; background:#fef2f2; border:1px solid #fecaca; border-left:5px solid #b91c1c; border-radius:10px; padding:12px 16px; display:flex; align-items:center; gap:12px;">
+                <i class="fas fa-hourglass-end" style="color:#b91c1c; font-size:1.5rem;"></i>
+                <div><div style="font-size:1.5rem; font-weight:800; color:#7f1d1d; line-height:1;">{{ n_caducados }}</div>
+                <div style="font-size:0.75rem; color:#7f1d1d; text-transform:uppercase; font-weight:700;">Caducados</div></div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
 
         {# ===== GRID: CURSOS A CARGO + PAÑOLEROS DEL DÍA — solo en PANOL_TP ===== #}
         {% if tipo_area == 'PANOL_TP' %}
@@ -685,6 +715,11 @@
                         title="Mostrar solo Elementos CEST">
                     <i class="fas fa-star"></i> Solo CEST
                 </button>
+                <button class="cat-btn" onclick="filtrarEspecial(this, 'PORVENCER')"
+                        style="background:#fffbeb; color:#92400e; border:1px solid #f59e0b; font-weight:700;"
+                        title="Ítems que caducan dentro de 30 días">
+                    <i class="fas fa-hourglass-half"></i> Por vencer
+                </button>
                 <button class="cat-btn" onclick="filtrarEspecial(this, 'CADUCADO')"
                         style="background:#fef2f2; color:#991b1b; border:1px solid #ef4444; font-weight:700;"
                         title="Ítems con fecha de caducidad vencida">
@@ -797,7 +832,7 @@
                         {% for item in items %}
                         {% set d = item.porcentaje_desgaste %}
                         {% set d_color = '#10b981' if d is not none and d < 50 else ('#eab308' if d is not none and d < 80 else '#dc2626') %}
-                        <tr class="fila-item" data-categoria="{{ item.categoria }}" data-decreto240="{{ '1' if item.decreto_240 else '0' }}" data-stockbajo="{{ '1' if item.cantidad_disponible <= item.cantidad_minima else '0' }}" data-enuso="{{ '1' if (item.cantidad_total - item.cantidad_disponible) > 0 else '0' }}" data-dependencia="{{ (item.dependencia or '')|lower }}" data-cest="{{ '1' if item.es_cest else '0' }}" data-caducado="{{ '1' if (item.fecha_caducidad and item.fecha_caducidad < hoy) else '0' }}">
+                        <tr class="fila-item" data-categoria="{{ item.categoria }}" data-decreto240="{{ '1' if item.decreto_240 else '0' }}" data-stockbajo="{{ '1' if item.cantidad_disponible <= item.cantidad_minima else '0' }}" data-enuso="{{ '1' if (item.cantidad_total - item.cantidad_disponible) > 0 else '0' }}" data-dependencia="{{ (item.dependencia or '')|lower }}" data-cest="{{ '1' if item.es_cest else '0' }}" data-caducado="{{ '1' if (item.fecha_caducidad and item.fecha_caducidad < hoy) else '0' }}" data-porvencer="{{ '1' if (item.fecha_caducidad and item.fecha_caducidad >= hoy and (item.fecha_caducidad - hoy).days <= 30) else '0' }}">
                             {% set _uso_cell %}
                                 {% if d is not none %}
                                     <div style="background:#f3f4f6; border-radius:8px; height:10px; width:60px; margin:0 auto; overflow:hidden;">
@@ -905,12 +940,16 @@
                             <td>
                                 <div style="display:flex; gap:5px; flex-wrap:wrap;">
                                     <button type="button" class="btn-edit" title="Editar"
-                                        onclick="abrirModalEditar({{ item.id }}, '{{ item.nombre | replace("'", "\\'") }}', '{{ item.categoria }}', '{{ item.imagen_url or '' }}', '{{ item.ubicacion or '' }}', '{{ (item.descripcion or '') | replace("'", "\\'") | replace('\n', ' ') }}', {{ item.precio_unitario or 0 }}, {{ item.desgaste or 0 }}, '{{ item.fecha_adquisicion.isoformat() if item.fecha_adquisicion else '' }}')">
+                                        onclick="abrirModalEditar({{ item.id }}, '{{ item.nombre | replace("'", "\\'") }}', '{{ item.categoria }}', '{{ item.imagen_url or '' }}', '{{ item.ubicacion or '' }}', '{{ (item.descripcion or '') | replace("'", "\\'") | replace('\n', ' ') }}', {{ item.precio_unitario or 0 }}, {{ item.desgaste or 0 }}, '{{ item.fecha_adquisicion.isoformat() if item.fecha_adquisicion else '' }}', {dependencia: '{{ (item.dependencia or '') | replace("'", "\\'") }}', estado: '{{ (item.estado or '') | replace("'", "\\'") }}', serie: '{{ (item.numero_serie or '') | replace("'", "\\'") }}', dec240: '{{ '1' if item.decreto_240 else '0' }}', cest: '{{ '1' if item.es_cest else '0' }}', caducidad: '{{ item.fecha_caducidad.isoformat() if item.fecha_caducidad else '' }}'})">
                                         <i class="fas fa-pencil-alt"></i>
                                     </button>
                                     <a href="/etiqueta/{{ item.id }}" target="_blank" title="Imprimir etiqueta con código de barras"
                                        style="background: #6366f1; color: white; padding: 6px 8px; border-radius: 4px; text-decoration: none; display: inline-flex; align-items: center;">
                                         <i class="fas fa-barcode"></i>
+                                    </a>
+                                    <a href="/item/{{ item.id }}/historial" title="Ver trazabilidad (historial del ítem)"
+                                       style="background: #0ea5e9; color: white; padding: 6px 8px; border-radius: 4px; text-decoration: none; display: inline-flex; align-items: center;">
+                                        <i class="fas fa-timeline"></i>
                                     </a>
                                     <form action="/eliminar/{{ item.id }}" method="POST" onsubmit="return confirm('¿Eliminar {{ item.nombre }}? Esta acción no se puede deshacer.');" style="display:inline;">
                                         <button type="submit" class="btn-delete" title="Eliminar"><i class="fas fa-trash"></i></button>
@@ -1886,6 +1925,30 @@
             <label>Fecha de adquisición</label>
             <input type="date" name="fecha_adquisicion" id="edit_fecha_adq" style="margin-bottom: 12px;">
 
+            <input type="hidden" name="form_editar_completo" value="1">
+            <label>Dependencia</label>
+            <input type="text" name="dependencia" id="edit_dependencia" placeholder="Taller, oficina, sede..." style="margin-bottom: 12px;">
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                <div><label>Estado</label><input type="text" name="estado" id="edit_estado" placeholder="Nuevo / Bueno / Regular"></div>
+                <div><label>N° Serie</label><input type="text" name="numero_serie" id="edit_serie" placeholder="Opcional"></div>
+            </div>
+
+            <label style="display:flex; align-items:center; gap:8px; font-weight:600; color:#B45309; cursor:pointer; margin-bottom:12px;">
+                <input type="checkbox" name="decreto_240" id="edit_dec240" value="1" style="width:16px; height:16px; accent-color:#B45309;">
+                Sujeto a Decreto 240
+            </label>
+
+            {% if es_grafica %}
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; align-items:end;">
+                <div><label>Fecha de caducidad</label><input type="date" name="fecha_caducidad" id="edit_caducidad"></div>
+                <label style="display:flex; align-items:center; gap:8px; font-weight:600; color:#7c3aed; cursor:pointer; padding-bottom:8px;">
+                    <input type="checkbox" name="es_cest" id="edit_cest" value="1" style="width:16px; height:16px; accent-color:#7c3aed;">
+                    Elemento CEST
+                </label>
+            </div>
+            {% endif %}
+
             <label>Ajuste de stock (+ para agregar, - para restar)</label>
             <input type="number" name="ajuste_cantidad" id="edit_ajuste" value="0" style="margin-bottom: 20px;">
 
@@ -2130,12 +2193,23 @@
             else if (filtroEspecial === 'ENUSO') matchEsp = enUso;
             else if (filtroEspecial === 'DISPONIBLE') matchEsp = !stockBajo;
             else if (filtroEspecial === 'CADUCADO') matchEsp = caducado;
+            else if (filtroEspecial === 'PORVENCER') matchEsp = tr.getAttribute('data-porvencer') === '1';
             const dep = (tr.getAttribute('data-dependencia') || '');
             const matchDep = (dependenciaActiva === '' || dep === dependenciaActiva);
             const esCest = tr.getAttribute('data-cest') === '1';
             const matchCest = (!soloCest || esCest);
             tr.style.display = (matchCat && matchTexto && matchDec && matchEsp && matchDep && matchCest) ? '' : 'none';
         });
+    }
+    // Desde una tarjeta de alerta: activa el filtro y baja a la tabla
+    function activarFiltroDesdeAlerta(tipo) {
+        filtroEspecial = tipo;
+        categoriaActiva = 'TODOS';
+        soloDecreto240 = false;
+        document.querySelectorAll('.cat-btn').forEach(function(b){ b.classList.remove('active'); });
+        filtrarInventario();
+        var t = document.getElementById('tablaInventario');
+        if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     function filtrarCest(btn) {
         soloCest = !soloCest;
@@ -2358,9 +2432,12 @@
     }
 
     // --- MODAL DE EDICION DE ITEM ---
-    function abrirModalEditar(id, nombre, categoria, imagen, ubicacion, descripcion, precio, desgaste, fechaAdq) {
+    function abrirModalEditar(id, nombre, categoria, imagen, ubicacion, descripcion, precio, desgaste, fechaAdq, extra) {
+        extra = extra || {};
         const f = document.getElementById('formEditar');
         if (!f) return;
+        const setVal = (elid, v) => { const e = document.getElementById(elid); if (e) e.value = (v == null ? '' : v); };
+        const setChk = (elid, v) => { const e = document.getElementById(elid); if (e) e.checked = (v === 1 || v === '1' || v === true); };
         f.action = '/editar_item/' + id;
         document.getElementById('edit_nombre').value = nombre || '';
         document.getElementById('edit_imagen').value = imagen || '';
@@ -2372,6 +2449,13 @@
         const elDesg = document.getElementById('edit_desgaste');
         if (elDesg) elDesg.value = (desgaste !== undefined && desgaste !== null) ? Math.round(desgaste) : 0;
         const elFecha = document.getElementById('edit_fecha_adq'); if (elFecha) elFecha.value = fechaAdq || '';
+        // Campos adicionales
+        setVal('edit_dependencia', extra.dependencia);
+        setVal('edit_estado', extra.estado);
+        setVal('edit_serie', extra.serie);
+        setVal('edit_caducidad', extra.caducidad);
+        setChk('edit_dec240', extra.dec240);
+        setChk('edit_cest', extra.cest);
         const sel = document.getElementById('edit_categoria');
         if (sel && categoria) {
             for (let i = 0; i < sel.options.length; i++) {

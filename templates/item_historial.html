@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trazabilidad — {{ item.nombre }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root { --primary:#1e3a8a; --secondary:#64748b; --bg:#f1f5f9; }
+        * { box-sizing:border-box; }
+        body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--bg); color:#0f172a; margin:0; padding:22px; }
+        .container { max-width:1080px; margin:0 auto; }
+        .card { background:white; border-radius:12px; padding:20px; box-shadow:0 3px 10px rgba(0,0,0,0.06); margin-bottom:18px; }
+        h1 { margin:0; font-size:1.4rem; color:var(--primary); }
+        h2 { font-size:1.05rem; color:var(--primary); margin:0 0 12px; display:flex; align-items:center; gap:8px; }
+        .btn { padding:10px 18px; border:none; border-radius:8px; cursor:pointer; font-weight:bold; color:white; text-decoration:none; display:inline-flex; gap:8px; align-items:center; }
+        .btn-secondary { background:var(--secondary); }
+        .top { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; border-top:5px solid var(--primary); }
+        .meta { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); gap:12px; margin-top:12px; }
+        .meta .box { background:#f8fafc; border-radius:8px; padding:10px 14px; }
+        .meta .n { font-size:1.2rem; font-weight:800; } .meta .l { font-size:0.7rem; color:var(--secondary); text-transform:uppercase; font-weight:700; }
+        table { width:100%; border-collapse:collapse; }
+        th,td { padding:9px 10px; text-align:left; border-bottom:1px solid #eef2f7; font-size:0.88rem; }
+        th { background:#f1f5f9; font-size:0.72rem; text-transform:uppercase; color:#334155; }
+        .badge { padding:2px 8px; border-radius:20px; font-size:0.72rem; font-weight:700; }
+        .empty { text-align:center; color:var(--secondary); padding:24px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card top">
+            <div>
+                <h1><i class="fas fa-timeline"></i> Trazabilidad: {{ item.nombre }}</h1>
+                <p style="margin:6px 0 0; color:var(--secondary);">
+                    Código <strong>{{ item.codigo_barras }}</strong> · {{ item.categoria }}
+                    {% if item.especialidad %} · {{ item.especialidad.nombre }}{% endif %}
+                </p>
+                <div class="meta">
+                    <div class="box"><div class="n" style="color:#16a34a;">{{ item.cantidad_disponible }}</div><div class="l">Disponible</div></div>
+                    <div class="box"><div class="n" style="color:#ca8a04;">{{ item.cantidad_total - item.cantidad_disponible }}</div><div class="l">En uso</div></div>
+                    <div class="box"><div class="n">{{ item.cantidad_total }}</div><div class="l">Total</div></div>
+                    <div class="box"><div class="n" style="color:#dc2626;">{{ item.cantidad_mermada }}</div><div class="l">Mermado</div></div>
+                </div>
+            </div>
+            <a href="/inventario" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Volver</a>
+        </div>
+
+        <div class="card">
+            <h2><i class="fas fa-hand-holding"></i> Préstamos ({{ prestamos|length }})</h2>
+            {% if prestamos %}
+            <table><thead><tr><th>Fecha</th><th>Estudiante</th><th>Práctica</th><th style="text-align:center;">Cant.</th><th style="text-align:center;">Merma</th><th>Estado</th></tr></thead><tbody>
+                {% for p in prestamos %}
+                <tr>
+                    <td>{{ p.fecha_prestamo.strftime('%d/%m/%Y %H:%M') if p.fecha_prestamo else '—' }}</td>
+                    <td>{{ p.estudiante.nombre if p.estudiante else '—' }}</td>
+                    <td>{{ p.nombre_practica or '—' }}</td>
+                    <td style="text-align:center;">{{ p.cantidad }}</td>
+                    <td style="text-align:center; color:#dc2626;">{{ p.cantidad_mermada or 0 }}</td>
+                    <td>{% if p.estado == 'Devuelto' %}<span class="badge" style="background:#dcfce7; color:#166534;">Devuelto</span>{% else %}<span class="badge" style="background:#fef9c3; color:#854d0e;">Pendiente</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody></table>
+            {% else %}<p class="empty"><i class="fas fa-inbox"></i> Sin préstamos registrados.</p>{% endif %}
+        </div>
+
+        <div class="card">
+            <h2><i class="fas fa-recycle"></i> Mermas y bajas ({{ bajas|length }})</h2>
+            {% if bajas %}
+            <table><thead><tr><th>Fecha</th><th style="text-align:center;">Cant.</th><th>Motivo</th><th>Origen</th><th>Registrado por</th></tr></thead><tbody>
+                {% for b in bajas %}
+                <tr>
+                    <td>{{ b.fecha.strftime('%d/%m/%Y %H:%M') if b.fecha else '—' }}</td>
+                    <td style="text-align:center; color:#dc2626; font-weight:700;">{{ b.cantidad }}</td>
+                    <td>{{ b.motivo or '—' }}</td>
+                    <td>{% if b.origen == 'merma_practica' %}<span class="badge" style="background:#fee2e2; color:#991b1b;">Merma práctica</span>{% else %}<span class="badge" style="background:#f3e8ff; color:#6b21a8;">Baja manual</span>{% endif %}</td>
+                    <td>{{ b.usuario_nombre or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody></table>
+            {% else %}<p class="empty"><i class="fas fa-inbox"></i> Sin mermas ni bajas.</p>{% endif %}
+        </div>
+
+        <div class="card">
+            <h2><i class="fas fa-exchange-alt"></i> Préstamos a especialidades ({{ externos|length }})</h2>
+            {% if externos %}
+            <table><thead><tr><th>Fecha</th><th>Retira</th><th>Destino</th><th style="text-align:center;">Cant.</th><th>Estado</th></tr></thead><tbody>
+                {% for e in externos %}
+                <tr>
+                    <td>{{ e.fecha_prestamo.strftime('%d/%m/%Y') if e.fecha_prestamo else '—' }}</td>
+                    <td>{{ e.persona_retira or '—' }}</td>
+                    <td>{{ e.especialidad_destino or '—' }}</td>
+                    <td style="text-align:center;">{{ e.cantidad }}</td>
+                    <td>{{ e.estado }}</td>
+                </tr>
+                {% endfor %}
+            </tbody></table>
+            {% else %}<p class="empty"><i class="fas fa-inbox"></i> Sin préstamos a otras especialidades.</p>{% endif %}
+        </div>
+    </div>
+</body>
+</html>

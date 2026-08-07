@@ -1210,6 +1210,13 @@ def ver_inventario():
     tipo_area = (esp_obj_actual.tipo_area or 'GENERAL') if esp_obj_actual else 'GENERAL'
     # Área Gráfica: habilita campos extra (fecha de caducidad + Elemento CEST)
     es_grafica = bool(esp_obj_actual and esp_obj_actual.nombre == 'Gráfica')
+    # Conteos para el panel de alertas
+    _hoy = datetime.utcnow().date()
+    _limite_venc = _hoy + timedelta(days=30)
+    n_stock_bajo = sum(1 for i in items if (i.cantidad_disponible or 0) <= (i.cantidad_minima or 0))
+    n_por_vencer = sum(1 for i in items
+                       if i.fecha_caducidad and _hoy <= i.fecha_caducidad <= _limite_venc)
+    n_caducados = sum(1 for i in items if i.fecha_caducidad and i.fecha_caducidad < _hoy)
     # Pañoleros del día activos para esta especialidad (máx. 6)
     panoleros_dia = _panoleros_dia_activos(especialidad_id) if especialidad_id else []
     # Cursos disponibles en esta especialidad (para datalist/dropdowns)
@@ -1236,6 +1243,9 @@ def ver_inventario():
                            tipo_area=tipo_area,
                            es_grafica=es_grafica,
                            hoy=datetime.utcnow().date(),
+                           n_stock_bajo=n_stock_bajo,
+                           n_por_vencer=n_por_vencer,
+                           n_caducados=n_caducados,
                            panoleros_dia=panoleros_dia,
                            cursos_disponibles=cursos_disponibles,
                            cursos_a_cargo=cursos_a_cargo,
@@ -1444,6 +1454,32 @@ def editar_item(item_id):
             item.fecha_adquisicion = datetime.fromisoformat(fecha_adq_raw).date()
         except Exception:
             pass
+
+    # Campos adicionales (dependencia, estado, serie, Dec.240, CEST, caducidad)
+    dep = request.form.get('dependencia', None)
+    if dep is not None:
+        item.dependencia = dep.strip() or None
+    est = request.form.get('estado', None)
+    if est is not None and est.strip() != '':
+        item.estado = est.strip()
+    ser = request.form.get('numero_serie', None)
+    if ser is not None:
+        item.numero_serie = ser.strip() or None
+    # Checkboxes: el form envía el valor solo si están marcados; usamos un campo
+    # oculto 'campos_presentes' para saber que el form incluye estos toggles.
+    if request.form.get('form_editar_completo') == '1':
+        item.decreto_240 = request.form.get('decreto_240') in ('on', '1', 'true')
+        item.es_cest = request.form.get('es_cest') in ('on', '1', 'true')
+    cad_raw = request.form.get('fecha_caducidad', None)
+    if cad_raw is not None:
+        cad_raw = cad_raw.strip()
+        if cad_raw == '':
+            item.fecha_caducidad = None
+        else:
+            try:
+                item.fecha_caducidad = datetime.fromisoformat(cad_raw).date()
+            except Exception:
+                pass
 
     # Ajuste de stock: soporta dos formas
     # 1) cantidad_total → setear total absoluto
@@ -3874,6 +3910,251 @@ def panoleros_dia_limpiar():
     db.session.commit()
     flash(f"{n} panolero(s) del dia removido(s).")
     return redirect(url_for('ver_inventario'))
+
+
+def _enviar_correo(destino, asunto, cuerpo):
+    """Envía un correo SOLO si hay SMTP configurado por variables de entorno
+    (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM). Si no está
+    configurado devuelve False y no hace nada. Nunca lanza excepción."""
+    host = os.getenv('SMTP_HOST', '').strip()
+    if not host or not destino:
+        return False
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        remitente = os.getenv('SMTP_FROM', os.getenv('SMTP_USER', 'panolerp@colegio.local'))
+        msg = MIMEText(cuerpo, 'plain', 'utf-8')
+        msg['Subject'] = asunto
+        msg['From'] = remitente
+        msg['To'] = destino
+        with smtplib.SMTP(host, int(os.getenv('SMTP_PORT', '587')), timeout=15) as srv:
+            srv.starttls()
+            usr, pwd = os.getenv('SMTP_USER'), os.getenv('SMTP_PASS')
+            if usr and pwd:
+                srv.login(usr, pwd)
+            srv.sendmail(remitente, [destino], msg.as_string())
+        return True
+    except Exception as e:
+        print(f"[CORREO] No se pudo enviar: {e}")
+        return False
+
+
+@app.route('/admin/enviar_aviso_stock', methods=['POST'])
+@login_requerido
+@admin_requerido
+def enviar_aviso_stock():
+    """Envía por correo al administrador el listado de ítems bajo el mínimo.
+    Requiere SMTP configurado (ver variables de entorno SMTP_*); si no, avisa."""
+    bajos = [i for i in Item.query.all()
+             if (i.cantidad_disponible or 0) <= (i.cantidad_minima or 0)]
+    destino = os.getenv('ALERT_EMAIL', session.get('usuario_email') or '')
+    if not bajos:
+        flash("✅ No hay ítems bajo el mínimo. Nada que avisar.")
+        return redirect(url_for('panel_gerencial'))
+    lineas = [f"- {i.nombre} ({i.especialidad.nombre if i.especialidad else '—'}): "
+              f"disp {i.cantidad_disponible} / mín {i.cantidad_minima}" for i in bajos[:100]]
+    cuerpo = ("Ítems bajo el stock mínimo en PanolERP:\n\n" + "\n".join(lineas))
+    if _enviar_correo(destino, f"PanolERP · {len(bajos)} ítem(s) bajo el mínimo", cuerpo):
+        flash(f"✅ Aviso enviado a {destino} con {len(bajos)} ítem(s).")
+    else:
+        flash("⚠️ Correo no configurado (define las variables SMTP_* y ALERT_EMAIL en Render) "
+              f"— hay {len(bajos)} ítem(s) bajo el mínimo.")
+    return redirect(url_for('panel_gerencial'))
+
+
+@app.route('/admin/respaldo')
+@login_requerido
+@admin_requerido
+def descargar_respaldo():
+    """Respaldo de la base en un Excel multi-hoja (sin contraseñas). Sirve como
+    copia de seguridad manual por si falla el hosting."""
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        pd.DataFrame([{
+            'id': i.id, 'codigo': i.codigo_barras, 'nombre': i.nombre,
+            'categoria': i.categoria, 'area': i.especialidad.nombre if i.especialidad else '',
+            'dependencia': i.dependencia or '', 'total': i.cantidad_total,
+            'disponible': i.cantidad_disponible, 'mermada': i.cantidad_mermada,
+            'minima': i.cantidad_minima, 'precio': i.precio_unitario or 0,
+            'ubicacion': i.ubicacion or '', 'estado': i.estado or '',
+            'serie': i.numero_serie or '', 'dec240': 'SI' if i.decreto_240 else 'NO',
+            'cest': 'SI' if i.es_cest else 'NO',
+            'caducidad': i.fecha_caducidad.isoformat() if i.fecha_caducidad else '',
+        } for i in Item.query.all()] or [{'Aviso': 'sin ítems'}]).to_excel(w, 'Items', index=False)
+
+        pd.DataFrame([{
+            'id': e.id, 'rut': e.rut_matricula, 'nombre': e.nombre,
+            'curso': e.curso_display, 'area': e.especialidad.nombre if e.especialidad else '',
+            'activo': e.activo,
+        } for e in Estudiante.query.all()] or [{'Aviso': 'sin estudiantes'}]).to_excel(w, 'Estudiantes', index=False)
+
+        pd.DataFrame([{
+            'id': u.id, 'usuario': u.username, 'nombre': u.nombre, 'rol': u.rol,
+            'area': u.especialidad_asignada.nombre if u.especialidad_asignada else '',
+            'activo': u.activo,
+        } for u in Usuario.query.all()]).to_excel(w, 'Usuarios (sin claves)', index=False)
+
+        pd.DataFrame([{
+            'id': p.id, 'item': p.item.nombre if p.item else '',
+            'estudiante': p.estudiante.nombre if p.estudiante else '',
+            'practica': p.nombre_practica or '', 'cantidad': p.cantidad,
+            'mermada': p.cantidad_mermada or 0, 'estado': p.estado,
+            'fecha': p.fecha_prestamo.isoformat() if p.fecha_prestamo else '',
+        } for p in Prestamo.query.all()] or [{'Aviso': 'sin préstamos'}]).to_excel(w, 'Prestamos', index=False)
+
+        pd.DataFrame([{
+            'fecha': r.fecha.isoformat() if r.fecha else '', 'item': r.item_nombre,
+            'cantidad': r.cantidad, 'motivo': r.motivo, 'origen': r.origen,
+            'area': r.especialidad.nombre if r.especialidad else '',
+        } for r in RegistroBaja.query.all()] or [{'Aviso': 'sin registros'}]).to_excel(w, 'Bajas y Mermas', index=False)
+    buf.seek(0)
+    fname = f"respaldo_panolerp_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/item/<int:item_id>/historial')
+@login_requerido
+@pañolero_o_admin
+def item_historial(item_id):
+    """Ficha de trazabilidad de un ítem: préstamos, mermas/bajas y préstamos externos."""
+    item = Item.query.get_or_404(item_id)
+    if session.get('usuario_rol') != 'Admin' and item.especialidad_id != session.get('usuario_especialidad_id'):
+        flash("❌ Sin permiso para ver este ítem.")
+        return redirect(url_for('ver_inventario'))
+    prestamos = Prestamo.query.filter_by(item_id=item.id) \
+        .order_by(Prestamo.fecha_prestamo.desc()).limit(200).all()
+    bajas = RegistroBaja.query.filter_by(item_id=item.id) \
+        .order_by(RegistroBaja.fecha.desc()).limit(200).all()
+    externos = PrestamoExterno.query.filter_by(item_id=item.id) \
+        .order_by(PrestamoExterno.fecha_prestamo.desc()).limit(100).all()
+    return render_template('item_historial.html', item=item,
+                           prestamos=prestamos, bajas=bajas, externos=externos)
+
+
+@app.route('/reporte_valorizacion')
+@login_requerido
+@pañolero_o_admin
+def reporte_valorizacion():
+    """Excel con 2 hojas: 'Valorización' (costo total del inventario por ítem y
+    resumen por área) y 'Decreto 240' (listado patrimonial de los bienes marcados
+    Dec. 240, para la auditoría MINEDUC). Admin/JefeTecnico ven todo; el resto,
+    solo su área."""
+    if session.get('usuario_rol') in ('Admin', 'JefeTecnico'):
+        items = Item.query.order_by(Item.especialidad_id, Item.nombre).all()
+    else:
+        items = Item.query.filter_by(
+            especialidad_id=session.get('usuario_especialidad_id')
+        ).order_by(Item.nombre).all()
+
+    filas = []
+    resumen = {}
+    for i in items:
+        area = i.especialidad.nombre if i.especialidad else '—'
+        valor = (i.precio_unitario or 0) * (i.cantidad_total or 0)
+        resumen[area] = resumen.get(area, 0) + valor
+        filas.append({
+            'Área': area, 'Código': i.codigo_barras, 'Nombre': i.nombre,
+            'Categoría': i.categoria, 'Cantidad': i.cantidad_total,
+            'Costo unitario ($)': round(i.precio_unitario or 0),
+            'Costo total ($)': round(valor),
+            'Ubicación': i.ubicacion or '', 'Dec. 240': 'SI' if i.decreto_240 else 'NO',
+        })
+    df_val = pd.DataFrame(filas) if filas else pd.DataFrame([{'Aviso': 'Sin ítems.'}])
+    df_res = pd.DataFrame(
+        [{'Área': a, 'Valor total ($)': round(v)} for a, v in sorted(resumen.items(), key=lambda x: -x[1])]
+        + [{'Área': 'TOTAL GENERAL', 'Valor total ($)': round(sum(resumen.values()))}]
+    ) if resumen else pd.DataFrame([{'Aviso': 'Sin datos.'}])
+
+    d240 = [f for f in filas if f['Dec. 240'] == 'SI']
+    df_240 = pd.DataFrame(d240) if d240 else pd.DataFrame([{'Aviso': 'No hay bienes marcados con Decreto 240.'}])
+
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as w:
+        df_res.to_excel(w, sheet_name='Resumen por área', index=False)
+        df_val.to_excel(w, sheet_name='Valorización', index=False)
+        df_240.to_excel(w, sheet_name='Decreto 240', index=False)
+    buf.seek(0)
+    fname = f"valorizacion_inventario_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/panel_gerencial')
+@login_requerido
+def panel_gerencial():
+    """Panel de visualización para Administrador / Jefe Técnico: KPIs y gráficos
+    del inventario, consumo de fungibles, mermas por mes y valorización por área."""
+    if session.get('usuario_rol') not in ('Admin', 'JefeTecnico'):
+        flash("❌ Este panel es solo para Administrador o Jefe Técnico.")
+        return redirect(url_for('ver_inventario'))
+
+    from collections import defaultdict
+    items = Item.query.all()
+    total_items = len(items)
+    total_stock = sum(i.cantidad_total or 0 for i in items)
+    valor_total = sum((i.precio_unitario or 0) * (i.cantidad_total or 0) for i in items)
+    prestamos_activos = Prestamo.query.filter_by(estado='Pendiente').count()
+    n_stock_bajo = sum(1 for i in items if (i.cantidad_disponible or 0) <= (i.cantidad_minima or 0))
+    total_mermado = sum(i.cantidad_mermada or 0 for i in items)
+
+    # Valor del inventario por área (top 12)
+    areas = Especialidad.query.filter_by(activa=True).all()
+    valor_area = []
+    for a in areas:
+        v = sum((i.precio_unitario or 0) * (i.cantidad_total or 0)
+                for i in items if i.especialidad_id == a.id)
+        if v > 0:
+            valor_area.append((a.nombre, round(v)))
+    valor_area.sort(key=lambda x: -x[1])
+    valor_area = valor_area[:12]
+
+    # Top 10 insumos más gastados (RegistroBaja)
+    gasto = defaultdict(int)
+    for r in RegistroBaja.query.all():
+        gasto[r.item_nombre or '—'] += (r.cantidad or 0)
+    top_insumos = sorted(gasto.items(), key=lambda x: -x[1])[:10]
+
+    # Mermas/bajas por mes (últimos 6 meses)
+    ahora = datetime.utcnow()
+    meses_key = []
+    for k in range(5, -1, -1):
+        idx = ahora.month - 1 - k
+        y = ahora.year + (idx // 12)
+        m = idx % 12 + 1
+        meses_key.append((y, m))
+    merma_mes = {km: 0 for km in meses_key}
+    for r in RegistroBaja.query.all():
+        if r.fecha:
+            km = (r.fecha.year, r.fecha.month)
+            if km in merma_mes:
+                merma_mes[km] += (r.cantidad or 0)
+    MESES_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+    meses_labels = [f"{MESES_ES[m-1]} {y}" for (y, m) in meses_key]
+    meses_data = [merma_mes[km] for km in meses_key]
+
+    # Ítems por categoría (agrupado)
+    cat_group = {'Herramientas': 0, 'Componentes': 0, 'Materiales': 0, 'Fungibles': 0, 'Otros': 0}
+    for i in items:
+        c = (i.categoria or '').lower()
+        if 'herr' in c: cat_group['Herramientas'] += 1
+        elif 'comp' in c: cat_group['Componentes'] += 1
+        elif 'fung' in c: cat_group['Fungibles'] += 1
+        elif 'mat' in c: cat_group['Materiales'] += 1
+        else: cat_group['Otros'] += 1
+
+    return render_template(
+        'panel_gerencial.html',
+        total_items=total_items, total_stock=total_stock,
+        valor_total=round(valor_total), prestamos_activos=prestamos_activos,
+        n_stock_bajo=n_stock_bajo, total_mermado=total_mermado,
+        valor_area_labels=[x[0] for x in valor_area],
+        valor_area_data=[x[1] for x in valor_area],
+        top_labels=[x[0] for x in top_insumos],
+        top_data=[x[1] for x in top_insumos],
+        meses_labels=meses_labels, meses_data=meses_data,
+        cat_labels=list(cat_group.keys()), cat_data=list(cat_group.values()),
+    )
 
 
 @app.route('/inventario_visita')
