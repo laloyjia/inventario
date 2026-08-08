@@ -1278,6 +1278,16 @@
                    title="Descarga un Excel con los códigos de barras de todos los ítems, listo para imprimir">
                     <i class="fas fa-barcode"></i> Descargar etiquetas Excel
                 </a>
+                <a href="/reporte_reposicion"
+                   style="background: #b45309; color: white; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;"
+                   title="Lista de compras: ítems bajo el mínimo con cantidad sugerida y costo">
+                    <i class="fas fa-cart-shopping"></i> Reposición sugerida
+                </a>
+                <a href="/reporte_sin_movimiento"
+                   style="background: #6b21a8; color: white; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;"
+                   title="Ítems sin préstamos hace 90+ días (capital inmovilizado)">
+                    <i class="fas fa-box-open"></i> Ítems sin movimiento
+                </a>
                 {% if session['usuario_rol'] in ['Administrador', 'Admin', 'Profesor'] %}
                 <a href="/exportar_inventario"
                    style="background: #065f46; color: white; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;">

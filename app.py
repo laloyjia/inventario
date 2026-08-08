@@ -4225,6 +4225,37 @@ def item_historial(item_id):
                            prestamos=prestamos, bajas=bajas, externos=externos)
 
 
+def _kpi_portada(ws, titulo, subtitulo, accent, kpis):
+    """Dibuja una portada con banda de título y hasta 3 tarjetas KPI de color."""
+    from openpyxl.styles import Font, PatternFill, Alignment
+    ws.sheet_view.showGridLines = False
+    ws.merge_cells('A1:F1')
+    for col in 'ABCDEF':
+        ws[f'{col}1'].fill = PatternFill('solid', fgColor=accent)
+    ws['A1'] = titulo
+    ws['A1'].font = Font(size=20, bold=True, color='FFFFFF')
+    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[1].height = 40
+    ws.merge_cells('A2:F2')
+    ws['A2'] = subtitulo
+    ws['A2'].font = Font(size=10, italic=True, color='64748B')
+    ws['A2'].alignment = Alignment(horizontal='center')
+    for k, (lbl, val, tipo, color) in enumerate(kpis):
+        c0 = 1 + k * 2
+        ws.merge_cells(start_row=4, start_column=c0, end_row=4, end_column=c0 + 1)
+        ws.merge_cells(start_row=5, start_column=c0, end_row=6, end_column=c0 + 1)
+        h = ws.cell(4, c0, lbl); h.fill = PatternFill('solid', fgColor=color)
+        h.font = Font(size=10, bold=True, color='FFFFFF')
+        h.alignment = Alignment(horizontal='center', vertical='center')
+        v = ws.cell(5, c0, val); v.font = Font(size=22, bold=True, color=color)
+        v.alignment = Alignment(horizontal='center', vertical='center')
+        if tipo == 'money':
+            v.number_format = '"$" #,##0'
+    for col in 'ABCDEF':
+        ws.column_dimensions[col].width = 17
+    ws.row_dimensions[5].height = 34
+
+
 def _estilizar_hoja(ws, titulo, subtitulo, headers, rows, money_cols=(),
                     center_cols=(), total_row=None, accent='1F3864', autofilter=True):
     """Aplica un diseño profesional a una hoja: título con banda de color,
@@ -4401,6 +4432,122 @@ def _estilo_pandas_ws(ws, accent='1F3864'):
     ws.freeze_panes = 'A2'
     if nrow > 1:
         ws.auto_filter.ref = f"A1:{get_column_letter(ncol)}{nrow}"
+
+
+@app.route('/reporte_reposicion')
+@login_requerido
+@pañolero_o_admin
+def reporte_reposicion():
+    """Lista de compras / reposición: ítems bajo el mínimo, con cantidad sugerida
+    (reponer hasta el doble del mínimo) y costo estimado. Admin ve todo; el resto su área."""
+    from openpyxl import Workbook
+    from openpyxl.chart import BarChart, Reference
+    if session.get('usuario_rol') in ('Admin', 'JefeTecnico'):
+        items = Item.query.order_by(Item.especialidad_id, Item.nombre).all()
+        alcance = "Todas las especialidades"
+    else:
+        items = Item.query.filter_by(
+            especialidad_id=session.get('usuario_especialidad_id')).order_by(Item.nombre).all()
+        alcance = session.get('usuario_especialidad') or "Mi área"
+
+    filas, costo_total, por_area = [], 0, {}
+    for i in items:
+        disp = i.cantidad_disponible or 0
+        mini = i.cantidad_minima or 0
+        if disp > mini:
+            continue
+        sugerido = max(1, (mini * 2) - disp) if mini else max(1, 1 - disp)
+        costo = sugerido * (i.precio_unitario or 0)
+        costo_total += costo
+        area = i.especialidad.nombre if i.especialidad else '—'
+        por_area[area] = por_area.get(area, 0) + costo
+        filas.append([area, i.codigo_barras, i.nombre, i.categoria, disp, mini,
+                      sugerido, round(i.precio_unitario or 0), round(costo)])
+    filas.sort(key=lambda f: -f[8])
+    stamp = datetime.now().strftime('%d/%m/%Y %H:%M')
+
+    wb = Workbook()
+    ws = wb.active; ws.title = 'Portada'
+    _kpi_portada(ws, 'PanolERP · Reposición sugerida', f'{alcance} · {stamp}', 'B45309',
+                 [('Ítems a reponer', len(filas), 'num', 'DC2626'),
+                  ('Costo estimado', round(costo_total), 'money', 'B45309'),
+                  ('Áreas afectadas', len(por_area), 'num', '2563EB')])
+    _estilizar_hoja(
+        wb.create_sheet('Reposición'), 'Lista de compras / reposición', f'{alcance} · {stamp}',
+        ['Área', 'Código', 'Nombre', 'Categoría', 'Disponible', 'Mínimo',
+         'Sugerido a comprar', 'Costo unit. ($)', 'Costo estimado ($)'],
+        filas or [['Sin ítems bajo el mínimo 🎉', '', '', '', '', '', '', '', '']],
+        money_cols=(8, 9), center_cols=(5, 6, 7), accent='B45309',
+        total_row=['TOTAL', '', '', '', '', '', sum(f[6] for f in filas), '', round(costo_total)])
+    if por_area:
+        rows_a = sorted(por_area.items(), key=lambda x: -x[1])
+        _estilizar_hoja(wb.create_sheet('Por área'), 'Costo de reposición por área', stamp,
+                        ['Área', 'Costo ($)'], [[a, round(v)] for a, v in rows_a],
+                        money_cols=(2,), accent='B45309', autofilter=False)
+        wsa = wb['Por área']
+        ch = BarChart(); ch.legend = None; ch.title = 'Reposición por área ($)'; ch.height = 8; ch.width = 16
+        ch.add_data(Reference(wsa, min_col=2, min_row=4, max_row=4 + len(rows_a)), titles_from_data=True)
+        ch.set_categories(Reference(wsa, min_col=1, min_row=5, max_row=4 + len(rows_a)))
+        try: ch.series[0].graphicalProperties.solidFill = 'B45309'
+        except Exception: pass
+        wsa.add_chart(ch, 'D4')
+
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    fname = f"reposicion_sugerida_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/reporte_sin_movimiento')
+@login_requerido
+@pañolero_o_admin
+def reporte_sin_movimiento():
+    """Ítems sin préstamos hace 90+ días (o nunca): capital inmovilizado."""
+    from openpyxl import Workbook
+    dias_umbral = 90
+    if session.get('usuario_rol') in ('Admin', 'JefeTecnico'):
+        items = Item.query.all()
+        alcance = "Todas las especialidades"
+    else:
+        items = Item.query.filter_by(especialidad_id=session.get('usuario_especialidad_id')).all()
+        alcance = session.get('usuario_especialidad') or "Mi área"
+
+    ult = dict(db.session.query(Prestamo.item_id, db.func.max(Prestamo.fecha_prestamo))
+               .group_by(Prestamo.item_id).all())
+    ahora = datetime.utcnow()
+    filas, valor_inmov = [], 0
+    for i in items:
+        um = ult.get(i.id)
+        dias = (ahora - um).days if um else None
+        if dias is not None and dias < dias_umbral:
+            continue
+        valor = (i.precio_unitario or 0) * (i.cantidad_total or 0)
+        valor_inmov += valor
+        filas.append([i.especialidad.nombre if i.especialidad else '—', i.codigo_barras,
+                      i.nombre, i.categoria, i.cantidad_total, round(valor),
+                      um.strftime('%d/%m/%Y') if um else 'Nunca',
+                      dias if dias is not None else 9999])
+    filas.sort(key=lambda f: -f[7])
+    for f in filas:
+        if f[7] == 9999: f[7] = '—'
+    stamp = datetime.now().strftime('%d/%m/%Y %H:%M')
+
+    wb = Workbook()
+    ws = wb.active; ws.title = 'Portada'
+    _kpi_portada(ws, 'PanolERP · Ítems sin movimiento', f'{alcance} · Sin préstamos en {dias_umbral}+ días · {stamp}', '6B21A8',
+                 [('Ítems sin movimiento', len(filas), 'num', '9333EA'),
+                  ('Valor inmovilizado', round(valor_inmov), 'money', '6B21A8'),
+                  ('Umbral (días)', dias_umbral, 'num', '2563EB')])
+    _estilizar_hoja(
+        wb.create_sheet('Sin movimiento'), f'Ítems sin préstamos en {dias_umbral}+ días', f'{alcance} · {stamp}',
+        ['Área', 'Código', 'Nombre', 'Categoría', 'Total', 'Valor ($)', 'Último préstamo', 'Días sin uso'],
+        filas or [['Todos los ítems tienen movimiento reciente 🎉', '', '', '', '', '', '', '']],
+        money_cols=(6,), center_cols=(5, 8), accent='6B21A8',
+        total_row=['TOTAL', '', '', '', '', round(valor_inmov), '', ''])
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    fname = f"items_sin_movimiento_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
 @app.route('/reporte_valorizacion')
