@@ -4,8 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inventario Pañol Enterprise</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#1e3a8a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/pwa-icon.svg">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
 
     <style>
@@ -172,6 +178,16 @@
             {% if session.get('usuario_rol') == 'Admin' %}
             <a href="/dashboard_admin" class="btn-logout"><i class="fas fa-arrow-left"></i> Panel admin</a>
             {% endif %}
+            <div style="position:relative; display:inline-block;">
+                <button onclick="toggleNotis(event)" class="btn-logout" style="position:relative; cursor:pointer;" title="Notificaciones" aria-label="Notificaciones">
+                    <i class="fas fa-bell"></i>
+                    <span id="notiBadge" style="display:none; position:absolute; top:-7px; right:-7px; background:#dc2626; color:white; border-radius:10px; font-size:0.6rem; font-weight:800; padding:1px 5px; min-width:16px; text-align:center;"></span>
+                </button>
+                <div id="notiPanel" style="display:none; position:absolute; right:0; top:120%; width:290px; background:white; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,0.18); z-index:3000; overflow:hidden;">
+                    <div style="padding:10px 14px; font-weight:700; color:#334155; border-bottom:1px solid #eef2f7; font-size:0.85rem;"><i class="fas fa-bell"></i> Notificaciones</div>
+                    <div id="notiList" style="max-height:340px; overflow-y:auto;"><div style="padding:16px; text-align:center; color:#94a3b8; font-size:0.82rem;">Cargando…</div></div>
+                </div>
+            </div>
             <span><i class="fas fa-user-circle"></i> {{ session['usuario_nombre'] }} ({{ session['usuario_rol'] }})</span>
             <a href="/logout" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Salir</a>
         </div>
@@ -1668,6 +1684,7 @@
                        onkeypress="if(event.key==='Enter'){event.preventDefault(); buscarAlumnoPorCodigo();}"
                        onblur="buscarAlumnoPorCodigo()" style="flex:1;">
                 <button type="button" onclick="buscarAlumnoPorCodigo()" class="btn-add" style="background:#6366f1; padding:10px 14px;" title="Buscar"><i class="fas fa-search"></i></button>
+                <button type="button" onclick="abrirCamara('scan_alumno_modal', buscarAlumnoPorCodigo)" class="btn-add" style="background:#0ea5e9; padding:10px 14px;" title="Escanear con la cámara"><i class="fas fa-camera"></i></button>
             </div>
             <p class="mhint" style="text-align:center;">— o selecciónalo de la lista —</p>
             <select id="estudiante_id_modal" required onchange="mostrarInfoEstudiante()">
@@ -1696,6 +1713,7 @@
             <div style="display: flex; gap: 6px;">
                 <input type="text" id="inputScanSalida" placeholder="Código..." onkeypress="manejarEnterScan(event)" style="flex: 1;">
                 <input type="number" id="inputCantSalida" value="1" min="1" style="width: 70px;">
+                <button type="button" onclick="abrirCamara('inputScanSalida', agregarAlPedido)" class="btn-add" style="background:#0ea5e9;" title="Escanear con la cámara"><i class="fas fa-camera"></i></button>
                 <button type="button" onclick="agregarAlPedido()" class="btn-add"><i class="fas fa-plus"></i></button>
             </div>
         </div>
@@ -1753,7 +1771,10 @@
                 <input type="text" name="scan_estudiante" id="scan_estudiante_devolver"
                        placeholder="🔍 Código del carnet o RUT..." required autocomplete="off"
                        style="width:100%; box-sizing:border-box; font-size: 1.1rem; text-align: center; border: 2px dashed var(--warning); padding: 13px; border-radius: 8px; font-family: monospace; background:#fffbeb; margin-bottom:10px;">
-                <button type="submit" class="mbtn-warn" style="width:100%;"><i class="fas fa-search"></i> Buscar Préstamos</button>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" onclick="abrirCamara('scan_estudiante_devolver')" class="btn-add" style="background:#0ea5e9; padding:12px;" title="Escanear carnet con la cámara"><i class="fas fa-camera"></i></button>
+                    <button type="submit" class="mbtn-warn" style="flex:1;"><i class="fas fa-search"></i> Buscar Préstamos</button>
+                </div>
             </form>
         </div>
 
@@ -1961,6 +1982,16 @@
                 <button type="button" onclick="cerrarModalEditar()" style="background:#e2e8f0; color:var(--dark); padding:12px;">Cancelar</button>
             </div>
         </form>
+    </div>
+</div>
+
+<div id="modalCamara" class="modal">
+    <div class="modal-content" style="max-width: 440px; text-align:center;">
+        <h2 class="modal-title" style="border-bottom:2px solid #0ea5e9; color:#0369a1; justify-content:center;"><i class="fas fa-camera"></i> Escanear con la cámara</h2>
+        <p style="font-size:0.85rem; color:#475569; margin:0 0 12px;">Apunta la cámara al código de barras o QR. Se llenará solo.</p>
+        <div id="camReader" style="width:100%; border-radius:10px; overflow:hidden;"></div>
+        <p id="camAviso" style="font-size:0.78rem; color:#b45309; margin-top:10px;"></p>
+        <button type="button" onclick="cerrarCamara()" class="mbtn-cancel" style="width:100%; margin-top:12px;">Cerrar</button>
     </div>
 </div>
 
@@ -2211,6 +2242,53 @@
         var t = document.getElementById('tablaInventario');
         if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+    // ---- Notificaciones (campana) ----
+    function toggleNotis(e) {
+        if (e) e.stopPropagation();
+        var p = document.getElementById('notiPanel');
+        if (p) p.style.display = (p.style.display === 'block') ? 'none' : 'block';
+    }
+    document.addEventListener('click', function(){ var p=document.getElementById('notiPanel'); if(p) p.style.display='none'; });
+    (function cargarNotis(){
+        fetch('/api/notificaciones').then(function(r){return r.json();}).then(function(d){
+            var b=document.getElementById('notiBadge'), l=document.getElementById('notiList');
+            if(!l) return;
+            if(d.count>0 && b){ b.textContent = d.count>99?'99+':d.count; b.style.display='inline-block'; }
+            if(!d.items || !d.items.length){ l.innerHTML='<div style="padding:18px; text-align:center; color:#16a34a; font-size:0.85rem;"><i class="fas fa-check-circle"></i> Todo en orden</div>'; return; }
+            l.innerHTML = d.items.map(function(n){
+                return '<a href="'+n.url+'" style="display:flex; gap:10px; align-items:center; padding:11px 14px; text-decoration:none; color:#0f172a; border-bottom:1px solid #f1f5f9; font-size:0.83rem;"><i class="fas '+n.icono+'" style="color:'+n.color+'; width:18px; text-align:center;"></i><span>'+n.texto+'</span></a>';
+            }).join('');
+        }).catch(function(){});
+    })();
+    // ---- Escaneo con cámara (PWA) ----
+    var _camScanner = null, _camAfter = null, _camTarget = null;
+    function abrirCamara(targetId, after) {
+        _camTarget = targetId; _camAfter = after || null;
+        var m = document.getElementById('modalCamara');
+        var av = document.getElementById('camAviso'); if (av) av.textContent = '';
+        if (m) m.style.display = 'block';
+        if (typeof Html5Qrcode === 'undefined') { if (av) av.textContent = 'Escáner no disponible en este navegador.'; return; }
+        try {
+            _camScanner = new Html5Qrcode('camReader');
+            _camScanner.start({ facingMode: 'environment' }, { fps: 12, qrbox: 250 },
+                function (txt) {
+                    var t = document.getElementById(_camTarget);
+                    if (t) { t.value = txt; }
+                    var after = _camAfter;
+                    cerrarCamara();
+                    if (typeof after === 'function') { setTimeout(function () { after(txt); }, 150); }
+                }, function () {});
+        } catch (e) { if (av) av.textContent = 'No se pudo abrir la cámara. Concede permiso e intenta de nuevo.'; }
+    }
+    function cerrarCamara() {
+        var m = document.getElementById('modalCamara'); if (m) m.style.display = 'none';
+        if (_camScanner) {
+            _camScanner.stop().then(function () { try { _camScanner.clear(); } catch (e) {} _camScanner = null; })
+                .catch(function () { _camScanner = null; });
+        }
+    }
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(function () {}); }
+
     function filtrarCest(btn) {
         soloCest = !soloCest;
         if (soloCest) { btn.style.background = '#7c3aed'; btn.style.color = 'white'; }

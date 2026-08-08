@@ -26,18 +26,30 @@
         .card-wide { grid-column:1 / -1; }
         canvas { max-height:300px; }
         @media (max-width:820px){ .grid { grid-template-columns:1fr; } }
+        @media print {
+            @page { size: A4 landscape; margin: 10mm; }
+            body { padding:0; background:white; }
+            .no-print { display:none !important; }
+            .card, .kpi { box-shadow:none !important; border:1px solid #d1d5db; break-inside:avoid; }
+            .grid { grid-template-columns:1fr 1fr; }
+            canvas { max-height:250px; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="top">
             <h1><i class="fas fa-chart-line"></i> Panel Gerencial <span style="font-size:0.8rem; color:var(--secondary); font-weight:600;">— vista Administrador / Jefe Técnico</span></h1>
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <div style="display:flex; gap:10px; flex-wrap:wrap;" class="no-print">
+                <button onclick="window.print()" class="btn" style="background:#7c3aed; border:none; cursor:pointer;"><i class="fas fa-file-pdf"></i> Imprimir / PDF</button>
                 <a href="/reporte_valorizacion" class="btn" style="background:#0891b2;"><i class="fas fa-coins"></i> Valorización + Dec. 240</a>
                 <a href="/exportar_inventario" class="btn" style="background:#065f46;"><i class="fas fa-file-invoice-dollar"></i> Reporte contable</a>
                 <a href="/admin/respaldo" class="btn" style="background:#475569;"><i class="fas fa-database"></i> Respaldo</a>
                 <form action="/admin/enviar_aviso_stock" method="POST" style="margin:0;">
                     <button type="submit" class="btn" style="background:#b45309;"><i class="fas fa-envelope"></i> Avisar stock bajo</button>
+                </form>
+                <form action="/admin/probar_correo" method="POST" style="margin:0;">
+                    <button type="submit" class="btn" style="background:#6b7280;"><i class="fas fa-paper-plane"></i> Probar correo</button>
                 </form>
                 <a href="/" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Volver</a>
             </div>

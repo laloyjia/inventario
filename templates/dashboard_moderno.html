@@ -607,10 +607,29 @@ body {
                 <div class="n">{% if es_jt %}Jefe Técnico{% else %}Admin Central{% endif %}</div>
                 <div class="r">{{ rol }}</div>
             </div>
+            <div style="position:relative;">
+                <a href="#" onclick="toggleNotisD(event)" title="Notificaciones" style="position:relative;"><i class="fas fa-bell"></i>
+                    <span id="notiBadgeD" style="display:none; position:absolute; top:-7px; right:-9px; background:#dc2626; color:white; border-radius:10px; font-size:0.55rem; font-weight:800; padding:1px 4px; min-width:14px; text-align:center;"></span>
+                </a>
+                <div id="notiPanelD" style="display:none; position:absolute; bottom:135%; right:0; width:280px; background:white; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.25); z-index:4000; overflow:hidden;">
+                    <div style="padding:10px 14px; font-weight:700; color:#334155; border-bottom:1px solid #eef2f7; font-size:0.85rem;"><i class="fas fa-bell"></i> Notificaciones</div>
+                    <div id="notiListD" style="max-height:320px; overflow-y:auto;"><div style="padding:16px; text-align:center; color:#94a3b8; font-size:0.82rem;">Cargando…</div></div>
+                </div>
+            </div>
             <a href="/admin/cambiar_password" title="Cambiar clave"><i class="fas fa-key"></i></a>
             <a href="/logout" title="Cerrar sesión"><i class="fas fa-sign-out-alt"></i></a>
         </div>
     </aside>
+    <script>
+    function toggleNotisD(e){ if(e){e.preventDefault(); e.stopPropagation();} var p=document.getElementById('notiPanelD'); if(p) p.style.display=(p.style.display==='block')?'none':'block'; }
+    document.addEventListener('click', function(){ var p=document.getElementById('notiPanelD'); if(p) p.style.display='none'; });
+    (function(){ fetch('/api/notificaciones').then(function(r){return r.json();}).then(function(d){
+        var b=document.getElementById('notiBadgeD'), l=document.getElementById('notiListD'); if(!l) return;
+        if(d.count>0 && b){ b.textContent=d.count>99?'99+':d.count; b.style.display='inline-block'; }
+        if(!d.items || !d.items.length){ l.innerHTML='<div style="padding:18px; text-align:center; color:#16a34a; font-size:0.85rem;"><i class="fas fa-check-circle"></i> Todo en orden</div>'; return; }
+        l.innerHTML=d.items.map(function(n){ return '<a href="'+n.url+'" style="display:flex; gap:10px; align-items:center; padding:11px 14px; text-decoration:none; color:#0f172a; border-bottom:1px solid #f1f5f9; font-size:0.83rem;"><i class="fas '+n.icono+'" style="color:'+n.color+'; width:18px; text-align:center;"></i><span>'+n.texto+'</span></a>'; }).join('');
+    }).catch(function(){}); })();
+    </script>
 
     <!-- ═════════════ MAIN ═════════════ -->
     <main class="main">

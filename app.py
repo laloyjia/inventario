@@ -4080,12 +4080,8 @@ def enviar_aviso_stock():
     return redirect(url_for('panel_gerencial'))
 
 
-@app.route('/admin/respaldo')
-@login_requerido
-@admin_requerido
-def descargar_respaldo():
-    """Respaldo de la base en un Excel multi-hoja (sin contraseñas). Sirve como
-    copia de seguridad manual por si falla el hosting."""
+def _respaldo_bytes():
+    """Genera el respaldo (Excel multi-hoja, sin contraseñas) y devuelve un BytesIO."""
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine='openpyxl') as w:
         pd.DataFrame([{
@@ -4131,9 +4127,83 @@ def descargar_respaldo():
             except Exception:
                 pass
     buf.seek(0)
+    return buf
+
+
+@app.route('/admin/respaldo')
+@login_requerido
+@admin_requerido
+def descargar_respaldo():
+    """Descarga manual del respaldo de la base (Excel multi-hoja, sin contraseñas)."""
     fname = f"respaldo_panolerp_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
-    return send_file(buf, as_attachment=True, download_name=fname,
+    return send_file(_respaldo_bytes(), as_attachment=True, download_name=fname,
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+def _enviar_correo_adjunto(destino, asunto, cuerpo, adjunto_bytes, adjunto_nombre):
+    """Como _enviar_correo pero con un archivo adjunto. Solo si hay SMTP configurado."""
+    host = os.getenv('SMTP_HOST', '').strip()
+    if not host or not destino:
+        return False
+    try:
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from email.mime.application import MIMEApplication
+        remitente = os.getenv('SMTP_FROM', os.getenv('SMTP_USER', 'panolerp@colegio.local'))
+        msg = MIMEMultipart()
+        msg['Subject'] = asunto
+        msg['From'] = remitente
+        msg['To'] = destino
+        msg.attach(MIMEText(cuerpo, 'plain', 'utf-8'))
+        part = MIMEApplication(adjunto_bytes, _subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        part.add_header('Content-Disposition', 'attachment', filename=adjunto_nombre)
+        msg.attach(part)
+        with smtplib.SMTP(host, int(os.getenv('SMTP_PORT', '587')), timeout=20) as srv:
+            srv.starttls()
+            usr, pwd = os.getenv('SMTP_USER'), os.getenv('SMTP_PASS')
+            if usr and pwd:
+                srv.login(usr, pwd)
+            srv.sendmail(remitente, [destino], msg.as_string())
+        return True
+    except Exception as e:
+        print(f"[CORREO] Adjunto no enviado: {e}")
+        return False
+
+
+@app.route('/cron/respaldo')
+def cron_respaldo():
+    """Respaldo AUTOMÁTICO protegido por token, pensado para un cron externo
+    (cron-job.org, UptimeRobot, GitHub Actions, etc.). Genera el respaldo y lo
+    envía por correo a ALERT_EMAIL. Uso: /cron/respaldo?token=EL_TOKEN
+    (define CRON_TOKEN en las variables de entorno; si no, usa PANOL_SYNC_TOKEN)."""
+    token_ok = os.getenv('CRON_TOKEN') or PANOL_SYNC_TOKEN
+    if not token_ok or request.args.get('token', '') != token_ok:
+        return jsonify({'ok': False, 'error': 'token inválido'}), 403
+    destino = os.getenv('ALERT_EMAIL', '').strip()
+    buf = _respaldo_bytes()
+    fname = f"respaldo_panolerp_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    enviado = _enviar_correo_adjunto(
+        destino, f"PanolERP · Respaldo {datetime.now().strftime('%d/%m/%Y')}",
+        "Adjunto el respaldo automático de PanolERP.", buf.getvalue(), fname)
+    return jsonify({'ok': True, 'respaldo_generado': True,
+                    'correo_enviado': enviado,
+                    'nota': None if enviado else 'Sin SMTP/ALERT_EMAIL configurado; el respaldo se generó pero no se envió.'})
+
+
+@app.route('/admin/probar_correo', methods=['POST', 'GET'])
+@login_requerido
+@admin_requerido
+def probar_correo():
+    """Envía un correo de prueba a ALERT_EMAIL para verificar la config SMTP."""
+    destino = os.getenv('ALERT_EMAIL', session.get('usuario_email') or '')
+    ok = _enviar_correo(destino, "PanolERP · Correo de prueba",
+                        "Este es un correo de prueba de PanolERP. Si lo recibes, el SMTP está bien configurado.")
+    if ok:
+        flash(f"✅ Correo de prueba enviado a {destino}.")
+    else:
+        flash("⚠️ No se pudo enviar. Revisa las variables SMTP_HOST, SMTP_USER, SMTP_PASS y ALERT_EMAIL.")
+    return redirect(url_for('panel_gerencial'))
 
 
 @app.route('/item/<int:item_id>/historial')
@@ -4225,6 +4295,92 @@ def _estilizar_hoja(ws, titulo, subtitulo, headers, rows, money_cols=(),
     if autofilter and rows:
         ws.auto_filter.ref = f"A{hr}:{get_column_letter(ncol)}{hr + len(rows)}"
     return fin
+
+
+_PWA_ICON_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">'
+    '<rect width="512" height="512" rx="96" fill="#1e3a8a"/>'
+    '<g fill="#ffffff">'
+    '<rect x="120" y="150" width="272" height="60" rx="10"/>'
+    '<rect x="120" y="230" width="272" height="132" rx="12" fill="none" stroke="#ffffff" stroke-width="26"/>'
+    '<rect x="150" y="360" width="212" height="26" rx="8"/>'
+    '</g>'
+    '<text x="256" y="470" font-family="Arial" font-size="60" font-weight="bold" '
+    'fill="#ffffff" text-anchor="middle">PanolERP</text></svg>')
+
+
+@app.route('/manifest.json')
+def pwa_manifest():
+    return jsonify({
+        "name": "PanolERP · Gestión de Pañol",
+        "short_name": "PanolERP",
+        "description": "Inventario, préstamos y pañol del establecimiento",
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": "#1e3a8a",
+        "theme_color": "#1e3a8a",
+        "icons": [
+            {"src": "/pwa-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+        ],
+    })
+
+
+@app.route('/pwa-icon.svg')
+def pwa_icon():
+    from flask import Response
+    return Response(_PWA_ICON_SVG, mimetype='image/svg+xml')
+
+
+@app.route('/sw.js')
+def pwa_sw():
+    from flask import Response
+    sw = (
+        "self.addEventListener('install', function(e){ self.skipWaiting(); });\n"
+        "self.addEventListener('activate', function(e){ e.waitUntil(self.clients.claim()); });\n"
+        "self.addEventListener('fetch', function(e){ /* red primero; sin caché offline por ahora */ });\n"
+    )
+    return Response(sw, mimetype='application/javascript')
+
+
+@app.route('/api/notificaciones')
+@login_requerido
+def api_notificaciones():
+    """Devuelve las alertas del usuario (JSON) para la campana de notificaciones:
+    stock bajo, ítems por vencer/caducados y órdenes de trabajo pendientes."""
+    rol = session.get('usuario_rol')
+    esp_id = session.get('usuario_especialidad_id')
+    hoy = datetime.utcnow().date()
+    limite = hoy + timedelta(days=30)
+    items = (Item.query.all() if rol == 'Admin'
+             else Item.query.filter_by(especialidad_id=esp_id).all())
+    notis, total = [], 0
+
+    bajo = sum(1 for i in items if (i.cantidad_disponible or 0) <= (i.cantidad_minima or 0))
+    if bajo:
+        total += bajo
+        notis.append({'icono': 'fa-triangle-exclamation', 'color': '#dc2626',
+                      'texto': f'{bajo} ítem(s) bajo el stock mínimo', 'url': '/inventario'})
+    caducados = sum(1 for i in items if i.fecha_caducidad and i.fecha_caducidad < hoy)
+    if caducados:
+        total += caducados
+        notis.append({'icono': 'fa-hourglass-end', 'color': '#b91c1c',
+                      'texto': f'{caducados} ítem(s) caducado(s)', 'url': '/inventario'})
+    porvencer = sum(1 for i in items if i.fecha_caducidad and hoy <= i.fecha_caducidad <= limite)
+    if porvencer:
+        total += porvencer
+        notis.append({'icono': 'fa-hourglass-half', 'color': '#f59e0b',
+                      'texto': f'{porvencer} ítem(s) por vencer (30 días)', 'url': '/inventario'})
+    q_ot = OrdenTrabajo.query.filter_by(estado='Pendiente')
+    if rol != 'Admin' and esp_id:
+        q_ot = q_ot.filter_by(especialidad_id=esp_id)
+    n_ot = q_ot.count()
+    if n_ot:
+        total += n_ot
+        notis.append({'icono': 'fa-clipboard-check', 'color': '#0ea5e9',
+                      'texto': f'{n_ot} orden(es) de trabajo pendiente(s)', 'url': '/inventario'})
+    return jsonify({'count': total, 'items': notis})
 
 
 def _estilo_pandas_ws(ws, accent='1F3864'):
