@@ -315,6 +315,9 @@ class Item(db.Model):
     fecha_caducidad = db.Column(db.Date, nullable=True)     # vencimiento de insumos
     es_cest = db.Column(db.Boolean, default=False, nullable=False,
                         server_default='false')             # marca "Elemento CEST"
+    # Si es False, el ítem NO cuenta para las alertas de stock bajo
+    alerta_activa = db.Column(db.Boolean, default=True, nullable=False,
+                              server_default='true')
 
     @property
     def porcentaje_desgaste(self):
@@ -731,6 +734,11 @@ def _migrar_columnas_seguridad():
             if 'es_cest' not in cols:
                 statements.append(
                     f"ALTER TABLE item ADD COLUMN es_cest BOOLEAN NOT NULL DEFAULT {bool_default}"
+                )
+            if 'alerta_activa' not in cols:
+                true_default = 'TRUE' if dialect == 'postgresql' else '1'
+                statements.append(
+                    f"ALTER TABLE item ADD COLUMN alerta_activa BOOLEAN NOT NULL DEFAULT {true_default}"
                 )
             if 'fecha_adquisicion' not in cols:
                 statements.append(f"ALTER TABLE item ADD COLUMN fecha_adquisicion {date_type} NULL")
@@ -1213,7 +1221,7 @@ def ver_inventario():
     # Conteos para el panel de alertas
     _hoy = datetime.utcnow().date()
     _limite_venc = _hoy + timedelta(days=30)
-    n_stock_bajo = sum(1 for i in items if (i.cantidad_disponible or 0) <= (i.cantidad_minima or 0))
+    n_stock_bajo = sum(1 for i in items if _stock_bajo(i))
     n_por_vencer = sum(1 for i in items
                        if i.fecha_caducidad and _hoy <= i.fecha_caducidad <= _limite_venc)
     n_caducados = sum(1 for i in items if i.fecha_caducidad and i.fecha_caducidad < _hoy)
@@ -1470,6 +1478,7 @@ def editar_item(item_id):
     if request.form.get('form_editar_completo') == '1':
         item.decreto_240 = request.form.get('decreto_240') in ('on', '1', 'true')
         item.es_cest = request.form.get('es_cest') in ('on', '1', 'true')
+        item.alerta_activa = request.form.get('alerta_activa') in ('on', '1', 'true')
     cad_raw = request.form.get('fecha_caducidad', None)
     if cad_raw is not None:
         cad_raw = cad_raw.strip()
@@ -2166,6 +2175,13 @@ def _es_consumible(item):
         return False
     cat = (item.categoria or '').lower()
     return any(k in cat for k in CATEGORIAS_CONSUMIBLES)
+
+
+def _stock_bajo(item):
+    """True si el ítem está bajo el mínimo Y tiene la alerta de stock activa."""
+    if not getattr(item, 'alerta_activa', True):
+        return False
+    return (item.cantidad_disponible or 0) <= (item.cantidad_minima or 0)
 
 
 @app.route('/procesar_hoja_vida', methods=['POST'])
@@ -3713,7 +3729,7 @@ def exportar_inventario():
     stamp = datetime.now().strftime('%d/%m/%Y %H:%M')
     total_stock = sum(i.cantidad_total or 0 for i in items)
     valor_total = sum((i.precio_unitario or 0) * (i.cantidad_total or 0) for i in items)
-    n_bajo = sum(1 for i in items if (i.cantidad_disponible or 0) <= (i.cantidad_minima or 0))
+    n_bajo = sum(1 for i in items if _stock_bajo(i))
 
     filas = []
     por_cat = {}
@@ -4063,8 +4079,7 @@ def _enviar_correo(destino, asunto, cuerpo):
 def enviar_aviso_stock():
     """Envía por correo al administrador el listado de ítems bajo el mínimo.
     Requiere SMTP configurado (ver variables de entorno SMTP_*); si no, avisa."""
-    bajos = [i for i in Item.query.all()
-             if (i.cantidad_disponible or 0) <= (i.cantidad_minima or 0)]
+    bajos = [i for i in Item.query.all() if _stock_bajo(i)]
     destino = os.getenv('ALERT_EMAIL', session.get('usuario_email') or '')
     if not bajos:
         flash("✅ No hay ítems bajo el mínimo. Nada que avisar.")
@@ -4388,8 +4403,8 @@ def api_notificaciones():
              else Item.query.filter_by(especialidad_id=esp_id).all())
     notis, total = [], 0
 
-    bajo = sum(1 for i in items if (i.cantidad_disponible or 0) <= (i.cantidad_minima or 0))
-    if bajo:
+    bajo = sum(1 for i in items if _stock_bajo(i))
+    if bajo:  # noqa
         total += bajo
         notis.append({'icono': 'fa-triangle-exclamation', 'color': '#dc2626',
                       'texto': f'{bajo} ítem(s) bajo el stock mínimo', 'url': '/inventario'})
@@ -4454,7 +4469,7 @@ def reporte_reposicion():
     for i in items:
         disp = i.cantidad_disponible or 0
         mini = i.cantidad_minima or 0
-        if disp > mini:
+        if not _stock_bajo(i):
             continue
         sugerido = max(1, (mini * 2) - disp) if mini else max(1, 1 - disp)
         costo = sugerido * (i.precio_unitario or 0)
@@ -4689,7 +4704,7 @@ def panel_gerencial():
     total_stock = sum(i.cantidad_total or 0 for i in items)
     valor_total = sum((i.precio_unitario or 0) * (i.cantidad_total or 0) for i in items)
     prestamos_activos = Prestamo.query.filter_by(estado='Pendiente').count()
-    n_stock_bajo = sum(1 for i in items if (i.cantidad_disponible or 0) <= (i.cantidad_minima or 0))
+    n_stock_bajo = sum(1 for i in items if _stock_bajo(i))
     total_mermado = sum(i.cantidad_mermada or 0 for i in items)
 
     # Valor del inventario por área (top 12)

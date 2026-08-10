@@ -618,6 +618,7 @@
                         <option value="Componente">Componente</option>
                         <option value="Material">Material</option>
                         <option value="Fungible">Fungible</option>
+                        <option value="Maqueta Didáctica">Maqueta didáctica</option>
                     </select>
                 </div>
                 <div><label>Cant.</label><input type="number" name="cantidad" id="agregar_cantidad" min="1" value="1" required></div>
@@ -768,6 +769,7 @@
                     <button class="cat-btn" onclick="filtrarCategoria(this, 'Componente')"><i class="fas fa-microchip"></i> Componente</button>
                     <button class="cat-btn" onclick="filtrarCategoria(this, 'Material')"><i class="fas fa-layer-group"></i> Material</button>
                     <button class="cat-btn" onclick="filtrarCategoria(this, 'Fungible')"><i class="fas fa-flask"></i> Fungible</button>
+                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Maqueta')"><i class="fas fa-cubes-stacked"></i> Maqueta didáctica</button>
                 {% else %}
                     <button class="cat-btn" onclick="filtrarCategoria(this, 'Material Escritorio')"><i class="fas fa-pen"></i> Mat. Escritorio</button>
                     <button class="cat-btn" onclick="filtrarCategoria(this, 'Material Didáctico')"><i class="fas fa-clipboard"></i> Mat. Didáctico</button>
@@ -848,7 +850,7 @@
                         {% for item in items %}
                         {% set d = item.porcentaje_desgaste %}
                         {% set d_color = '#10b981' if d is not none and d < 50 else ('#eab308' if d is not none and d < 80 else '#dc2626') %}
-                        <tr class="fila-item" data-categoria="{{ item.categoria }}" data-decreto240="{{ '1' if item.decreto_240 else '0' }}" data-stockbajo="{{ '1' if item.cantidad_disponible <= item.cantidad_minima else '0' }}" data-enuso="{{ '1' if (item.cantidad_total - item.cantidad_disponible) > 0 else '0' }}" data-dependencia="{{ (item.dependencia or '')|lower }}" data-cest="{{ '1' if item.es_cest else '0' }}" data-caducado="{{ '1' if (item.fecha_caducidad and item.fecha_caducidad < hoy) else '0' }}" data-porvencer="{{ '1' if (item.fecha_caducidad and item.fecha_caducidad >= hoy and (item.fecha_caducidad - hoy).days <= 30) else '0' }}">
+                        <tr class="fila-item" data-categoria="{{ item.categoria }}" data-decreto240="{{ '1' if item.decreto_240 else '0' }}" data-stockbajo="{{ '1' if (item.cantidad_disponible <= item.cantidad_minima and item.alerta_activa) else '0' }}" data-enuso="{{ '1' if (item.cantidad_total - item.cantidad_disponible) > 0 else '0' }}" data-dependencia="{{ (item.dependencia or '')|lower }}" data-cest="{{ '1' if item.es_cest else '0' }}" data-caducado="{{ '1' if (item.fecha_caducidad and item.fecha_caducidad < hoy) else '0' }}" data-porvencer="{{ '1' if (item.fecha_caducidad and item.fecha_caducidad >= hoy and (item.fecha_caducidad - hoy).days <= 30) else '0' }}">
                             {% set _uso_cell %}
                                 {% if d is not none %}
                                     <div style="background:#f3f4f6; border-radius:8px; height:10px; width:60px; margin:0 auto; overflow:hidden;">
@@ -956,7 +958,7 @@
                             <td>
                                 <div style="display:flex; gap:5px; flex-wrap:wrap;">
                                     <button type="button" class="btn-edit" title="Editar"
-                                        onclick="abrirModalEditar({{ item.id }}, '{{ item.nombre | replace("'", "\\'") }}', '{{ item.categoria }}', '{{ item.imagen_url or '' }}', '{{ item.ubicacion or '' }}', '{{ (item.descripcion or '') | replace("'", "\\'") | replace('\n', ' ') }}', {{ item.precio_unitario or 0 }}, {{ item.desgaste or 0 }}, '{{ item.fecha_adquisicion.isoformat() if item.fecha_adquisicion else '' }}', {dependencia: '{{ (item.dependencia or '') | replace("'", "\\'") }}', estado: '{{ (item.estado or '') | replace("'", "\\'") }}', serie: '{{ (item.numero_serie or '') | replace("'", "\\'") }}', dec240: '{{ '1' if item.decreto_240 else '0' }}', cest: '{{ '1' if item.es_cest else '0' }}', caducidad: '{{ item.fecha_caducidad.isoformat() if item.fecha_caducidad else '' }}'})">
+                                        onclick="abrirModalEditar({{ item.id }}, '{{ item.nombre | replace("'", "\\'") }}', '{{ item.categoria }}', '{{ item.imagen_url or '' }}', '{{ item.ubicacion or '' }}', '{{ (item.descripcion or '') | replace("'", "\\'") | replace('\n', ' ') }}', {{ item.precio_unitario or 0 }}, {{ item.desgaste or 0 }}, '{{ item.fecha_adquisicion.isoformat() if item.fecha_adquisicion else '' }}', {dependencia: '{{ (item.dependencia or '') | replace("'", "\\'") }}', estado: '{{ (item.estado or '') | replace("'", "\\'") }}', serie: '{{ (item.numero_serie or '') | replace("'", "\\'") }}', dec240: '{{ '1' if item.decreto_240 else '0' }}', cest: '{{ '1' if item.es_cest else '0' }}', caducidad: '{{ item.fecha_caducidad.isoformat() if item.fecha_caducidad else '' }}', alerta: '{{ '1' if item.alerta_activa else '0' }}'})">
                                         <i class="fas fa-pencil-alt"></i>
                                     </button>
                                     <a href="/etiqueta/{{ item.id }}" target="_blank" title="Imprimir etiqueta con código de barras"
@@ -1931,6 +1933,7 @@
                 <option value="Componente">Componente</option>
                 <option value="Material">Material</option>
                 <option value="Fungible">Fungible</option>
+                <option value="Maqueta Didáctica">Maqueta didáctica</option>
             </select>
 
             <label>Descripción</label>
@@ -1968,6 +1971,11 @@
             <label style="display:flex; align-items:center; gap:8px; font-weight:600; color:#B45309; cursor:pointer; margin-bottom:12px;">
                 <input type="checkbox" name="decreto_240" id="edit_dec240" value="1" style="width:16px; height:16px; accent-color:#B45309;">
                 Sujeto a Decreto 240
+            </label>
+
+            <label style="display:flex; align-items:center; gap:8px; font-weight:600; color:#0369a1; cursor:pointer; margin-bottom:12px;">
+                <input type="checkbox" name="alerta_activa" id="edit_alerta" value="1" style="width:16px; height:16px; accent-color:#0ea5e9;">
+                Alerta de stock activa <span style="font-weight:400; color:#94a3b8; font-size:0.78rem;">(avisar cuando baje del mínimo)</span>
             </label>
 
             {% if es_grafica %}
@@ -2544,6 +2552,7 @@
         setVal('edit_caducidad', extra.caducidad);
         setChk('edit_dec240', extra.dec240);
         setChk('edit_cest', extra.cest);
+        setChk('edit_alerta', (extra.alerta === undefined) ? 1 : extra.alerta);
         const sel = document.getElementById('edit_categoria');
         if (sel && categoria) {
             for (let i = 0; i < sel.options.length; i++) {
