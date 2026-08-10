@@ -621,6 +621,13 @@
                         <option value="Maqueta Didáctica">Maqueta didáctica</option>
                     </select>
                 </div>
+                <div>
+                    <label>Clasificación (Dec. 240)</label>
+                    <select name="clasificacion" id="agregar_clasificacion">
+                        <option value="">— Sin clasificar —</option>
+                        {% for cl in (clasificaciones or []) %}<option value="{{ cl }}">{{ cl }}</option>{% endfor %}
+                    </select>
+                </div>
                 <div><label>Cant.</label><input type="number" name="cantidad" id="agregar_cantidad" min="1" value="1" required></div>
                 <div><label>Ubicación</label><input type="text" name="ubicacion" id="agregar_ubicacion" placeholder="Estante A, Armario 1..."></div>
                 <div><label>Fecha adquisición</label><input type="date" name="fecha_adquisicion" id="agregar_fecha"></div>
@@ -784,6 +791,11 @@
                     <option value="">🏷️ Dependencia: todas</option>
                     {% for d in deps|sort %}<option value="{{ d|lower }}">{{ d }}</option>{% endfor %}
                 </select>
+                <select id="filtroClasificacion" onchange="filtrarClasificacion(this)" title="Filtrar por clasificación (Decreto 240)"
+                        style="padding:6px 12px; border-radius:20px; border:1px solid #0369a1; background:#eff6ff; color:#075985; font-weight:700; font-size:0.78rem; cursor:pointer;">
+                    <option value="">📋 Clasificación: todas</option>
+                    {% for cl in (clasificaciones or []) %}<option value="{{ cl|lower }}">{{ cl }}</option>{% endfor %}
+                </select>
                 {% if not deps %}
                 <span style="font-size:0.72rem; color:#9ca3af; align-self:center;">(asigna dependencias a los ítems para filtrar por ellas)</span>
                 {% endif %}
@@ -850,7 +862,7 @@
                         {% for item in items %}
                         {% set d = item.porcentaje_desgaste %}
                         {% set d_color = '#10b981' if d is not none and d < 50 else ('#eab308' if d is not none and d < 80 else '#dc2626') %}
-                        <tr class="fila-item" data-categoria="{{ item.categoria }}" data-decreto240="{{ '1' if item.decreto_240 else '0' }}" data-stockbajo="{{ '1' if (item.cantidad_disponible <= item.cantidad_minima and item.alerta_activa) else '0' }}" data-enuso="{{ '1' if (item.cantidad_total - item.cantidad_disponible) > 0 else '0' }}" data-dependencia="{{ (item.dependencia or '')|lower }}" data-cest="{{ '1' if item.es_cest else '0' }}" data-caducado="{{ '1' if (item.fecha_caducidad and item.fecha_caducidad < hoy) else '0' }}" data-porvencer="{{ '1' if (item.fecha_caducidad and item.fecha_caducidad >= hoy and (item.fecha_caducidad - hoy).days <= 30) else '0' }}">
+                        <tr class="fila-item" data-categoria="{{ item.categoria }}" data-decreto240="{{ '1' if item.decreto_240 else '0' }}" data-stockbajo="{{ '1' if (item.cantidad_disponible <= item.cantidad_minima and item.alerta_activa) else '0' }}" data-enuso="{{ '1' if (item.cantidad_total - item.cantidad_disponible) > 0 else '0' }}" data-dependencia="{{ (item.dependencia or '')|lower }}" data-cest="{{ '1' if item.es_cest else '0' }}" data-caducado="{{ '1' if (item.fecha_caducidad and item.fecha_caducidad < hoy) else '0' }}" data-porvencer="{{ '1' if (item.fecha_caducidad and item.fecha_caducidad >= hoy and (item.fecha_caducidad - hoy).days <= 30) else '0' }}" data-clasif="{{ (item.clasificacion or '')|lower }}">
                             {% set _uso_cell %}
                                 {% if d is not none %}
                                     <div style="background:#f3f4f6; border-radius:8px; height:10px; width:60px; margin:0 auto; overflow:hidden;">
@@ -958,7 +970,7 @@
                             <td>
                                 <div style="display:flex; gap:5px; flex-wrap:wrap;">
                                     <button type="button" class="btn-edit" title="Editar"
-                                        onclick="abrirModalEditar({{ item.id }}, '{{ item.nombre | replace("'", "\\'") }}', '{{ item.categoria }}', '{{ item.imagen_url or '' }}', '{{ item.ubicacion or '' }}', '{{ (item.descripcion or '') | replace("'", "\\'") | replace('\n', ' ') }}', {{ item.precio_unitario or 0 }}, {{ item.desgaste or 0 }}, '{{ item.fecha_adquisicion.isoformat() if item.fecha_adquisicion else '' }}', {dependencia: '{{ (item.dependencia or '') | replace("'", "\\'") }}', estado: '{{ (item.estado or '') | replace("'", "\\'") }}', serie: '{{ (item.numero_serie or '') | replace("'", "\\'") }}', dec240: '{{ '1' if item.decreto_240 else '0' }}', cest: '{{ '1' if item.es_cest else '0' }}', caducidad: '{{ item.fecha_caducidad.isoformat() if item.fecha_caducidad else '' }}', alerta: '{{ '1' if item.alerta_activa else '0' }}'})">
+                                        onclick="abrirModalEditar({{ item.id }}, '{{ item.nombre | replace("'", "\\'") }}', '{{ item.categoria }}', '{{ item.imagen_url or '' }}', '{{ item.ubicacion or '' }}', '{{ (item.descripcion or '') | replace("'", "\\'") | replace('\n', ' ') }}', {{ item.precio_unitario or 0 }}, {{ item.desgaste or 0 }}, '{{ item.fecha_adquisicion.isoformat() if item.fecha_adquisicion else '' }}', {dependencia: '{{ (item.dependencia or '') | replace("'", "\\'") }}', clasif: '{{ (item.clasificacion or '') | replace("'", "\\'") }}', estado: '{{ (item.estado or '') | replace("'", "\\'") }}', serie: '{{ (item.numero_serie or '') | replace("'", "\\'") }}', dec240: '{{ '1' if item.decreto_240 else '0' }}', cest: '{{ '1' if item.es_cest else '0' }}', caducidad: '{{ item.fecha_caducidad.isoformat() if item.fecha_caducidad else '' }}', alerta: '{{ '1' if item.alerta_activa else '0' }}'})">
                                         <i class="fas fa-pencil-alt"></i>
                                     </button>
                                     <a href="/etiqueta/{{ item.id }}" target="_blank" title="Imprimir etiqueta con código de barras"
@@ -1960,6 +1972,11 @@
             <input type="date" name="fecha_adquisicion" id="edit_fecha_adq" style="margin-bottom: 12px;">
 
             <input type="hidden" name="form_editar_completo" value="1">
+            <label>Clasificación (Dec. 240)</label>
+            <select name="clasificacion" id="edit_clasificacion" style="margin-bottom: 12px;">
+                <option value="">— Sin clasificar —</option>
+                {% for cl in (clasificaciones or []) %}<option value="{{ cl }}">{{ cl }}</option>{% endfor %}
+            </select>
             <label>Dependencia</label>
             <input type="text" name="dependencia" id="edit_dependencia" placeholder="Taller, oficina, sede..." style="margin-bottom: 12px;">
 
@@ -2220,6 +2237,7 @@
     let soloDecreto240 = false;
     let filtroEspecial = 'NINGUNO';   // NINGUNO | STOCKBAJO | ENUSO | DISPONIBLE | CADUCADO
     let dependenciaActiva = '';       // '' = todas
+    let clasifActiva = '';            // filtro por clasificación patrimonial (Dec. 240)
     let soloCest = false;             // filtro "Solo CEST" (área Gráfica)
 
     function filtrarInventario() {
@@ -2245,9 +2263,11 @@
             else if (filtroEspecial === 'PORVENCER') matchEsp = tr.getAttribute('data-porvencer') === '1';
             const dep = (tr.getAttribute('data-dependencia') || '');
             const matchDep = (dependenciaActiva === '' || dep === dependenciaActiva);
+            const clasif = (tr.getAttribute('data-clasif') || '');
+            const matchClasif = (clasifActiva === '' || clasif === clasifActiva);
             const esCest = tr.getAttribute('data-cest') === '1';
             const matchCest = (!soloCest || esCest);
-            tr.style.display = (matchCat && matchTexto && matchDec && matchEsp && matchDep && matchCest) ? '' : 'none';
+            tr.style.display = (matchCat && matchTexto && matchDec && matchEsp && matchDep && matchClasif && matchCest) ? '' : 'none';
         });
     }
     // Desde una tarjeta de alerta: activa el filtro y baja a la tabla
@@ -2315,6 +2335,10 @@
     }
     function filtrarDependencia(sel) {
         dependenciaActiva = (sel && sel.value ? sel.value : '').toLowerCase();
+        filtrarInventario();
+    }
+    function filtrarClasificacion(sel) {
+        clasifActiva = (sel && sel.value ? sel.value : '').toLowerCase();
         filtrarInventario();
     }
     function filtrarCategoria(btn, categoria) {
@@ -2547,6 +2571,7 @@
         const elFecha = document.getElementById('edit_fecha_adq'); if (elFecha) elFecha.value = fechaAdq || '';
         // Campos adicionales
         setVal('edit_dependencia', extra.dependencia);
+        setVal('edit_clasificacion', extra.clasif || '');
         setVal('edit_estado', extra.estado);
         setVal('edit_serie', extra.serie);
         setVal('edit_caducidad', extra.caducidad);

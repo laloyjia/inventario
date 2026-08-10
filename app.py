@@ -318,6 +318,8 @@ class Item(db.Model):
     # Si es False, el ítem NO cuenta para las alertas de stock bajo
     alerta_activa = db.Column(db.Boolean, default=True, nullable=False,
                               server_default='true')
+    # Clasificación patrimonial (Decreto 240) — aplica a todos los ítems
+    clasificacion = db.Column(db.String(60), nullable=True)
 
     @property
     def porcentaje_desgaste(self):
@@ -740,6 +742,8 @@ def _migrar_columnas_seguridad():
                 statements.append(
                     f"ALTER TABLE item ADD COLUMN alerta_activa BOOLEAN NOT NULL DEFAULT {true_default}"
                 )
+            if 'clasificacion' not in cols:
+                statements.append("ALTER TABLE item ADD COLUMN clasificacion VARCHAR(60) NULL")
             if 'fecha_adquisicion' not in cols:
                 statements.append(f"ALTER TABLE item ADD COLUMN fecha_adquisicion {date_type} NULL")
             if 'max_usos' not in cols:
@@ -1250,6 +1254,7 @@ def ver_inventario():
                            alertas=alertas,
                            tipo_area=tipo_area,
                            es_grafica=es_grafica,
+                           clasificaciones=CLASIFICACIONES_D240,
                            hoy=datetime.utcnow().date(),
                            n_stock_bajo=n_stock_bajo,
                            n_por_vencer=n_por_vencer,
@@ -1319,6 +1324,7 @@ def agregar_item():
     nombre = request.form.get('nombre', '').strip()
     categoria = request.form.get('categoria', '').strip()
     dependencia = request.form.get('dependencia', '').strip() or None
+    clasificacion = request.form.get('clasificacion', '').strip() or None
     # Campos específicos Gráfica: Elemento CEST + fecha de caducidad
     es_cest = request.form.get('es_cest') in ('on', '1', 'true', 'True')
     fecha_cad_raw = request.form.get('fecha_caducidad', '').strip()
@@ -1374,6 +1380,7 @@ def agregar_item():
         if precio_unitario: item_existente.precio_unitario = precio_unitario
         if desgaste: item_existente.desgaste = desgaste
         if dependencia: item_existente.dependencia = dependencia
+        if clasificacion: item_existente.clasificacion = clasificacion
         item_existente.decreto_240 = decreto_240
         item_existente.es_cest = es_cest
         if fecha_cad: item_existente.fecha_caducidad = fecha_cad
@@ -1390,7 +1397,7 @@ def agregar_item():
                           marca=marca, modelo=modelo, numero_serie=numero_serie,
                           estado=estado, fecha_adquisicion=fecha_adq,
                           max_usos=max_usos,
-                          decreto_240=decreto_240,
+                          decreto_240=decreto_240, clasificacion=clasificacion,
                           es_cest=es_cest, fecha_caducidad=fecha_cad)
         db.session.add(nuevo_item)
     db.session.commit()
@@ -1467,6 +1474,9 @@ def editar_item(item_id):
     dep = request.form.get('dependencia', None)
     if dep is not None:
         item.dependencia = dep.strip() or None
+    clasif = request.form.get('clasificacion', None)
+    if clasif is not None:
+        item.clasificacion = clasif.strip() or None
     est = request.form.get('estado', None)
     if est is not None and est.strip() != '':
         item.estado = est.strip()
@@ -2168,6 +2178,17 @@ def hoja_vida(est_id):
 # lo no devuelto se descuenta automáticamente del stock.
 CATEGORIAS_CONSUMIBLES = ('fungible', 'consumible', 'material', 'insumo')
 
+# Clasificación patrimonial (Decreto 240) — usada como filtro para todos los ítems
+CLASIFICACIONES_D240 = [
+    'Máquinas y Equipos',
+    'Instrumentos',
+    'Herramientas, Implementos y utensilios',
+    'Insumos y Fungibles',
+    'Material Interactivo (Didáctico)',
+    'Normativa y Regulaciones',
+    'Softwares',
+]
+
 
 def _es_consumible(item):
     """True si el ítem es un fungible/consumible (se gasta, no se devuelve)."""
@@ -2555,6 +2576,8 @@ def cargar_excel():
         'codigo de barra': 'codigo', 'codigo de barras': 'codigo', 'codigo': 'codigo',
         'nombre': 'nombre', 'descripcion': 'descripcion',
         'marca': 'marca', 'modelo': 'modelo', 'categoria': 'categoria',
+        'clasificacion': 'clasificacion', 'clasificacion patrimonial': 'clasificacion',
+        'tipo patrimonial': 'clasificacion',
         'cantidad': 'cantidad', 'ubicacion': 'ubicacion', 'dependencia': 'dependencia',
         'fecha adquisicion': 'fecha', 'fecha': 'fecha',
         'desgaste': 'desgaste', 'desgaste ($)': 'desgaste',
@@ -2664,6 +2687,7 @@ def cargar_excel():
 
         ubicacion = getf(fila, 'ubicacion', '')
         dependencia = getf(fila, 'dependencia', '') or None      # NUEVO
+        clasificacion = getf(fila, 'clasificacion', '') or None  # NUEVO (Dec. 240)
         estado = getf(fila, 'estado', '') or None                # NUEVO
         serie = getf(fila, 'serie', '') or None                  # NUEVO
 
@@ -2753,6 +2777,8 @@ def cargar_excel():
                 existente.precio_unitario = precio_val
             if dependencia:
                 existente.dependencia = dependencia
+            if clasificacion:
+                existente.clasificacion = clasificacion
             if estado:
                 existente.estado = estado
             if serie:
@@ -2775,7 +2801,8 @@ def cargar_excel():
                 especialidad_id=especialidad_id,
                 cantidad_total=cantidad, cantidad_disponible=cantidad,
                 ubicacion=ubicacion, imagen_url=imagen,
-                dependencia=dependencia, estado=estado, numero_serie=serie,
+                dependencia=dependencia, clasificacion=clasificacion,
+                estado=estado, numero_serie=serie,
                 decreto_240=decreto_240, es_cest=es_cest, fecha_caducidad=fecha_cad,
                 fecha_adquisicion=fecha_adq,
                 desgaste=desgaste_val, precio_unitario=precio_val,
@@ -2848,6 +2875,7 @@ def exportar_excel():
         'Cantidad': i.cantidad_total,
         'Ubicación': i.ubicacion,
         'Dependencia': i.dependencia or '',
+        'Clasificación': i.clasificacion or '',
         'Fecha adquisición': i.fecha_adquisicion.isoformat() if i.fecha_adquisicion else '',
         'Stock mínimo': i.cantidad_minima,
         'Desgaste ($)': i.desgaste or 0,
@@ -3500,16 +3528,16 @@ def descargar_plantilla():
         ws = wb.active
         ws.title = 'Inventario'
         headers = ['Código de barra', 'Nombre', 'Descripción', 'Marca', 'Modelo',
-                   'Categoría', 'Cantidad', 'Ubicación', 'Dependencia',
+                   'Categoría', 'Clasificación', 'Cantidad', 'Ubicación', 'Dependencia',
                    'Fecha adquisición', 'Stock mínimo', 'Desgaste ($)',
                    'Costo unitario ($)', 'Costo total ($)', 'Estado', 'N° Serie',
                    'Dec. 240', 'Imagen de referencia']
         ejemplos = [
             ['', 'Taladro percutor', 'Herramienta eléctrica', 'Bosch', 'GSB 13 RE',
-             'Herramientas', 5, 'Estante A1', 'Taller', '2024-03-15', 3, 0, 54990,
+             'Herramientas', 'Máquinas y Equipos', 5, 'Estante A1', 'Taller', '2024-03-15', 3, 0, 54990,
              '', 'Bueno', 'SN-12345', 'SI', ''],
             ['', 'Multímetro digital', 'Medición', 'Fluke', '101',
-             'Componentes', 10, 'Vitrina B1', 'Taller', '2024-01-20', 4, 0, 39990,
+             'Componentes', 'Instrumentos', 10, 'Vitrina B1', 'Taller', '2024-01-20', 4, 0, 39990,
              '', 'Bueno', '', 'NO', ''],
         ]
         # Columnas extra SOLO para el área Gráfica: Fecha caducidad + CEST
