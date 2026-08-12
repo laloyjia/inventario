@@ -543,8 +543,9 @@
                                 style="background:#334155; color:white; padding:9px 14px; border:none; border-radius:6px; font-size:0.85rem; font-weight:600; cursor:pointer;">
                             <i class="fas fa-table-columns"></i> Columnas
                         </button>
-                        <div id="panelColumnas" style="display:none; position:absolute; right:0; top:110%; width:230px; background:white; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,0.18); z-index:2500; padding:10px 12px; text-align:left;">
-                            <div style="font-weight:700; color:#334155; font-size:0.82rem; margin-bottom:8px;">Mostrar columnas</div>
+                        <div id="panelColumnas" style="display:none; position:absolute; right:0; top:110%; width:300px; background:white; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,0.18); z-index:2500; padding:12px 14px; text-align:left;">
+                            <div style="font-weight:700; color:#334155; font-size:0.85rem; margin-bottom:4px;">Mostrar y ordenar columnas</div>
+                            <div style="font-size:0.72rem; color:#94a3b8; margin-bottom:8px;">Marca las que quieras ver y usa ▲▼ para ordenarlas.</div>
                             <div id="listaColumnas"></div>
                         </div>
                     </div>
@@ -2360,13 +2361,20 @@
             cont.style.maxHeight='320px'; cont.style.overflowY='auto'; cont.innerHTML='';
             cfg.order.forEach(function(k, idx){
                 var row=document.createElement('div');
-                row.style.cssText='display:flex; align-items:center; gap:6px; padding:3px 0; font-size:0.82rem;';
+                row.style.cssText='display:grid; grid-template-columns:20px 1fr 26px 26px; align-items:center; gap:8px; padding:5px 2px; border-bottom:1px solid #f1f5f9;';
                 var chk=document.createElement('input'); chk.type='checkbox'; chk.checked=!cfg.hidden[k];
+                chk.style.cssText='width:16px; height:16px; accent-color:#2563eb; cursor:pointer;';
                 chk.onchange=function(){ cfg.hidden[k]=!chk.checked; aplicar(); };
-                var lbl=document.createElement('span'); lbl.textContent=labelOf[k]||k; lbl.style.cssText='flex:1; color:#334155;';
-                var up=document.createElement('button'); up.type='button'; up.innerHTML='&#9650;'; up.title='Subir'; up.style.cssText='border:none; background:#eef2f7; border-radius:4px; cursor:pointer; padding:1px 7px; color:#475569;';
+                var lbl=document.createElement('span'); lbl.textContent=labelOf[k]||k;
+                lbl.style.cssText='text-align:left; color:#334155; font-size:0.82rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;';
+                lbl.title=labelOf[k]||k;
+                lbl.onclick=function(){ chk.checked=!chk.checked; cfg.hidden[k]=!chk.checked; aplicar(); };
+                var bstyle='border:1px solid #e2e8f0; background:#f8fafc; border-radius:5px; cursor:pointer; padding:0; height:24px; color:#475569; font-size:0.7rem; line-height:1;';
+                var up=document.createElement('button'); up.type='button'; up.innerHTML='&#9650;'; up.title='Subir'; up.style.cssText=bstyle;
+                up.disabled=(idx===0); if(up.disabled) up.style.opacity='0.3';
                 up.onclick=function(){ if(idx>0){ var t=cfg.order[idx-1]; cfg.order[idx-1]=cfg.order[idx]; cfg.order[idx]=t; aplicar(); } };
-                var dn=document.createElement('button'); dn.type='button'; dn.innerHTML='&#9660;'; dn.title='Bajar'; dn.style.cssText='border:none; background:#eef2f7; border-radius:4px; cursor:pointer; padding:1px 7px; color:#475569;';
+                var dn=document.createElement('button'); dn.type='button'; dn.innerHTML='&#9660;'; dn.title='Bajar'; dn.style.cssText=bstyle;
+                dn.disabled=(idx===cfg.order.length-1); if(dn.disabled) dn.style.opacity='0.3';
                 dn.onclick=function(){ if(idx<cfg.order.length-1){ var t=cfg.order[idx+1]; cfg.order[idx+1]=cfg.order[idx]; cfg.order[idx]=t; aplicar(); } };
                 row.appendChild(chk); row.appendChild(lbl); row.appendChild(up); row.appendChild(dn);
                 cont.appendChild(row);
