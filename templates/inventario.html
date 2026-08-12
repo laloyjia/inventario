@@ -569,36 +569,36 @@
 
             <!-- Filtros rápidos por categoría (adaptativos por tipo de área) -->
             <div class="cat-filters" style="align-items:center;">
-                <span style="font-size:0.8rem; font-weight:700; color:var(--secondary);"><i class="fas fa-filter"></i> Filtrar:</span>
+                <span style="font-size:0.8rem; font-weight:700; color:var(--secondary); white-space:nowrap;"><i class="fas fa-filter"></i> Filtrar:</span>
                 {% set cats = [] %}
                 {% for it in items %}{% if it.categoria and it.categoria not in cats %}{% set _ = cats.append(it.categoria) %}{% endif %}{% endfor %}
-                <select id="filtroCategoria" onchange="filtrarCategoriaSel(this)" title="Filtrar por categoría"
-                        style="padding:7px 12px; border-radius:20px; border:1px solid #2563eb; background:#eff6ff; color:#1e40af; font-weight:700; font-size:0.8rem; cursor:pointer;">
-                    <option value="TODOS">📦 Categoría: todas</option>
-                    {% for c in cats|sort %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
-                </select>
-                <select id="filtroEstado" onchange="filtrarEstadoSel(this)" title="Filtrar por situación"
-                        style="padding:7px 12px; border-radius:20px; border:1px solid #64748b; background:#f8fafc; color:#334155; font-weight:700; font-size:0.8rem; cursor:pointer;">
-                    <option value="TODOS">🔎 Situación: todas</option>
-                    <option value="DEC240">🛡️ Solo Decreto 240</option>
-                    <option value="STOCKBAJO">⚠️ Stock bajo</option>
-                    <option value="ENUSO">✋ En uso</option>
-                    <option value="DISPONIBLE">✅ Disponibles</option>
-                    {% if es_grafica %}
-                    <option value="CEST">⭐ Solo CEST</option>
-                    <option value="PORVENCER">⏳ Por vencer (30 días)</option>
-                    <option value="CADUCADO">⛔ Caducados</option>
-                    {% endif %}
-                </select>
                 {% set deps = [] %}
                 {% for it in items %}{% if it.dependencia and it.dependencia not in deps %}{% set _ = deps.append(it.dependencia) %}{% endif %}{% endfor %}
-                <select id="filtroDependencia" onchange="filtrarDependencia(this)" title="Filtrar por dependencia"
-                        style="padding:7px 12px; border-radius:20px; border:1px solid #7c3aed; background:#f5f3ff; color:#5b21b6; font-weight:700; font-size:0.8rem; cursor:pointer;">
-                    <option value="">🏷️ Dependencia: todas</option>
-                    {% for d in deps|sort %}<option value="{{ d|lower }}">{{ d }}</option>{% endfor %}
+                <select id="filtroUnico" onchange="filtrarUnico(this)" title="Filtrar por categoría, situación o dependencia"
+                        style="flex:1; min-width:260px; max-width:560px; padding:9px 16px; border-radius:22px; border:1px solid #2563eb; background:#eff6ff; color:#1e40af; font-weight:700; font-size:0.85rem; cursor:pointer;">
+                    <option value="">🔎 Mostrar todo el inventario</option>
+                    <optgroup label="── Por categoría ──">
+                        {% for c in cats|sort %}<option value="cat:{{ c }}">📦 {{ c }}</option>{% endfor %}
+                    </optgroup>
+                    <optgroup label="── Por situación ──">
+                        <option value="est:DEC240">🛡️ Solo Decreto 240</option>
+                        <option value="est:STOCKBAJO">⚠️ Stock bajo</option>
+                        <option value="est:ENUSO">✋ En uso</option>
+                        <option value="est:DISPONIBLE">✅ Disponibles</option>
+                        {% if es_grafica %}
+                        <option value="est:CEST">⭐ Solo CEST</option>
+                        <option value="est:PORVENCER">⏳ Por vencer (30 días)</option>
+                        <option value="est:CADUCADO">⛔ Caducados</option>
+                        {% endif %}
+                    </optgroup>
+                    {% if deps %}
+                    <optgroup label="── Por dependencia ──">
+                        {% for d in deps|sort %}<option value="dep:{{ d|lower }}">🏷️ {{ d }}</option>{% endfor %}
+                    </optgroup>
+                    {% endif %}
                 </select>
-                <button type="button" onclick="limpiarFiltros()" title="Limpiar filtros"
-                        style="padding:7px 12px; border-radius:20px; border:1px solid #cbd5e1; background:white; color:var(--secondary); font-weight:700; font-size:0.8rem; cursor:pointer;">
+                <button type="button" onclick="limpiarFiltros()" title="Quitar filtro"
+                        style="padding:9px 14px; border-radius:22px; border:1px solid #cbd5e1; background:white; color:var(--secondary); font-weight:700; font-size:0.82rem; cursor:pointer; white-space:nowrap;">
                     <i class="fas fa-rotate-left"></i> Limpiar
                 </button>
             </div>
@@ -2225,11 +2225,9 @@
     }
     // Desde una tarjeta de alerta: activa el filtro y baja a la tabla
     function activarFiltroDesdeAlerta(tipo) {
+        _resetFiltros();
         filtroEspecial = tipo;
-        categoriaActiva = 'TODOS';
-        soloDecreto240 = false; soloCest = false;
-        var fe = document.getElementById('filtroEstado'); if (fe) fe.value = tipo;
-        var fc = document.getElementById('filtroCategoria'); if (fc) fc.selectedIndex = 0;
+        var u = document.getElementById('filtroUnico'); if (u) u.value = 'est:' + tipo;
         filtrarInventario();
         var t = document.getElementById('tablaInventario');
         if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2295,24 +2293,30 @@
         clasifActiva = (sel && sel.value ? sel.value : '').toLowerCase();
         filtrarInventario();
     }
-    // Desplegable de Categoría
-    function filtrarCategoriaSel(sel) {
-        categoriaActiva = (sel && sel.value) ? sel.value : 'TODOS';
-        filtrarInventario();
+    // Filtro ÚNICO: una sola lista con grupos (categoría / situación / dependencia)
+    function _resetFiltros() {
+        categoriaActiva = 'TODOS'; soloDecreto240 = false; soloCest = false;
+        filtroEspecial = 'NINGUNO'; dependenciaActiva = ''; clasifActiva = '';
     }
-    // Desplegable de Situación (Dec.240 / stock bajo / en uso / disponibles / Gráfica)
-    function filtrarEstadoSel(sel) {
-        var v = (sel && sel.value) ? sel.value : 'TODOS';
-        soloDecreto240 = (v === 'DEC240');
-        soloCest = (v === 'CEST');
-        filtroEspecial = (['STOCKBAJO','ENUSO','DISPONIBLE','PORVENCER','CADUCADO'].indexOf(v) !== -1) ? v : 'NINGUNO';
+    function filtrarUnico(sel) {
+        var v = (sel && sel.value) ? sel.value : '';
+        _resetFiltros();
+        if (v.indexOf('cat:') === 0) {
+            categoriaActiva = v.slice(4);
+        } else if (v.indexOf('dep:') === 0) {
+            dependenciaActiva = v.slice(4);
+        } else if (v.indexOf('est:') === 0) {
+            var e = v.slice(4);
+            soloDecreto240 = (e === 'DEC240');
+            soloCest = (e === 'CEST');
+            filtroEspecial = (['STOCKBAJO','ENUSO','DISPONIBLE','PORVENCER','CADUCADO'].indexOf(e) !== -1) ? e : 'NINGUNO';
+        }
         filtrarInventario();
     }
     function limpiarFiltros() {
-        categoriaActiva = 'TODOS'; soloDecreto240 = false; soloCest = false;
-        filtroEspecial = 'NINGUNO'; dependenciaActiva = ''; clasifActiva = '';
-        ['filtroCategoria','filtroEstado','filtroDependencia'].forEach(function(id){ var e=document.getElementById(id); if(e) e.selectedIndex=0; });
-        var b=document.getElementById('buscadorInventario'); if(b) b.value='';
+        _resetFiltros();
+        var u = document.getElementById('filtroUnico'); if (u) u.selectedIndex = 0;
+        var b = document.getElementById('buscadorInventario'); if (b) b.value = '';
         filtrarInventario();
     }
     // ---- Modo Inventario ----
