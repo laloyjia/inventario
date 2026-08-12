@@ -1255,6 +1255,7 @@ def ver_inventario():
                            tipo_area=tipo_area,
                            es_grafica=es_grafica,
                            clasificaciones=CLASIFICACIONES_D240,
+                           categorias=CLASIFICACIONES_D240,
                            hoy=datetime.utcnow().date(),
                            n_stock_bajo=n_stock_bajo,
                            n_por_vencer=n_por_vencer,
@@ -2176,9 +2177,12 @@ def hoja_vida(est_id):
 
 # Categorías cuyos ítems se CONSUMEN (no se devuelven): al cerrar la práctica
 # lo no devuelto se descuenta automáticamente del stock.
-CATEGORIAS_CONSUMIBLES = ('fungible', 'consumible', 'material', 'insumo')
+# Consumibles: solo lo que realmente se gasta (Insumos y Fungibles). NO incluye
+# "material" genérico para no confundir con "Material Interactivo (Didáctico)".
+CATEGORIAS_CONSUMIBLES = ('fungible', 'consumible', 'insumo')
 
-# Clasificación patrimonial (Decreto 240) — usada como filtro para todos los ítems
+# Categorías del inventario = clasificación patrimonial (Decreto 240) + Mobiliario.
+# Es la ÚNICA lista de categorías del sistema (reemplaza a Herramienta/Componente/…).
 CLASIFICACIONES_D240 = [
     'Máquinas y Equipos',
     'Instrumentos',
@@ -2187,6 +2191,7 @@ CLASIFICACIONES_D240 = [
     'Material Interactivo (Didáctico)',
     'Normativa y Regulaciones',
     'Softwares',
+    'Mobiliario',
 ]
 
 

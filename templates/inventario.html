@@ -463,18 +463,7 @@
                 <div>
                     <label>Categoría</label>
                     <select name="categoria" id="agregar_categoria">
-                        <option value="Herramienta">Herramienta</option>
-                        <option value="Componente">Componente</option>
-                        <option value="Material">Material</option>
-                        <option value="Fungible">Fungible</option>
-                        <option value="Maqueta Didáctica">Maqueta didáctica</option>
-                    </select>
-                </div>
-                <div>
-                    <label>Clasificación (Dec. 240)</label>
-                    <select name="clasificacion" id="agregar_clasificacion">
-                        <option value="">— Sin clasificar —</option>
-                        {% for cl in (clasificaciones or []) %}<option value="{{ cl }}">{{ cl }}</option>{% endfor %}
+                        {% for cl in (categorias or []) %}<option value="{{ cl }}">{{ cl }}</option>{% endfor %}
                     </select>
                 </div>
                 <div><label>Cant.</label><input type="number" name="cantidad" id="agregar_cantidad" min="1" value="1" required></div>
@@ -560,94 +549,39 @@
             </h2>
 
             <!-- Filtros rápidos por categoría (adaptativos por tipo de área) -->
-            <div class="cat-filters">
-                <button class="cat-btn active" onclick="filtrarCategoria(this, 'TODOS')">Todos</button>
-                <button class="cat-btn" onclick="filtrarDecreto240(this)"
-                        style="background:#FEF3C7; color:#78350F; border:1px solid #B45309; font-weight:700;"
-                        title="Mostrar solo items marcados con Decreto 240">
-                    <i class="fas fa-shield-halved"></i> Solo Dec. 240
-                </button>
-                <button class="cat-btn" onclick="filtrarEspecial(this, 'STOCKBAJO')"
-                        style="background:#fef2f2; color:#991b1b; border:1px solid #ef4444; font-weight:700;"
-                        title="Ítems con disponible bajo el mínimo">
-                    <i class="fas fa-triangle-exclamation"></i> Stock bajo
-                </button>
-                <button class="cat-btn" onclick="filtrarEspecial(this, 'ENUSO')"
-                        style="background:#fffbeb; color:#92400e; border:1px solid #f59e0b; font-weight:700;"
-                        title="Ítems con unidades prestadas / en uso">
-                    <i class="fas fa-hand-holding"></i> En uso
-                </button>
-                <button class="cat-btn" onclick="filtrarEspecial(this, 'DISPONIBLE')"
-                        style="background:#f0fdf4; color:#166534; border:1px solid #22c55e; font-weight:700;"
-                        title="Ítems con stock disponible">
-                    <i class="fas fa-circle-check"></i> Disponibles
-                </button>
-                {% if es_grafica %}
-                <button class="cat-btn" onclick="filtrarCest(this)"
-                        style="background:#f5f3ff; color:#5b21b6; border:1px solid #7c3aed; font-weight:700;"
-                        title="Mostrar solo Elementos CEST">
-                    <i class="fas fa-star"></i> Solo CEST
-                </button>
-                <button class="cat-btn" onclick="filtrarEspecial(this, 'PORVENCER')"
-                        style="background:#fffbeb; color:#92400e; border:1px solid #f59e0b; font-weight:700;"
-                        title="Ítems que caducan dentro de 30 días">
-                    <i class="fas fa-hourglass-half"></i> Por vencer
-                </button>
-                <button class="cat-btn" onclick="filtrarEspecial(this, 'CADUCADO')"
-                        style="background:#fef2f2; color:#991b1b; border:1px solid #ef4444; font-weight:700;"
-                        title="Ítems con fecha de caducidad vencida">
-                    <i class="fas fa-hourglass-end"></i> Caducados
-                </button>
-                {% endif %}
-                {% if tipo_area == 'BIBLIOTECA' %}
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Novela')"><i class="fas fa-book"></i> Novela</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Ensayo')"><i class="fas fa-book-open"></i> Ensayo</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Texto Escolar')"><i class="fas fa-graduation-cap"></i> Texto Escolar</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Referencia')"><i class="fas fa-bookmark"></i> Referencia</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Infantil')"><i class="fas fa-child"></i> Infantil</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Revista')"><i class="fas fa-newspaper"></i> Revista</button>
-                {% elif tipo_area == 'INFORMATICA' %}
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'PC')"><i class="fas fa-desktop"></i> PC</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Notebook')"><i class="fas fa-laptop"></i> Notebook</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Tablet')"><i class="fas fa-tablet-alt"></i> Tablet</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Proyector')"><i class="fas fa-video"></i> Proyector</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Periférico')"><i class="fas fa-keyboard"></i> Periférico</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Cable')"><i class="fas fa-plug"></i> Cable</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Software')"><i class="fas fa-compact-disc"></i> Software</button>
-                {% elif tipo_area == 'DEPORTIVO' %}
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Pelotas')"><i class="fas fa-futbol"></i> Pelotas</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Implementos')"><i class="fas fa-running"></i> Implementos</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Vestuario')"><i class="fas fa-tshirt"></i> Vestuario</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Equipo')"><i class="fas fa-dumbbell"></i> Equipo</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Material Didáctico')"><i class="fas fa-clipboard"></i> Mat. Didáctico</button>
-                {% elif tipo_area == 'PANOL_TP' %}
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Herramienta')"><i class="fas fa-wrench"></i> Herramienta</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Componente')"><i class="fas fa-microchip"></i> Componente</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Material')"><i class="fas fa-layer-group"></i> Material</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Fungible')"><i class="fas fa-flask"></i> Fungible</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Maqueta')"><i class="fas fa-cubes-stacked"></i> Maqueta didáctica</button>
-                {% else %}
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Material Escritorio')"><i class="fas fa-pen"></i> Mat. Escritorio</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Material Didáctico')"><i class="fas fa-clipboard"></i> Mat. Didáctico</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Mobiliario')"><i class="fas fa-chair"></i> Mobiliario</button>
-                    <button class="cat-btn" onclick="filtrarCategoria(this, 'Consumible')"><i class="fas fa-box"></i> Consumible</button>
-                {% endif %}
-                {# Filtro por Dependencia: siempre visible; se llena con las dependencias existentes en el área #}
+            <div class="cat-filters" style="align-items:center;">
+                <span style="font-size:0.8rem; font-weight:700; color:var(--secondary);"><i class="fas fa-filter"></i> Filtrar:</span>
+                {% set cats = [] %}
+                {% for it in items %}{% if it.categoria and it.categoria not in cats %}{% set _ = cats.append(it.categoria) %}{% endif %}{% endfor %}
+                <select id="filtroCategoria" onchange="filtrarCategoriaSel(this)" title="Filtrar por categoría"
+                        style="padding:7px 12px; border-radius:20px; border:1px solid #2563eb; background:#eff6ff; color:#1e40af; font-weight:700; font-size:0.8rem; cursor:pointer;">
+                    <option value="TODOS">📦 Categoría: todas</option>
+                    {% for c in cats|sort %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+                </select>
+                <select id="filtroEstado" onchange="filtrarEstadoSel(this)" title="Filtrar por situación"
+                        style="padding:7px 12px; border-radius:20px; border:1px solid #64748b; background:#f8fafc; color:#334155; font-weight:700; font-size:0.8rem; cursor:pointer;">
+                    <option value="TODOS">🔎 Situación: todas</option>
+                    <option value="DEC240">🛡️ Solo Decreto 240</option>
+                    <option value="STOCKBAJO">⚠️ Stock bajo</option>
+                    <option value="ENUSO">✋ En uso</option>
+                    <option value="DISPONIBLE">✅ Disponibles</option>
+                    {% if es_grafica %}
+                    <option value="CEST">⭐ Solo CEST</option>
+                    <option value="PORVENCER">⏳ Por vencer (30 días)</option>
+                    <option value="CADUCADO">⛔ Caducados</option>
+                    {% endif %}
+                </select>
                 {% set deps = [] %}
                 {% for it in items %}{% if it.dependencia and it.dependencia not in deps %}{% set _ = deps.append(it.dependencia) %}{% endif %}{% endfor %}
                 <select id="filtroDependencia" onchange="filtrarDependencia(this)" title="Filtrar por dependencia"
-                        style="padding:6px 12px; border-radius:20px; border:1px solid #7c3aed; background:#f5f3ff; color:#5b21b6; font-weight:700; font-size:0.78rem; cursor:pointer;">
+                        style="padding:7px 12px; border-radius:20px; border:1px solid #7c3aed; background:#f5f3ff; color:#5b21b6; font-weight:700; font-size:0.8rem; cursor:pointer;">
                     <option value="">🏷️ Dependencia: todas</option>
                     {% for d in deps|sort %}<option value="{{ d|lower }}">{{ d }}</option>{% endfor %}
                 </select>
-                <select id="filtroClasificacion" onchange="filtrarClasificacion(this)" title="Filtrar por clasificación (Decreto 240)"
-                        style="padding:6px 12px; border-radius:20px; border:1px solid #0369a1; background:#eff6ff; color:#075985; font-weight:700; font-size:0.78rem; cursor:pointer;">
-                    <option value="">📋 Clasificación: todas</option>
-                    {% for cl in (clasificaciones or []) %}<option value="{{ cl|lower }}">{{ cl }}</option>{% endfor %}
-                </select>
-                {% if not deps %}
-                <span style="font-size:0.72rem; color:#9ca3af; align-self:center;">(asigna dependencias a los ítems para filtrar por ellas)</span>
-                {% endif %}
+                <button type="button" onclick="limpiarFiltros()" title="Limpiar filtros"
+                        style="padding:7px 12px; border-radius:20px; border:1px solid #cbd5e1; background:white; color:var(--secondary); font-weight:700; font-size:0.8rem; cursor:pointer;">
+                    <i class="fas fa-rotate-left"></i> Limpiar
+                </button>
             </div>
 
             <div class="table-responsive">
@@ -1903,11 +1837,7 @@
 
             <label>Categoría</label>
             <select name="categoria" id="edit_categoria" style="margin-bottom: 12px;">
-                <option value="Herramienta">Herramienta</option>
-                <option value="Componente">Componente</option>
-                <option value="Material">Material</option>
-                <option value="Fungible">Fungible</option>
-                <option value="Maqueta Didáctica">Maqueta didáctica</option>
+                {% for cl in (categorias or []) %}<option value="{{ cl }}">{{ cl }}</option>{% endfor %}
             </select>
 
             <label>Descripción</label>
@@ -1934,11 +1864,6 @@
             <input type="date" name="fecha_adquisicion" id="edit_fecha_adq" style="margin-bottom: 12px;">
 
             <input type="hidden" name="form_editar_completo" value="1">
-            <label>Clasificación (Dec. 240)</label>
-            <select name="clasificacion" id="edit_clasificacion" style="margin-bottom: 12px;">
-                <option value="">— Sin clasificar —</option>
-                {% for cl in (clasificaciones or []) %}<option value="{{ cl }}">{{ cl }}</option>{% endfor %}
-            </select>
             <label>Dependencia</label>
             <input type="text" name="dependencia" id="edit_dependencia" placeholder="Taller, oficina, sede..." style="margin-bottom: 12px;">
 
@@ -2236,8 +2161,9 @@
     function activarFiltroDesdeAlerta(tipo) {
         filtroEspecial = tipo;
         categoriaActiva = 'TODOS';
-        soloDecreto240 = false;
-        document.querySelectorAll('.cat-btn').forEach(function(b){ b.classList.remove('active'); });
+        soloDecreto240 = false; soloCest = false;
+        var fe = document.getElementById('filtroEstado'); if (fe) fe.value = tipo;
+        var fc = document.getElementById('filtroCategoria'); if (fc) fc.selectedIndex = 0;
         filtrarInventario();
         var t = document.getElementById('tablaInventario');
         if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2301,6 +2227,26 @@
     }
     function filtrarClasificacion(sel) {
         clasifActiva = (sel && sel.value ? sel.value : '').toLowerCase();
+        filtrarInventario();
+    }
+    // Desplegable de Categoría
+    function filtrarCategoriaSel(sel) {
+        categoriaActiva = (sel && sel.value) ? sel.value : 'TODOS';
+        filtrarInventario();
+    }
+    // Desplegable de Situación (Dec.240 / stock bajo / en uso / disponibles / Gráfica)
+    function filtrarEstadoSel(sel) {
+        var v = (sel && sel.value) ? sel.value : 'TODOS';
+        soloDecreto240 = (v === 'DEC240');
+        soloCest = (v === 'CEST');
+        filtroEspecial = (['STOCKBAJO','ENUSO','DISPONIBLE','PORVENCER','CADUCADO'].indexOf(v) !== -1) ? v : 'NINGUNO';
+        filtrarInventario();
+    }
+    function limpiarFiltros() {
+        categoriaActiva = 'TODOS'; soloDecreto240 = false; soloCest = false;
+        filtroEspecial = 'NINGUNO'; dependenciaActiva = ''; clasifActiva = '';
+        ['filtroCategoria','filtroEstado','filtroDependencia'].forEach(function(id){ var e=document.getElementById(id); if(e) e.selectedIndex=0; });
+        var b=document.getElementById('buscadorInventario'); if(b) b.value='';
         filtrarInventario();
     }
     function filtrarCategoria(btn, categoria) {
