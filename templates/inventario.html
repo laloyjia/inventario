@@ -638,14 +638,21 @@
                                 <th style="text-align: center;">Desgaste ($)</th>
                                 <th style="text-align: center;">Costo Total</th>
                             {% elif ta == 'PANOL_TP' %}
-                                <th>Nombre</th>
-                                <th>Marca / Modelo</th>
-                                <th>Dependencia</th>
-                                <th>Ubicación</th>
-                                <th style="text-align: center;">Disponible</th>
-                                <th style="text-align: center;">En uso</th>
-                                <th style="text-align: center;">Total</th>
-                                {% if es_grafica %}<th style="text-align: center;">Caducidad</th>{% endif %}
+                                <th data-col="nombre">Nombre</th>
+                                <th data-col="codigo">Código</th>
+                                <th data-col="marca">Marca / Modelo</th>
+                                <th data-col="categoria">Categoría</th>
+                                <th data-col="dependencia">Dependencia</th>
+                                <th data-col="ubicacion">Ubicación</th>
+                                <th data-col="estado" style="text-align: center;">Estado</th>
+                                <th data-col="serie">N° Serie</th>
+                                <th data-col="disponible" style="text-align: center;">Disponible</th>
+                                <th data-col="enuso" style="text-align: center;">En uso</th>
+                                <th data-col="total" style="text-align: center;">Total</th>
+                                <th data-col="minimo" style="text-align: center;">Mínimo</th>
+                                <th data-col="costounit" style="text-align: center;">Costo unit.</th>
+                                <th data-col="costototal" style="text-align: center;">Costo total</th>
+                                {% if es_grafica %}<th data-col="caducidad" style="text-align: center;">Caducidad</th>{% endif %}
                             {% else %}
                                 <th>Nombre</th>
                                 <th>Categoría</th>
@@ -656,7 +663,7 @@
                                 <th style="text-align: center;">Desgaste ($)</th>
                                 <th style="text-align: center;">Costo Total</th>
                             {% endif %}
-                            {% if session['usuario_rol'] not in ['Estudiante'] %}<th>Acción</th>{% endif %}
+                            {% if session['usuario_rol'] not in ['Estudiante'] %}<th data-col="accion">Acción</th>{% endif %}
                         </tr>
                     </thead>
                     <tbody>
@@ -703,7 +710,7 @@
                                 <td style="text-align:center; color:#b45309; font-weight:600;">{{ item.desgaste | clp }}</td>
                                 <td style="text-align:center; color:#0f766e; font-weight:bold;">{{ item.costo_total | clp }}</td>
                             {% elif ta == 'PANOL_TP' %}
-                                <td style="min-width:220px;">
+                                <td data-col="nombre" style="min-width:220px;">
                                     <div style="display: flex; align-items: center; gap: 10px;">
                                     {% if item.imagen_url %}
                                         <img src="{{ item.imagen_url }}" class="thumb-img"
@@ -716,45 +723,34 @@
                                     <div>
                                         <strong>{{ item.nombre }}</strong>
                                         {% if item.decreto_240 %}
-                                        <span title="Sujeto al Decreto 240 (auditoria patrimonial MINEDUC)"
-                                              style="background:#B45309; color:white; padding:1px 6px; border-radius:8px;
-                                                     font-size:0.62rem; font-weight:800; letter-spacing:0.3px;
-                                                     margin-left:4px; vertical-align:middle;">
-                                            DEC. 240
-                                        </span>
+                                        <span title="Sujeto al Decreto 240 (auditoria patrimonial MINEDUC)" style="background:#B45309; color:white; padding:1px 6px; border-radius:8px; font-size:0.62rem; font-weight:800; letter-spacing:0.3px; margin-left:4px; vertical-align:middle;">DEC. 240</span>
                                         {% endif %}
                                         {% if es_grafica and item.es_cest %}
-                                        <span title="Elemento CEST"
-                                              style="background:#7c3aed; color:white; padding:1px 6px; border-radius:8px;
-                                                     font-size:0.62rem; font-weight:800; letter-spacing:0.3px; margin-left:4px; vertical-align:middle;">
-                                            CEST
-                                        </span>
+                                        <span title="Elemento CEST" style="background:#7c3aed; color:white; padding:1px 6px; border-radius:8px; font-size:0.62rem; font-weight:800; letter-spacing:0.3px; margin-left:4px; vertical-align:middle;">CEST</span>
                                         {% endif %}
                                         <br>
                                         <span style="font-size: 0.7rem; color:var(--secondary);">{{ item.categoria }}</span>
-                                        <span style="font-size: 0.66rem; color:#9ca3af; font-family:monospace; margin-left:5px;">{{ item.codigo_barras }}</span>
                                     </div>
                                     </div>
                                 </td>
-                                <td style="font-size:0.85rem;">
-                                    {% if item.marca or item.modelo %}
-                                        {% if item.marca %}<strong>{{ item.marca }}</strong>{% endif %}
-                                        {% if item.modelo %}<br><span style="color:#6b7280;">{{ item.modelo }}</span>{% endif %}
-                                    {% else %}<span style="color:#9ca3af;">—</span>{% endif %}
+                                <td data-col="codigo" style="font-family:monospace; font-size:0.78rem;">{{ item.codigo_barras }}</td>
+                                <td data-col="marca" style="font-size:0.85rem;">
+                                    {% if item.marca or item.modelo %}{% if item.marca %}<strong>{{ item.marca }}</strong>{% endif %}{% if item.modelo %}<br><span style="color:#6b7280;">{{ item.modelo }}</span>{% endif %}{% else %}<span style="color:#9ca3af;">—</span>{% endif %}
                                 </td>
-                                <td style="font-size:0.82rem;"><span style="background:#eef2ff; color:#3730a3; padding:3px 8px; border-radius:4px; white-space:nowrap;"><i class="fas fa-sitemap"></i> {{ item.dependencia or (item.especialidad.nombre if item.especialidad else '—') }}</span></td>
-                                <td><span style="font-size: 0.85rem; background:#f0fdf4; padding:4px 8px; border-radius:4px; color:#166534;"><i class="fas fa-map-marker-alt"></i> {{ item.ubicacion or 'Sin especificar' }}</span></td>
-                                <td style="color: var(--success); font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_disponible }}</td>
-                                <td style="color: #ca8a04; font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_total - item.cantidad_disponible }}</td>
-                                <td style="color:#334155; font-weight: bold; font-size: 1.05rem; text-align: center;">{{ item.cantidad_total }}</td>
+                                <td data-col="categoria" style="font-size:0.82rem;">{{ item.categoria or '—' }}</td>
+                                <td data-col="dependencia" style="font-size:0.82rem;"><span style="background:#eef2ff; color:#3730a3; padding:3px 8px; border-radius:4px; white-space:nowrap;"><i class="fas fa-sitemap"></i> {{ item.dependencia or (item.especialidad.nombre if item.especialidad else '—') }}</span></td>
+                                <td data-col="ubicacion"><span style="font-size: 0.85rem; background:#f0fdf4; padding:4px 8px; border-radius:4px; color:#166534;"><i class="fas fa-map-marker-alt"></i> {{ item.ubicacion or 'Sin especificar' }}</span></td>
+                                <td data-col="estado" style="text-align:center; font-size:0.82rem;">{{ item.estado or '—' }}</td>
+                                <td data-col="serie" style="font-family:monospace; font-size:0.78rem;">{{ item.numero_serie or '—' }}</td>
+                                <td data-col="disponible" style="color: var(--success); font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_disponible }}</td>
+                                <td data-col="enuso" style="color: #ca8a04; font-weight: bold; font-size: 1.1rem; text-align: center;">{{ item.cantidad_total - item.cantidad_disponible }}</td>
+                                <td data-col="total" style="color:#334155; font-weight: bold; font-size: 1.05rem; text-align: center;">{{ item.cantidad_total }}</td>
+                                <td data-col="minimo" style="text-align:center; color:{% if item.cantidad_disponible <= item.cantidad_minima %}var(--danger){% else %}#6b7280{% endif %};">{{ item.cantidad_minima }}</td>
+                                <td data-col="costounit" style="text-align:center;">{{ item.precio_unitario | clp }}</td>
+                                <td data-col="costototal" style="text-align:center; color:#0f766e; font-weight:bold;">{{ item.costo_total | clp }}</td>
                                 {% if es_grafica %}
-                                <td style="text-align:center; font-size:0.82rem;">
-                                    {% if item.fecha_caducidad %}
-                                        {% set vencido = item.fecha_caducidad < hoy %}
-                                        <span style="padding:3px 8px; border-radius:6px; white-space:nowrap; {% if vencido %}background:#fee2e2; color:#991b1b; font-weight:700;{% else %}background:#f0fdf4; color:#166534;{% endif %}">
-                                            {% if vencido %}<i class="fas fa-triangle-exclamation"></i> {% endif %}{{ item.fecha_caducidad.strftime('%d/%m/%Y') }}
-                                        </span>
-                                    {% else %}<span style="color:#9ca3af;">—</span>{% endif %}
+                                <td data-col="caducidad" style="text-align:center; font-size:0.82rem;">
+                                    {% if item.fecha_caducidad %}{% set vencido = item.fecha_caducidad < hoy %}<span style="padding:3px 8px; border-radius:6px; white-space:nowrap; {% if vencido %}background:#fee2e2; color:#991b1b; font-weight:700;{% else %}background:#f0fdf4; color:#166534;{% endif %}">{% if vencido %}<i class="fas fa-triangle-exclamation"></i> {% endif %}{{ item.fecha_caducidad.strftime('%d/%m/%Y') }}</span>{% else %}<span style="color:#9ca3af;">—</span>{% endif %}
                                 </td>
                                 {% endif %}
                             {% else %}
@@ -768,7 +764,7 @@
                                 <td style="text-align:center; color:#0f766e; font-weight:bold;">{{ item.costo_total | clp }}</td>
                             {% endif %}
                             {% if session['usuario_rol'] not in ['Estudiante'] %}
-                            <td>
+                            <td data-col="accion">
                                 <div style="display:flex; gap:5px; flex-wrap:wrap;">
                                     <button type="button" class="btn-edit" title="Editar"
                                         onclick="abrirModalEditar({{ item.id }}, '{{ item.nombre | replace("'", "\\'") }}', '{{ item.categoria }}', '{{ item.imagen_url or '' }}', '{{ item.ubicacion or '' }}', '{{ (item.descripcion or '') | replace("'", "\\'") | replace('\n', ' ') }}', {{ item.precio_unitario or 0 }}, {{ item.desgaste or 0 }}, '{{ item.fecha_adquisicion.isoformat() if item.fecha_adquisicion else '' }}', {dependencia: '{{ (item.dependencia or '') | replace("'", "\\'") }}', clasif: '{{ (item.clasificacion or '') | replace("'", "\\'") }}', estado: '{{ (item.estado or '') | replace("'", "\\'") }}', serie: '{{ (item.numero_serie or '') | replace("'", "\\'") }}', dec240: '{{ '1' if item.decreto_240 else '0' }}', cest: '{{ '1' if item.es_cest else '0' }}', caducidad: '{{ item.fecha_caducidad.isoformat() if item.fecha_caducidad else '' }}', alerta: '{{ '1' if item.alerta_activa else '0' }}'})">
@@ -2337,27 +2333,49 @@
     document.addEventListener('click', function(ev){ var p=document.getElementById('panelColumnas'); if (p && p.parentElement && !p.parentElement.contains(ev.target)) p.style.display='none'; });
     (function initColumnas(){
         var tabla=document.getElementById('tablaInventario'); if(!tabla) return;
-        var ths=tabla.querySelectorAll('thead th'); if(!ths.length) return;
-        var labels=[]; ths.forEach(function(th){ labels.push((th.textContent||'Col').trim() || 'Col'); });
-        var key='panolerp_cols_'+labels.join('|');
-        var hidden={}; try{ hidden=JSON.parse(localStorage.getItem(key)||'{}'); }catch(e){}
+        var ths=tabla.querySelectorAll('thead th[data-col]'); if(!ths.length) return;
+        var allKeys=[], labelOf={};
+        ths.forEach(function(th){ var k=th.getAttribute('data-col'); allKeys.push(k); labelOf[k]=(th.textContent||'').trim()||k; });
+        var DEFAULT_HIDDEN=['codigo','categoria','estado','serie','minimo','costounit','costototal'];
+        var key='panolerp_coltbl_'+allKeys.join(',');
+        var cfg=null; try{ cfg=JSON.parse(localStorage.getItem(key)); }catch(e){}
+        if(!cfg || !cfg.order){ cfg={order:allKeys.slice(), hidden:{}}; DEFAULT_HIDDEN.forEach(function(k){ cfg.hidden[k]=true; }); }
+        allKeys.forEach(function(k){ if(cfg.order.indexOf(k)===-1) cfg.order.push(k); });
+        cfg.order=cfg.order.filter(function(k){ return allKeys.indexOf(k)!==-1; });
         var style=document.getElementById('colStyle');
         if(!style){ style=document.createElement('style'); style.id='colStyle'; document.head.appendChild(style); }
+        function guardar(){ try{ localStorage.setItem(key, JSON.stringify(cfg)); }catch(e){} }
         function aplicar(){
+            tabla.querySelectorAll('tr').forEach(function(tr){
+                var cells={};
+                Array.prototype.slice.call(tr.children).forEach(function(cell){ var k=cell.getAttribute('data-col'); if(k) cells[k]=cell; });
+                cfg.order.forEach(function(k){ if(cells[k]) tr.appendChild(cells[k]); });
+            });
             var rules='';
-            Object.keys(hidden).forEach(function(i){ if(hidden[i]) rules+='#tablaInventario tr > :nth-child('+(parseInt(i,10)+1)+'){display:none;}'; });
-            style.textContent=rules;
-            try{ localStorage.setItem(key, JSON.stringify(hidden)); }catch(e){}
+            Object.keys(cfg.hidden).forEach(function(k){ if(cfg.hidden[k]) rules+='#tablaInventario [data-col="'+k+'"]{display:none !important;}'; });
+            style.textContent=rules; guardar(); render();
         }
-        var cont=document.getElementById('listaColumnas'); if(!cont) return; cont.innerHTML='';
-        labels.forEach(function(lbl,i){
-            var lab=document.createElement('label');
-            lab.style.cssText='display:flex; align-items:center; gap:8px; padding:4px 0; font-size:0.83rem; cursor:pointer; color:#334155;';
-            var chk=document.createElement('input'); chk.type='checkbox'; chk.checked=!hidden[i];
-            chk.onchange=function(){ hidden[i]=!chk.checked; aplicar(); };
-            lab.appendChild(chk); lab.appendChild(document.createTextNode(' '+lbl));
-            cont.appendChild(lab);
-        });
+        function render(){
+            var cont=document.getElementById('listaColumnas'); if(!cont) return;
+            cont.style.maxHeight='320px'; cont.style.overflowY='auto'; cont.innerHTML='';
+            cfg.order.forEach(function(k, idx){
+                var row=document.createElement('div');
+                row.style.cssText='display:flex; align-items:center; gap:6px; padding:3px 0; font-size:0.82rem;';
+                var chk=document.createElement('input'); chk.type='checkbox'; chk.checked=!cfg.hidden[k];
+                chk.onchange=function(){ cfg.hidden[k]=!chk.checked; aplicar(); };
+                var lbl=document.createElement('span'); lbl.textContent=labelOf[k]||k; lbl.style.cssText='flex:1; color:#334155;';
+                var up=document.createElement('button'); up.type='button'; up.innerHTML='&#9650;'; up.title='Subir'; up.style.cssText='border:none; background:#eef2f7; border-radius:4px; cursor:pointer; padding:1px 7px; color:#475569;';
+                up.onclick=function(){ if(idx>0){ var t=cfg.order[idx-1]; cfg.order[idx-1]=cfg.order[idx]; cfg.order[idx]=t; aplicar(); } };
+                var dn=document.createElement('button'); dn.type='button'; dn.innerHTML='&#9660;'; dn.title='Bajar'; dn.style.cssText='border:none; background:#eef2f7; border-radius:4px; cursor:pointer; padding:1px 7px; color:#475569;';
+                dn.onclick=function(){ if(idx<cfg.order.length-1){ var t=cfg.order[idx+1]; cfg.order[idx+1]=cfg.order[idx]; cfg.order[idx]=t; aplicar(); } };
+                row.appendChild(chk); row.appendChild(lbl); row.appendChild(up); row.appendChild(dn);
+                cont.appendChild(row);
+            });
+            var reset=document.createElement('button'); reset.type='button'; reset.textContent='Restablecer';
+            reset.style.cssText='margin-top:8px; width:100%; border:1px solid #cbd5e1; background:white; border-radius:6px; padding:5px; cursor:pointer; font-size:0.8rem; color:#475569;';
+            reset.onclick=function(){ cfg={order:allKeys.slice(), hidden:{}}; DEFAULT_HIDDEN.forEach(function(k){cfg.hidden[k]=true;}); aplicar(); };
+            cont.appendChild(reset);
+        }
         aplicar();
     })();
     function filtrarCategoria(btn, categoria) {
