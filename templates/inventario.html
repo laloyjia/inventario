@@ -1574,6 +1574,8 @@
     </div>
 
     <div id="mod-inventario" class="modulo-content" style="display: none;">
+        <form action="/procesar_conteo_inventario" method="POST"
+              onsubmit="return confirm('¿Guardar el conteo? Se ajustará el stock real de los ítems cuyo contado sea distinto al esperado. Esto se refleja en toda la app.');">
         <div class="card">
             <h2 style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <span><i class="fas fa-clipboard-list"></i> Modo Inventario — revisión física</span>
@@ -1581,15 +1583,23 @@
                     <span style="font-size:0.9rem; color:#334155; font-weight:700;">Revisados: <span id="invProgresoTxt">0 / {{ items|length }}</span></span>
                     <button type="button" onclick="invMarcarTodos(true)" style="background:#16a34a; color:white; padding:8px 12px; border:none; border-radius:6px; font-size:0.8rem; cursor:pointer;"><i class="fas fa-check-double"></i> Marcar todos</button>
                     <button type="button" onclick="invMarcarTodos(false)" style="background:#e2e8f0; color:#334155; padding:8px 12px; border:none; border-radius:6px; font-size:0.8rem; cursor:pointer;">Limpiar</button>
-                    <button type="button" onclick="imprimirActa()" style="background:#7c3aed; color:white; padding:8px 12px; border:none; border-radius:6px; font-size:0.8rem; cursor:pointer;"><i class="fas fa-print"></i> Imprimir acta</button>
+                    <button type="submit" style="background:#2563eb; color:white; padding:8px 12px; border:none; border-radius:6px; font-size:0.8rem; cursor:pointer;"><i class="fas fa-save"></i> Guardar conteo</button>
+                    <button type="button" onclick="imprimirActa()" style="background:#7c3aed; color:white; padding:8px 12px; border:none; border-radius:6px; font-size:0.8rem; cursor:pointer;"><i class="fas fa-print"></i> Imprimir</button>
                 </span>
             </h2>
-            <p class="no-print" style="color:var(--secondary); font-size:0.9rem; margin-top:0;">Marca y cuenta cada ítem a medida que revisas físicamente el inventario. Al terminar, imprime el acta.</p>
+            <div class="no-print" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+                <label style="font-weight:600; color:#334155; font-size:0.88rem;"><i class="fas fa-sitemap"></i> Ver / imprimir dependencia:</label>
+                <select id="invSelDep" onchange="invFiltrarDep(this)" style="padding:7px 12px; border-radius:8px; border:1px solid #cbd5e1; font-size:0.85rem;">
+                    <option value="TODAS">Todas las dependencias</option>
+                    {% for dep, its in grupos_inventario.items() %}<option value="{{ dep }}">{{ dep }} ({{ its|length }})</option>{% endfor %}
+                </select>
+                <span style="font-size:0.8rem; color:var(--secondary);">Cuenta y escribe lo hallado; al <strong>Guardar conteo</strong> se ajusta el stock. El lápiz edita el ítem.</span>
+            </div>
             <div id="invActaCabecera" style="display:none; margin-bottom:14px; font-size:0.95rem;">
-                <strong>Acta de Inventario</strong> — {{ session.get('usuario_especialidad') or 'Área' }} · Revisado por: {{ session['usuario_nombre'] }} · Fecha: __________________
+                <strong>Acta de Inventario</strong> — <span id="invActaDep">Todas las dependencias</span> · {{ session.get('usuario_especialidad') or 'Área' }} · Revisado por: {{ session['usuario_nombre'] }} · Fecha: __________________
             </div>
             {% for dep, its in grupos_inventario.items() %}
-            <div style="margin-bottom:18px; page-break-inside:avoid;">
+            <div class="inv-grupo" data-dep="{{ dep }}" style="margin-bottom:18px; page-break-inside:avoid;">
                 <h3 style="font-size:1rem; color:var(--primary); border-bottom:2px solid #e5e7eb; padding-bottom:6px; margin-bottom:8px;">
                     <i class="fas fa-sitemap"></i> {{ dep }} <span style="font-size:0.8rem; color:#94a3b8; font-weight:400;">({{ its|length }} ítem(s))</span>
                 </h3>
@@ -1600,6 +1610,7 @@
                             <th>Código</th><th>Nombre</th><th>Categoría</th><th>Ubicación</th>
                             <th style="text-align:center;">Esperado</th>
                             <th style="width:90px; text-align:center;">Contado</th>
+                            <th class="no-print" style="width:40px;"></th>
                         </tr></thead>
                         <tbody>
                             {% for item in its %}
@@ -1610,7 +1621,16 @@
                                 <td style="font-size:0.85rem; color:var(--secondary);">{{ item.categoria }}</td>
                                 <td style="font-size:0.85rem;">{{ item.ubicacion or '—' }}</td>
                                 <td style="text-align:center; font-weight:700;">{{ item.cantidad_total }}</td>
-                                <td style="text-align:center;"><input type="number" min="0" class="inv-contado" style="width:70px; text-align:center;" placeholder="—"></td>
+                                <td style="text-align:center;">
+                                    <input type="hidden" name="item_id[]" value="{{ item.id }}">
+                                    <input type="number" min="0" name="contado[]" class="inv-contado" data-esp="{{ item.cantidad_total }}" onchange="invDiff(this)" style="width:70px; text-align:center;" placeholder="—">
+                                </td>
+                                <td class="no-print" style="text-align:center;">
+                                    <button type="button" class="btn-edit" title="Editar ítem"
+                                        onclick="abrirModalEditar({{ item.id }}, '{{ item.nombre | replace("'", "\\'") }}', '{{ item.categoria }}', '{{ item.imagen_url or '' }}', '{{ item.ubicacion or '' }}', '{{ (item.descripcion or '') | replace("'", "\\'") | replace('\n', ' ') }}', {{ item.precio_unitario or 0 }}, {{ item.desgaste or 0 }}, '{{ item.fecha_adquisicion.isoformat() if item.fecha_adquisicion else '' }}', {dependencia: '{{ (item.dependencia or '') | replace("'", "\\'") }}', clasif: '{{ (item.clasificacion or '') | replace("'", "\\'") }}', estado: '{{ (item.estado or '') | replace("'", "\\'") }}', serie: '{{ (item.numero_serie or '') | replace("'", "\\'") }}', dec240: '{{ '1' if item.decreto_240 else '0' }}', cest: '{{ '1' if item.es_cest else '0' }}', caducidad: '{{ item.fecha_caducidad.isoformat() if item.fecha_caducidad else '' }}', alerta: '{{ '1' if item.alerta_activa else '0' }}'})">
+                                        <i class="fas fa-pencil-alt"></i>
+                                    </button>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -1621,6 +1641,7 @@
             <p style="text-align:center; color:var(--secondary); padding:30px;"><i class="fas fa-box-open"></i> No hay ítems en el inventario.</p>
             {% endfor %}
         </div>
+        </form>
     </div>
 
     </div>{# /panel-main #}
@@ -2327,6 +2348,24 @@
     }
     function invMarcarTodos(v) {
         document.querySelectorAll('.inv-check').forEach(function(ch){ ch.checked = v; }); invProgreso();
+    }
+    function invFiltrarDep(sel) {
+        var v = sel.value;
+        document.querySelectorAll('#mod-inventario .inv-grupo').forEach(function(g){
+            g.style.display = (v === 'TODAS' || g.getAttribute('data-dep') === v) ? '' : 'none';
+        });
+        var t = document.getElementById('invActaDep');
+        if (t) t.textContent = (v === 'TODAS') ? 'Todas las dependencias' : v;
+        invProgreso();
+    }
+    function invDiff(inp) {
+        var esp = parseInt(inp.getAttribute('data-esp') || '0', 10);
+        var val = inp.value.trim();
+        if (val === '') { inp.style.borderColor=''; inp.style.background=''; return; }
+        var n = parseInt(val, 10);
+        if (isNaN(n) || n === esp) { inp.style.borderColor='#16a34a'; inp.style.background='#f0fdf4'; }
+        else if (n < esp) { inp.style.borderColor='#dc2626'; inp.style.background='#fef2f2'; }
+        else { inp.style.borderColor='#d97706'; inp.style.background='#fffbeb'; }
     }
     function imprimirActa() {
         var h = document.getElementById('invActaCabecera'); if (h) h.style.display = 'block';

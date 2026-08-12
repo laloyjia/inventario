@@ -4807,6 +4807,49 @@ def panel_gerencial():
     )
 
 
+@app.route('/procesar_conteo_inventario', methods=['POST'])
+@login_requerido
+@pañolero_o_admin
+def procesar_conteo_inventario():
+    """Guarda el conteo físico del Modo Inventario: ajusta el stock real de los
+    ítems cuyo 'contado' difiere del total registrado y lo deja en auditoría.
+    El ajuste se refleja en toda la app (tabla, reportes, panel)."""
+    ids = request.form.getlist('item_id[]')
+    contados = request.form.getlist('contado[]')
+    ajustados = 0
+    for iid, cont in zip(ids, contados):
+        cont = (cont or '').strip()
+        if cont == '':
+            continue
+        try:
+            nuevo = int(float(cont))
+        except Exception:
+            continue
+        if nuevo < 0:
+            continue
+        item = Item.query.get(int(iid)) if iid else None
+        if not item:
+            continue
+        if session.get('usuario_rol') != 'Admin' and item.especialidad_id != session.get('usuario_especialidad_id'):
+            continue
+        viejo = item.cantidad_total or 0
+        if nuevo == viejo:
+            continue
+        diff = nuevo - viejo
+        item.cantidad_total = nuevo
+        item.cantidad_disponible = max(0, (item.cantidad_disponible or 0) + diff)
+        registrar_auditoria('ajuste_inventario', 'Item', item.id,
+                            valores_anteriores={'total': viejo},
+                            valores_nuevos={'total': nuevo, 'diferencia': diff,
+                                            'origen': 'conteo físico'},
+                            especialidad_id=item.especialidad_id)
+        registrar_cambio_sync('item', item.id, 'actualizar', item)
+        ajustados += 1
+    db.session.commit()
+    flash(f"✅ Conteo procesado: {ajustados} ítem(s) ajustado(s) según el inventario físico.")
+    return redirect(url_for('ver_inventario'))
+
+
 @app.route('/inventario_visita')
 @login_requerido
 def inventario_visita():
