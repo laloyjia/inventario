@@ -299,157 +299,6 @@
         </div>
         {% endif %}
 
-        {# ===== GRID: CURSOS A CARGO + PAÑOLEROS DEL DÍA — solo en PANOL_TP ===== #}
-        {% if tipo_area == 'PANOL_TP' %}
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; margin-bottom: 20px;">
-        {# ===== CARD: CURSOS A CARGO DEL PAÑOL ===== #}
-        {% if session['usuario_rol'] in ['Pañolero', 'Admin'] %}
-        <div class="card" style="border-left: 4px solid #6366f1;">
-            <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
-                <i class="fas fa-chalkboard-teacher"></i> Mis Cursos a Cargo
-                <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
-                    ({{ cursos_a_cargo|length }} / {{ max_cursos_a_cargo }})
-                </span>
-            </h2>
-            <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 12px 0;">
-                Los cursos "propios" del pañol. Sus alumnos son los principales receptores de tus préstamos. Alumnos de otras especialidades aparecerán abajo como visitantes.
-            </p>
-
-            {% if cursos_a_cargo %}
-            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-                {% for c in cursos_a_cargo %}
-                <div style="background: #e0e7ff; border: 1px solid #818cf8; border-radius: 20px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem;">
-                    <i class="fas fa-users" style="color: #4338ca;"></i>
-                    <strong style="color: #3730a3;">{{ c.nombre }}</strong>
-                    <span style="color: #6366f1; font-size: 0.75rem;">{{ c.total_alumnos }} alumno(s)</span>
-                    <form action="/pa%C3%B1ol/curso/quitar_a_cargo/{{ c.id }}" method="POST" style="display:inline; margin:0;"
-                          onsubmit="return confirm('¿Quitar a {{ c.nombre }} de tus cursos a cargo? Los alumnos no se borran.');">
-                        <button type="submit" style="background:none; border:none; color:#b91c1c; cursor:pointer; padding:0;" title="Quitar de a cargo">
-                            <i class="fas fa-times-circle"></i>
-                        </button>
-                    </form>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <p style="font-size: 0.85rem; color: #b91c1c; background: #fee2e2; padding: 8px 12px; border-radius: 4px; margin: 0 0 12px 0;">
-                <i class="fas fa-info-circle"></i> Aún no tienes cursos a cargo. Sube una lista o marca uno existente como "a cargo".
-            </p>
-            {% endif %}
-
-            {# Cursos disponibles de esta especialidad que NO están a cargo todavía #}
-            {% set disponibles_no_a_cargo = cursos_disponibles | rejectattr('a_cargo') | list %}
-            {% if cursos_a_cargo|length < max_cursos_a_cargo and disponibles_no_a_cargo %}
-            <div style="margin-bottom: 10px;">
-                <label style="font-size:0.85rem; font-weight:600; color:#374151;">Marcar un curso existente como a cargo:</label>
-                <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
-                    {% for c in disponibles_no_a_cargo %}
-                    <form action="/pa%C3%B1ol/curso/marcar_a_cargo/{{ c.id }}" method="POST" style="display:inline; margin:0;">
-                        <button type="submit" style="background:#eef2ff; border:1px dashed #6366f1; color:#3730a3; padding:4px 10px; border-radius:14px; cursor:pointer; font-size:0.8rem;" title="Marcar a cargo">
-                            <i class="fas fa-plus"></i> {{ c.nombre }} ({{ c.total_alumnos }})
-                        </button>
-                    </form>
-                    {% endfor %}
-                </div>
-            </div>
-            {% endif %}
-
-            {% if cursos_a_cargo|length < max_cursos_a_cargo %}
-            <details style="margin-top: 10px;">
-                <summary style="cursor:pointer; font-size:0.85rem; color:#4338ca; font-weight:600;">
-                    <i class="fas fa-file-excel"></i> Subir lista de un curso nuevo desde Excel
-                </summary>
-                <form action="/cargar_alumnos_excel" method="POST" enctype="multipart/form-data"
-                      style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-top: 8px; background:#f5f3ff; padding:10px; border-radius:6px;">
-                    <div>
-                        <label style="font-size:0.8rem; display:block;">Nombre del curso *</label>
-                        <input type="text" name="curso_destino" required placeholder="Ej: 3°A" style="padding:6px; width:140px;">
-                    </div>
-                    <div>
-                        <label style="font-size:0.8rem; display:block;">Archivo Excel (N° lista + Nombre) *</label>
-                        <input type="file" name="archivo_excel" accept=".xlsx,.xls" required style="font-size:0.85rem;">
-                    </div>
-                    <button type="submit" class="btn-add" style="background:#6366f1;">
-                        <i class="fas fa-upload"></i> Cargar y marcar a cargo
-                    </button>
-                </form>
-                <p style="font-size:0.75rem; color:#6b7280; margin-top:6px;">
-                    Si el curso es nuevo y aún te queda slot libre, se marcará automáticamente como "a cargo".
-                </p>
-            </details>
-            {% endif %}
-        </div>
-        {% endif %}
-
-        {# ===== CARD: PAÑOLEROS DEL DÍA ===== #}
-        {% if session['usuario_rol'] in ['Pañolero', 'Admin'] %}
-        <div class="card" style="border-left: 4px solid #f59e0b;">
-            <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
-                <i class="fas fa-user-shield"></i> Instructores del Día designados
-                <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
-                    ({{ panoleros_dia|length }} / {{ max_panoleros_dia }})
-                </span>
-            </h2>
-            <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 12px 0;">
-                Estudiantes autorizados a entregar insumos en nombre del pañol. Se mantienen hasta que tú los cambies.
-            </p>
-
-            {% if panoleros_dia %}
-            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-                {% for pd in panoleros_dia %}
-                <div style="background: #fef3c7; border: 1px solid #fbbf24; border-radius: 20px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem;">
-                    <i class="fas fa-user-graduate" style="color: #b45309;"></i>
-                    <span><strong>{{ pd.estudiante.nombre }}</strong>
-                        <span style="color: #92400e; font-size: 0.75rem;">
-                            {% if pd.estudiante.numero_lista is not none %}N°{{ pd.estudiante.numero_lista }} · {% endif %}{{ pd.estudiante.curso_display }}
-                        </span>
-                    </span>
-                    <form action="/panoleros_dia/quitar/{{ pd.id }}" method="POST" style="display: inline; margin: 0;"
-                          onsubmit="return confirm('¿Quitar a {{ pd.estudiante.nombre }} como pañolero del día?');">
-                        <button type="submit" style="background: none; border: none; color: #b91c1c; cursor: pointer; padding: 0; font-size: 0.9rem;" title="Quitar">
-                            <i class="fas fa-times-circle"></i>
-                        </button>
-                    </form>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <p style="font-size: 0.85rem; color: #b91c1c; background: #fee2e2; padding: 8px 12px; border-radius: 4px; margin: 0 0 12px 0;">
-                <i class="fas fa-exclamation-triangle"></i> No hay instructores del día designados. Mientras tanto, solo tú (el instructor) puedes registrar préstamos.
-            </p>
-            {% endif %}
-
-            {% if panoleros_dia|length < max_panoleros_dia %}
-            <form action="/panoleros_dia/agregar" method="POST" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <select name="estudiante_id" required style="flex: 1; min-width: 200px; padding: 6px;">
-                    <option value="">— Selecciona un estudiante de tu área —</option>
-                    {% for est in estudiantes %}
-                        {% set ya_es_panolero = false %}
-                        {% for pd in panoleros_dia %}{% if pd.estudiante_id == est.id %}{% set ya_es_panolero = true %}{% endif %}{% endfor %}
-                        {% if not ya_es_panolero %}
-                        <option value="{{ est.id }}">{{ est.etiqueta_display }}</option>
-                        {% endif %}
-                    {% endfor %}
-                </select>
-                <button type="submit" class="btn-add" style="white-space: nowrap;">
-                    <i class="fas fa-plus"></i> Designar instructor del día
-                </button>
-            </form>
-            {% endif %}
-
-            {% if panoleros_dia %}
-            <form action="/panoleros_dia/limpiar" method="POST" style="margin-top: 10px;"
-                  onsubmit="return confirm('¿Limpiar TODA la lista de pañoleros del día? ({{ panoleros_dia|length }} estudiantes)');">
-                <button type="submit" style="background: none; border: 1px solid #b91c1c; color: #b91c1c; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">
-                    <i class="fas fa-broom"></i> Limpiar todos
-                </button>
-            </form>
-            {% endif %}
-        </div>
-        {% endif %}
-        </div>
-
-        {% endif %}{# fin if PANOL_TP — grid cursos+panoleros #}
 
         {# ===== CARD: ALUMNOS VISITANTES — solo en PANOL_TP ===== #}
         {% if tipo_area == 'PANOL_TP' and session['usuario_rol'] in ['Pañolero', 'Admin'] and alumnos_visitantes %}
@@ -1225,6 +1074,158 @@
             </div>
         </div>
 
+        {# ===== GRID: CURSOS A CARGO + PAÑOLEROS DEL DÍA — solo en PANOL_TP ===== #}
+        {% if tipo_area == 'PANOL_TP' %}
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        {# ===== CARD: CURSOS A CARGO DEL PAÑOL ===== #}
+        {% if session['usuario_rol'] in ['Pañolero', 'Admin'] %}
+        <div class="card" style="border-left: 4px solid #6366f1;">
+            <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
+                <i class="fas fa-chalkboard-teacher"></i> Mis Cursos a Cargo
+                <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
+                    ({{ cursos_a_cargo|length }} / {{ max_cursos_a_cargo }})
+                </span>
+            </h2>
+            <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 12px 0;">
+                Los cursos "propios" del pañol. Sus alumnos son los principales receptores de tus préstamos. Alumnos de otras especialidades aparecerán abajo como visitantes.
+            </p>
+
+            {% if cursos_a_cargo %}
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                {% for c in cursos_a_cargo %}
+                <div style="background: #e0e7ff; border: 1px solid #818cf8; border-radius: 20px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem;">
+                    <i class="fas fa-users" style="color: #4338ca;"></i>
+                    <strong style="color: #3730a3;">{{ c.nombre }}</strong>
+                    <span style="color: #6366f1; font-size: 0.75rem;">{{ c.total_alumnos }} alumno(s)</span>
+                    <form action="/pa%C3%B1ol/curso/quitar_a_cargo/{{ c.id }}" method="POST" style="display:inline; margin:0;"
+                          onsubmit="return confirm('¿Quitar a {{ c.nombre }} de tus cursos a cargo? Los alumnos no se borran.');">
+                        <button type="submit" style="background:none; border:none; color:#b91c1c; cursor:pointer; padding:0;" title="Quitar de a cargo">
+                            <i class="fas fa-times-circle"></i>
+                        </button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p style="font-size: 0.85rem; color: #b91c1c; background: #fee2e2; padding: 8px 12px; border-radius: 4px; margin: 0 0 12px 0;">
+                <i class="fas fa-info-circle"></i> Aún no tienes cursos a cargo. Sube una lista o marca uno existente como "a cargo".
+            </p>
+            {% endif %}
+
+            {# Cursos disponibles de esta especialidad que NO están a cargo todavía #}
+            {% set disponibles_no_a_cargo = cursos_disponibles | rejectattr('a_cargo') | list %}
+            {% if cursos_a_cargo|length < max_cursos_a_cargo and disponibles_no_a_cargo %}
+            <div style="margin-bottom: 10px;">
+                <label style="font-size:0.85rem; font-weight:600; color:#374151;">Marcar un curso existente como a cargo:</label>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+                    {% for c in disponibles_no_a_cargo %}
+                    <form action="/pa%C3%B1ol/curso/marcar_a_cargo/{{ c.id }}" method="POST" style="display:inline; margin:0;">
+                        <button type="submit" style="background:#eef2ff; border:1px dashed #6366f1; color:#3730a3; padding:4px 10px; border-radius:14px; cursor:pointer; font-size:0.8rem;" title="Marcar a cargo">
+                            <i class="fas fa-plus"></i> {{ c.nombre }} ({{ c.total_alumnos }})
+                        </button>
+                    </form>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if cursos_a_cargo|length < max_cursos_a_cargo %}
+            <details style="margin-top: 10px;">
+                <summary style="cursor:pointer; font-size:0.85rem; color:#4338ca; font-weight:600;">
+                    <i class="fas fa-file-excel"></i> Subir lista de un curso nuevo desde Excel
+                </summary>
+                <form action="/cargar_alumnos_excel" method="POST" enctype="multipart/form-data"
+                      style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-top: 8px; background:#f5f3ff; padding:10px; border-radius:6px;">
+                    <div>
+                        <label style="font-size:0.8rem; display:block;">Nombre del curso *</label>
+                        <input type="text" name="curso_destino" required placeholder="Ej: 3°A" style="padding:6px; width:140px;">
+                    </div>
+                    <div>
+                        <label style="font-size:0.8rem; display:block;">Archivo Excel (N° lista + Nombre) *</label>
+                        <input type="file" name="archivo_excel" accept=".xlsx,.xls" required style="font-size:0.85rem;">
+                    </div>
+                    <button type="submit" class="btn-add" style="background:#6366f1;">
+                        <i class="fas fa-upload"></i> Cargar y marcar a cargo
+                    </button>
+                </form>
+                <p style="font-size:0.75rem; color:#6b7280; margin-top:6px;">
+                    Si el curso es nuevo y aún te queda slot libre, se marcará automáticamente como "a cargo".
+                </p>
+            </details>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {# ===== CARD: PAÑOLEROS DEL DÍA ===== #}
+        {% if session['usuario_rol'] in ['Pañolero', 'Admin'] %}
+        <div class="card" style="border-left: 4px solid #f59e0b;">
+            <h2 style="font-size: 0.95rem; margin-bottom: 10px;">
+                <i class="fas fa-user-shield"></i> Instructores del Día designados
+                <span style="font-size: 0.75rem; color: #6b7280; font-weight: normal;">
+                    ({{ panoleros_dia|length }} / {{ max_panoleros_dia }})
+                </span>
+            </h2>
+            <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 12px 0;">
+                Estudiantes autorizados a entregar insumos en nombre del pañol. Se mantienen hasta que tú los cambies.
+            </p>
+
+            {% if panoleros_dia %}
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                {% for pd in panoleros_dia %}
+                <div style="background: #fef3c7; border: 1px solid #fbbf24; border-radius: 20px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem;">
+                    <i class="fas fa-user-graduate" style="color: #b45309;"></i>
+                    <span><strong>{{ pd.estudiante.nombre }}</strong>
+                        <span style="color: #92400e; font-size: 0.75rem;">
+                            {% if pd.estudiante.numero_lista is not none %}N°{{ pd.estudiante.numero_lista }} · {% endif %}{{ pd.estudiante.curso_display }}
+                        </span>
+                    </span>
+                    <form action="/panoleros_dia/quitar/{{ pd.id }}" method="POST" style="display: inline; margin: 0;"
+                          onsubmit="return confirm('¿Quitar a {{ pd.estudiante.nombre }} como pañolero del día?');">
+                        <button type="submit" style="background: none; border: none; color: #b91c1c; cursor: pointer; padding: 0; font-size: 0.9rem;" title="Quitar">
+                            <i class="fas fa-times-circle"></i>
+                        </button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p style="font-size: 0.85rem; color: #b91c1c; background: #fee2e2; padding: 8px 12px; border-radius: 4px; margin: 0 0 12px 0;">
+                <i class="fas fa-exclamation-triangle"></i> No hay instructores del día designados. Mientras tanto, solo tú (el instructor) puedes registrar préstamos.
+            </p>
+            {% endif %}
+
+            {% if panoleros_dia|length < max_panoleros_dia %}
+            <form action="/panoleros_dia/agregar" method="POST" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <select name="estudiante_id" required style="flex: 1; min-width: 200px; padding: 6px;">
+                    <option value="">— Selecciona un estudiante de tu área —</option>
+                    {% for est in estudiantes %}
+                        {% set ya_es_panolero = false %}
+                        {% for pd in panoleros_dia %}{% if pd.estudiante_id == est.id %}{% set ya_es_panolero = true %}{% endif %}{% endfor %}
+                        {% if not ya_es_panolero %}
+                        <option value="{{ est.id }}">{{ est.etiqueta_display }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn-add" style="white-space: nowrap;">
+                    <i class="fas fa-plus"></i> Designar instructor del día
+                </button>
+            </form>
+            {% endif %}
+
+            {% if panoleros_dia %}
+            <form action="/panoleros_dia/limpiar" method="POST" style="margin-top: 10px;"
+                  onsubmit="return confirm('¿Limpiar TODA la lista de pañoleros del día? ({{ panoleros_dia|length }} estudiantes)');">
+                <button type="submit" style="background: none; border: 1px solid #b91c1c; color: #b91c1c; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">
+                    <i class="fas fa-broom"></i> Limpiar todos
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        {% endif %}
+        </div>
+
+        {% endif %}{# fin if PANOL_TP — grid cursos+panoleros #}
+
         <div class="varios-grid">
 
         <!-- Tarjeta Carga/Descarga de Excel -->
@@ -1619,45 +1620,6 @@
             <p style="font-size:0.72rem; color:#9ca3af; margin:8px 0 0 0;">Incluye bajas manuales y mermas de práctica (la merma cuenta como baja).</p>
         </div>
 
-        {# ===== NUEVO: Asignar Pañoleros del Día ===== #}
-        <div class="card v-panoleros" style="border-left: 4px solid #8b5cf6; background:#f5f3ff;">
-            <h2 style="color:#5b21b6;">
-                <i class="fas fa-user-shield"></i> Asignar Pañoleros del Día
-                <span style="font-size:0.75rem; color:#6b7280; font-weight:normal;">({{ (panoleros_dia or [])|length }}/6)</span>
-            </h2>
-            <p style="font-size:0.83rem; color:#4c1d95; margin:0 0 12px 0;">
-                Estudiantes autorizados a entregar insumos en el pañol. Máximo 6 activos por área.
-            </p>
-            <form action="/panoleros_dia/agregar" method="POST" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
-                <div style="flex:1; min-width:180px;">
-                    <label style="color:#5b21b6;">Estudiante</label>
-                    <select name="estudiante_id" required>
-                        <option value="">— Selecciona estudiante —</option>
-                        {% for est in estudiantes %}
-                        <option value="{{ est.id }}">{{ est.etiqueta_display }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <button type="submit" style="background:#8b5cf6; color:white; padding:10px 16px; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">
-                    <i class="fas fa-plus"></i> Designar
-                </button>
-            </form>
-            {% if panoleros_dia %}
-            <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;">
-                {% for pd in panoleros_dia %}
-                <div style="background:#ede9fe; border:1px solid #c4b5fd; border-radius:20px; padding:6px 12px; display:inline-flex; align-items:center; gap:8px; font-size:0.85rem;">
-                    <i class="fas fa-user-shield" style="color:#7c3aed;"></i>
-                    <strong style="color:#5b21b6;">{{ pd.estudiante.nombre }}</strong>
-                    <form action="/panoleros_dia/quitar/{{ pd.id }}" method="POST" style="display:inline; margin:0;">
-                        <button type="submit" style="background:none; border:none; color:#b91c1c; cursor:pointer; padding:0;" title="Quitar"><i class="fas fa-times-circle"></i></button>
-                    </form>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <p style="font-size:0.82rem; color:#6b7280; margin:10px 0 0 0;"><i class="fas fa-info-circle"></i> Aún no hay pañoleros del día designados.</p>
-            {% endif %}
-        </div>
 
         </div>{# /varios-grid #}
     </div>
