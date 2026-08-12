@@ -1229,6 +1229,13 @@ def ver_inventario():
     n_por_vencer = sum(1 for i in items
                        if i.fecha_caducidad and _hoy <= i.fecha_caducidad <= _limite_venc)
     n_caducados = sum(1 for i in items if i.fecha_caducidad and i.fecha_caducidad < _hoy)
+
+    # Modo Inventario: ítems agrupados por dependencia (para la revisión física)
+    from collections import OrderedDict
+    grupos_inventario = OrderedDict()
+    for i in sorted(items, key=lambda x: ((x.dependencia or 'zzz').lower(), (x.nombre or '').lower())):
+        k = i.dependencia or 'Sin dependencia'
+        grupos_inventario.setdefault(k, []).append(i)
     # Pañoleros del día activos para esta especialidad (máx. 6)
     panoleros_dia = _panoleros_dia_activos(especialidad_id) if especialidad_id else []
     # Cursos disponibles en esta especialidad (para datalist/dropdowns)
@@ -1260,6 +1267,7 @@ def ver_inventario():
                            n_stock_bajo=n_stock_bajo,
                            n_por_vencer=n_por_vencer,
                            n_caducados=n_caducados,
+                           grupos_inventario=grupos_inventario,
                            panoleros_dia=panoleros_dia,
                            cursos_disponibles=cursos_disponibles,
                            cursos_a_cargo=cursos_a_cargo,

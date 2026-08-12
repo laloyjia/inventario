@@ -61,6 +61,13 @@
         .tab-link { flex:1; padding: 15px; border:none; background:#e2e8f0; color:var(--dark); border-radius:6px; cursor:pointer; font-weight:bold; font-size:1rem; white-space: nowrap;}
         .tab-link.active { background: var(--primary); color: white; }
         .modulo-content { display: none; animation: fadeIn 0.3s; }
+        @media print {
+            .header, .tab-menu, .stats-bar, .no-print, .action-btn { display: none !important; }
+            body { background: white; padding: 0; }
+            .card { box-shadow: none !important; border: 1px solid #ccc; }
+            #tablaInventario th, table th { position: static !important; }
+            @page { margin: 12mm; }
+        }
 
         /* ===== Panel "Varios": grilla ordenada de tarjetas ===== */
         .varios-intro { display:flex; align-items:center; gap:10px; margin: 4px 0 14px 0; color:#334155; }
@@ -260,6 +267,7 @@
         <button class="tab-link" onclick="abrirModulo(event, 'mod-admin')"><i class="fas fa-users-cog"></i> 4. Administración</button>
         {% endif %}
         <button class="tab-link" onclick="abrirModulo(event, 'mod-varios')"><i class="fas fa-folder-open"></i> 4. Varios</button>
+        <button class="tab-link" onclick="abrirModulo(event, 'mod-inventario')"><i class="fas fa-clipboard-list"></i> 5. Modo Inventario</button>
     </div>
     <div class="panel-main">
 
@@ -530,6 +538,16 @@
                 <span><i class="fas fa-cubes"></i> Existencias Físicas en Taller</span>
                 <span style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                     <input type="text" id="buscadorInventario" onkeyup="filtrarInventario()" placeholder="🔍 Buscar equipo..." style="width: auto; min-width: 200px;">
+                    <div style="position:relative;">
+                        <button type="button" onclick="toggleColumnas(event)" title="Elegir columnas visibles"
+                                style="background:#334155; color:white; padding:9px 14px; border:none; border-radius:6px; font-size:0.85rem; font-weight:600; cursor:pointer;">
+                            <i class="fas fa-table-columns"></i> Columnas
+                        </button>
+                        <div id="panelColumnas" style="display:none; position:absolute; right:0; top:110%; width:230px; background:white; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,0.18); z-index:2500; padding:10px 12px; text-align:left;">
+                            <div style="font-weight:700; color:#334155; font-size:0.82rem; margin-bottom:8px;">Mostrar columnas</div>
+                            <div id="listaColumnas"></div>
+                        </div>
+                    </div>
                     {% if tipo_area == 'PANOL_TP' %}
                     <a href="/inventario_visita"
                        style="background:#0ea5e9; color:white; padding:8px 14px; border-radius:6px; text-decoration:none; font-size:0.85rem; font-weight:600;"
@@ -1557,6 +1575,57 @@
 
         </div>{# /varios-grid #}
     </div>
+
+    <div id="mod-inventario" class="modulo-content" style="display: none;">
+        <div class="card">
+            <h2 style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <span><i class="fas fa-clipboard-list"></i> Modo Inventario — revisión física</span>
+                <span class="no-print" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <span style="font-size:0.9rem; color:#334155; font-weight:700;">Revisados: <span id="invProgresoTxt">0 / {{ items|length }}</span></span>
+                    <button type="button" onclick="invMarcarTodos(true)" style="background:#16a34a; color:white; padding:8px 12px; border:none; border-radius:6px; font-size:0.8rem; cursor:pointer;"><i class="fas fa-check-double"></i> Marcar todos</button>
+                    <button type="button" onclick="invMarcarTodos(false)" style="background:#e2e8f0; color:#334155; padding:8px 12px; border:none; border-radius:6px; font-size:0.8rem; cursor:pointer;">Limpiar</button>
+                    <button type="button" onclick="imprimirActa()" style="background:#7c3aed; color:white; padding:8px 12px; border:none; border-radius:6px; font-size:0.8rem; cursor:pointer;"><i class="fas fa-print"></i> Imprimir acta</button>
+                </span>
+            </h2>
+            <p class="no-print" style="color:var(--secondary); font-size:0.9rem; margin-top:0;">Marca y cuenta cada ítem a medida que revisas físicamente el inventario. Al terminar, imprime el acta.</p>
+            <div id="invActaCabecera" style="display:none; margin-bottom:14px; font-size:0.95rem;">
+                <strong>Acta de Inventario</strong> — {{ session.get('usuario_especialidad') or 'Área' }} · Revisado por: {{ session['usuario_nombre'] }} · Fecha: __________________
+            </div>
+            {% for dep, its in grupos_inventario.items() %}
+            <div style="margin-bottom:18px; page-break-inside:avoid;">
+                <h3 style="font-size:1rem; color:var(--primary); border-bottom:2px solid #e5e7eb; padding-bottom:6px; margin-bottom:8px;">
+                    <i class="fas fa-sitemap"></i> {{ dep }} <span style="font-size:0.8rem; color:#94a3b8; font-weight:400;">({{ its|length }} ítem(s))</span>
+                </h3>
+                <div class="table-responsive">
+                    <table>
+                        <thead><tr>
+                            <th style="width:40px; text-align:center;">✔</th>
+                            <th>Código</th><th>Nombre</th><th>Categoría</th><th>Ubicación</th>
+                            <th style="text-align:center;">Esperado</th>
+                            <th style="width:90px; text-align:center;">Contado</th>
+                        </tr></thead>
+                        <tbody>
+                            {% for item in its %}
+                            <tr>
+                                <td style="text-align:center;"><input type="checkbox" class="inv-check" onchange="invProgreso()" style="width:20px; height:20px; accent-color:#16a34a;"></td>
+                                <td style="font-family:monospace; font-size:0.8rem;">{{ item.codigo_barras }}</td>
+                                <td><strong>{{ item.nombre }}</strong></td>
+                                <td style="font-size:0.85rem; color:var(--secondary);">{{ item.categoria }}</td>
+                                <td style="font-size:0.85rem;">{{ item.ubicacion or '—' }}</td>
+                                <td style="text-align:center; font-weight:700;">{{ item.cantidad_total }}</td>
+                                <td style="text-align:center;"><input type="number" min="0" class="inv-contado" style="width:70px; text-align:center;" placeholder="—"></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% else %}
+            <p style="text-align:center; color:var(--secondary); padding:30px;"><i class="fas fa-box-open"></i> No hay ítems en el inventario.</p>
+            {% endfor %}
+        </div>
+    </div>
+
     </div>{# /panel-main #}
     </div>{# /panel-layout #}
 </div>
@@ -2249,6 +2318,48 @@
         var b=document.getElementById('buscadorInventario'); if(b) b.value='';
         filtrarInventario();
     }
+    // ---- Modo Inventario ----
+    function invProgreso() {
+        var t = document.querySelectorAll('.inv-check').length;
+        var c = document.querySelectorAll('.inv-check:checked').length;
+        var e = document.getElementById('invProgresoTxt'); if (e) e.textContent = c + ' / ' + t;
+    }
+    function invMarcarTodos(v) {
+        document.querySelectorAll('.inv-check').forEach(function(ch){ ch.checked = v; }); invProgreso();
+    }
+    function imprimirActa() {
+        var h = document.getElementById('invActaCabecera'); if (h) h.style.display = 'block';
+        window.print();
+        setTimeout(function(){ if (h) h.style.display = 'none'; }, 600);
+    }
+    // ---- Selector de columnas (cada instructor elige qué ver; se recuerda) ----
+    function toggleColumnas(e) { if (e) e.stopPropagation(); var p=document.getElementById('panelColumnas'); if (p) p.style.display=(p.style.display==='block')?'none':'block'; }
+    document.addEventListener('click', function(ev){ var p=document.getElementById('panelColumnas'); if (p && p.parentElement && !p.parentElement.contains(ev.target)) p.style.display='none'; });
+    (function initColumnas(){
+        var tabla=document.getElementById('tablaInventario'); if(!tabla) return;
+        var ths=tabla.querySelectorAll('thead th'); if(!ths.length) return;
+        var labels=[]; ths.forEach(function(th){ labels.push((th.textContent||'Col').trim() || 'Col'); });
+        var key='panolerp_cols_'+labels.join('|');
+        var hidden={}; try{ hidden=JSON.parse(localStorage.getItem(key)||'{}'); }catch(e){}
+        var style=document.getElementById('colStyle');
+        if(!style){ style=document.createElement('style'); style.id='colStyle'; document.head.appendChild(style); }
+        function aplicar(){
+            var rules='';
+            Object.keys(hidden).forEach(function(i){ if(hidden[i]) rules+='#tablaInventario tr > :nth-child('+(parseInt(i,10)+1)+'){display:none;}'; });
+            style.textContent=rules;
+            try{ localStorage.setItem(key, JSON.stringify(hidden)); }catch(e){}
+        }
+        var cont=document.getElementById('listaColumnas'); if(!cont) return; cont.innerHTML='';
+        labels.forEach(function(lbl,i){
+            var lab=document.createElement('label');
+            lab.style.cssText='display:flex; align-items:center; gap:8px; padding:4px 0; font-size:0.83rem; cursor:pointer; color:#334155;';
+            var chk=document.createElement('input'); chk.type='checkbox'; chk.checked=!hidden[i];
+            chk.onchange=function(){ hidden[i]=!chk.checked; aplicar(); };
+            lab.appendChild(chk); lab.appendChild(document.createTextNode(' '+lbl));
+            cont.appendChild(lab);
+        });
+        aplicar();
+    })();
     function filtrarCategoria(btn, categoria) {
         categoriaActiva = categoria;
         document.querySelectorAll('.cat-btn').forEach(function(b) { b.classList.remove('active'); });
