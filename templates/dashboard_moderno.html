@@ -72,6 +72,7 @@ body {
     display: flex; flex-direction: column;
 }
 .sidebar .brand {
+    flex-shrink: 0;
     padding: 8px 14px 22px 14px;
     border-bottom: 1px solid rgba(255,255,255,0.08);
     margin-bottom: 18px;
@@ -144,7 +145,21 @@ body {
     border-left: 1px solid rgba(255,255,255,0.08);
     padding-left: 8px;
 }
-.submenu.open { max-height: 800px; }
+.submenu.open { max-height: 1400px; }
+
+/* Zona de menú desplazable: marca y usuario quedan fijos */
+.nav-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    margin: 0 -6px;
+    padding: 0 6px;
+}
+.nav-scroll::-webkit-scrollbar { width: 7px; }
+.nav-scroll::-webkit-scrollbar-thumb { background: rgba(148,163,200,0.35); border-radius: 4px; }
+.nav-scroll::-webkit-scrollbar-thumb:hover { background: rgba(148,163,200,0.55); }
+.nav-scroll { scrollbar-width: thin; scrollbar-color: rgba(148,163,200,0.35) transparent; }
 .submenu a.sub {
     padding: 7px 10px !important;
     font-size: 12px !important;
@@ -161,7 +176,7 @@ body {
 }
 
 .sidebar .user {
-    margin-top: auto;
+    flex-shrink: 0;
     padding: 14px;
     background: var(--sidebar-hover);
     border-radius: 10px;
@@ -556,6 +571,7 @@ body {
             <small>Panel de control</small>
         </div>
 
+        <div class="nav-scroll">
         <div class="nav-label">Principal</div>
         <div class="nav">
             <a href="/dashboard" class="active">
@@ -598,6 +614,7 @@ body {
             </a>
         </div>
         {% endif %}
+        </div>{# /nav-scroll #}
 
         <div class="user">
             <div class="avatar">
