@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conteo de inventario · PanolERP</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0B1739">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        :root{--bg:#0B1739;--panel:#111f43;--line:rgba(255,255,255,.10);--txt:#E7ECF7;--muted:#94A3C8;
+              --amber:#F59E0B;--green:#22c55e;--red:#ef4444;--blue:#3b82f6;}
+        *{box-sizing:border-box;}
+        body{margin:0;font-family:'Segoe UI',system-ui,sans-serif;background:#f1f5f9;color:#0f172a;}
+        .top{display:flex;align-items:center;gap:12px;padding:12px 18px;background:linear-gradient(135deg,#0B1739,#16255a);color:#fff;position:sticky;top:0;z-index:20;flex-wrap:wrap;}
+        .top .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--amber),#D97706);display:flex;align-items:center;justify-content:center;}
+        .top h1{font-size:16px;margin:0;font-weight:800;}
+        .top h1 small{display:block;color:var(--muted);font-size:11px;font-weight:600;}
+        .top .sp{margin-left:auto;}
+        .top a.btn,.top button.btn{background:rgba(255,255,255,.12);color:#fff;border:1px solid var(--line);
+              padding:9px 14px;border-radius:9px;font-weight:700;font-size:13px;text-decoration:none;cursor:pointer;}
+        .top button.go{background:var(--green);border:none;}
+        .scanbar{background:#0d1b3d;color:#fff;padding:12px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;position:sticky;top:58px;z-index:19;border-bottom:1px solid var(--line);}
+        #scanBox{flex:1;min-width:220px;padding:14px 16px;border-radius:12px;border:2px solid var(--amber);background:#fff;color:#0f172a;font-size:17px;font-weight:600;}
+        .scanbar .stat{background:rgba(255,255,255,.08);border-radius:10px;padding:8px 14px;text-align:center;}
+        .scanbar .stat b{display:block;font-size:20px;line-height:1;}
+        .scanbar .stat span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+        .scanbar button.cam{background:var(--blue);color:#fff;border:none;padding:12px 16px;border-radius:11px;font-weight:700;cursor:pointer;font-size:14px;}
+        #reader{display:none;max-width:340px;margin:10px auto;border-radius:14px;overflow:hidden;}
+        .tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 18px;background:#fff;border-bottom:1px solid #e5e7eb;position:sticky;top:120px;z-index:18;}
+        .tools input,.tools select{padding:9px 12px;border-radius:9px;border:1px solid #cbd5e1;font-size:13px;}
+        .tools input.search{flex:1;min-width:180px;}
+        .wrap{padding:0 0 120px;}
+        table{width:100%;border-collapse:collapse;background:#fff;font-size:13px;}
+        thead th{position:sticky;top:170px;background:#0B1739;color:#fff;padding:10px 12px;text-align:left;font-size:12px;
+                 cursor:pointer;white-space:nowrap;z-index:5;}
+        thead th .ar{opacity:.5;font-size:10px;margin-left:4px;}
+        tbody td{padding:9px 12px;border-bottom:1px solid #eef2f7;}
+        tbody tr.hit{animation:flash 1s ease;}
+        @keyframes flash{0%{background:#bbf7d0;}100%{background:transparent;}}
+        tbody tr.counted{background:#f0fdf4;}
+        .cod{font-family:monospace;font-size:11.5px;color:#64748b;}
+        .cont{width:78px;display:flex;align-items:center;gap:2px;}
+        .cont input{width:44px;text-align:center;padding:6px 2px;border:1px solid #cbd5e1;border-radius:7px;font-weight:800;font-size:14px;}
+        .cont button{width:24px;height:28px;border:none;border-radius:6px;background:#e2e8f0;font-weight:800;cursor:pointer;}
+        .diff{font-weight:800;text-align:center;}
+        .d-ok{color:#16a34a;} .d-neg{color:#dc2626;} .d-pos{color:#d97706;} .d-non{color:#94a3b8;}
+        .bignum{font-variant-numeric:tabular-nums;}
+        .footer{position:fixed;bottom:0;left:0;right:0;background:#0B1739;color:#fff;padding:12px 18px;display:flex;gap:14px;align-items:center;justify-content:space-between;z-index:30;flex-wrap:wrap;}
+        .footer .go{background:var(--green);color:#fff;border:none;padding:13px 22px;border-radius:11px;font-weight:800;font-size:15px;cursor:pointer;}
+        .footer .muted{color:var(--muted);font-size:12px;}
+        .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#111f43;color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;z-index:40;box-shadow:0 10px 30px rgba(0,0,0,.4);display:none;}
+        .toast.err{background:#7f1d1d;}
+        @media(max-width:720px){ thead th{top:150px;} .col-cat,.col-area{display:none;} }
+    </style>
+</head>
+<body>
+    <div class="top">
+        <div class="logo"><i class="fas fa-barcode"></i></div>
+        <div><h1>Conteo de inventario <small>{{ area if area else 'Inventario físico' }}</small></h1></div>
+        <div class="sp"></div>
+        <a href="/dashboard" class="btn"><i class="fas fa-arrow-left"></i> Salir</a>
+    </div>
+
+    <form id="actaForm" action="/conteo/acta" method="POST">
+    <div class="scanbar">
+        <input id="scanBox" type="text" autocomplete="off" autofocus
+               placeholder="🔫 Pistolea aquí o escribe el código y presiona Enter…">
+        <button type="button" class="cam" id="btnCam"><i class="fas fa-camera"></i> Cámara</button>
+        <div class="stat"><b id="stUnid" class="bignum">0</b><span>Unidades</span></div>
+        <div class="stat"><b id="stItems" class="bignum">0</b><span>Ítems tocados</span></div>
+        <div class="stat"><b class="bignum">{{ items|length }}</b><span>Total ítems</span></div>
+    </div>
+    <div id="reader"></div>
+
+    <div class="tools">
+        <input class="search" id="buscar" type="text" placeholder="🔎 Filtrar por nombre, código, ubicación…" oninput="filtrar()">
+        <select id="fDep" onchange="filtrar()"><option value="">Todas las dependencias</option></select>
+        <select id="fEstado" onchange="filtrar()">
+            <option value="">Todos</option>
+            <option value="counted">Solo contados</option>
+            <option value="pend">Solo pendientes</option>
+        </select>
+        <button type="button" class="btn" style="background:#e2e8f0;border:none;padding:9px 12px;border-radius:9px;font-weight:700;cursor:pointer;" onclick="limpiarConteo()"><i class="fas fa-eraser"></i> Reiniciar conteo</button>
+    </div>
+
+    <div class="wrap">
+        <table id="tabla">
+            <thead><tr>
+                <th data-k="codigo" onclick="ordenar('codigo')">Código <span class="ar">⇅</span></th>
+                <th data-k="nombre" onclick="ordenar('nombre')">Nombre <span class="ar">⇅</span></th>
+                <th class="col-cat" data-k="categoria" onclick="ordenar('categoria')">Categoría <span class="ar">⇅</span></th>
+                <th data-k="dependencia" onclick="ordenar('dependencia')">Dependencia <span class="ar">⇅</span></th>
+                <th data-k="ubicacion" onclick="ordenar('ubicacion')">Ubicación <span class="ar">⇅</span></th>
+                <th class="col-area" data-k="area" onclick="ordenar('area')">Área <span class="ar">⇅</span></th>
+                <th data-k="esperado" onclick="ordenar('esperado')" style="text-align:center;">Esperado <span class="ar">⇅</span></th>
+                <th style="text-align:center;">Contado</th>
+                <th style="text-align:center;">Dif.</th>
+            </tr></thead>
+            <tbody id="tbody">
+                {% for it in items %}
+                <tr data-id="{{ it.id }}" data-codigo="{{ it.codigo_barras }}"
+                    data-nombre="{{ (it.nombre or '')|lower }}" data-categoria="{{ (it.categoria or '')|lower }}"
+                    data-dependencia="{{ (it.dependencia or 'sin dependencia')|lower }}"
+                    data-ubicacion="{{ (it.ubicacion or '')|lower }}"
+                    data-area="{{ (it.especialidad.nombre if it.especialidad else '')|lower }}"
+                    data-esperado="{{ it.cantidad_total or 0 }}">
+                    <td class="cod">{{ it.codigo_barras }}</td>
+                    <td><strong>{{ it.nombre }}</strong></td>
+                    <td class="col-cat">{{ it.categoria or '—' }}</td>
+                    <td>{{ it.dependencia or 'Sin dependencia' }}</td>
+                    <td>{{ it.ubicacion or '—' }}</td>
+                    <td class="col-area">{{ it.especialidad.nombre if it.especialidad else '—' }}</td>
+                    <td style="text-align:center;font-weight:700;">{{ it.cantidad_total or 0 }}</td>
+                    <td>
+                        <input type="hidden" name="item_id[]" value="{{ it.id }}">
+                        <div class="cont">
+                            <button type="button" onclick="dec({{ it.id }})">−</button>
+                            <input type="number" min="0" name="contado[]" class="ct" data-id="{{ it.id }}"
+                                   oninput="recalc(this)" placeholder="—">
+                            <button type="button" onclick="inc({{ it.id }})">+</button>
+                        </div>
+                    </td>
+                    <td class="diff d-non" id="diff-{{ it.id }}">—</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="footer">
+        <div>
+            <div><strong id="fItems">0</strong> ítems contados · <span class="muted"><span id="fPend">{{ items|length }}</span> pendientes</span></div>
+            <div class="muted">El acta muestra faltantes y sobrantes. No modifica el stock.</div>
+        </div>
+        <button type="submit" class="go"><i class="fas fa-file-lines"></i> Generar acta de diferencias</button>
+    </div>
+    </form>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const $ = s => document.querySelector(s);
+        const rows = Array.from(document.querySelectorAll('#tbody tr'));
+        const byCode = {}; rows.forEach(r => { byCode[r.dataset.codigo] = r; });
+
+        // Poblar filtro de dependencias
+        (function(){
+            const deps = [...new Set(rows.map(r => r.dataset.dependencia))].sort();
+            const sel = $('#fDep');
+            deps.forEach(d => { const o=document.createElement('option'); o.value=d;
+                o.textContent = d.charAt(0).toUpperCase()+d.slice(1); sel.appendChild(o); });
+        })();
+
+        function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':'');
+            t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none', 1600); }
+        function beep(ok){ if(navigator.vibrate) navigator.vibrate(ok?40:[60,40,60]); }
+
+        function setContado(row, val){
+            const inp = row.querySelector('.ct');
+            inp.value = (val === '' || val === null) ? '' : val;
+            recalc(inp);
+        }
+        function inc(id){ const r=document.querySelector('tr[data-id="'+id+'"]'); const i=r.querySelector('.ct');
+            i.value = (parseInt(i.value)||0)+1; recalc(i); }
+        function dec(id){ const r=document.querySelector('tr[data-id="'+id+'"]'); const i=r.querySelector('.ct');
+            const v=(parseInt(i.value)||0)-1; i.value = v<=0 ? '' : v; recalc(i); }
+
+        function recalc(inp){
+            const row = inp.closest('tr');
+            const esp = parseInt(row.dataset.esperado)||0;
+            const cell = document.getElementById('diff-'+row.dataset.id);
+            if(inp.value.trim()===''){ cell.textContent='—'; cell.className='diff d-non'; row.classList.remove('counted'); }
+            else{
+                const n = parseInt(inp.value)||0; const d = n-esp;
+                cell.textContent = d>0?('+'+d):d;
+                cell.className = 'diff '+(d===0?'d-ok':(d<0?'d-neg':'d-pos'));
+                row.classList.add('counted');
+            }
+            totales();
+        }
+
+        function totales(){
+            let unid=0, tocados=0;
+            rows.forEach(r=>{ const v=r.querySelector('.ct').value.trim(); if(v!==''){ tocados++; unid+=parseInt(v)||0; } });
+            $('#stUnid').textContent = unid;
+            $('#stItems').textContent = tocados;
+            $('#fItems').textContent = tocados;
+            $('#fPend').textContent = rows.length - tocados;
+        }
+
+        // ── Escaneo (pistola = teclado que termina en Enter, o cámara) ──
+        function procesar(code){
+            code = (code||'').trim(); if(!code) return;
+            const row = byCode[code];
+            if(!row){ toast('❌ Código no está en este inventario: '+code, true); beep(false); return; }
+            const i = row.querySelector('.ct'); i.value = (parseInt(i.value)||0)+1; recalc(i);
+            row.classList.remove('hit'); void row.offsetWidth; row.classList.add('hit');
+            row.scrollIntoView({block:'center', behavior:'smooth'});
+            toast('✓ '+row.dataset.nombre+' → '+i.value); beep(true);
+        }
+
+        const box = $('#scanBox');
+        box.addEventListener('keydown', e=>{
+            if(e.key==='Enter'){ e.preventDefault(); procesar(box.value); box.value=''; box.focus(); }
+        });
+        // Mantener el foco en la caja para que la pistola siempre escriba ahí
+        document.addEventListener('click', e=>{
+            if(!e.target.closest('input,select,button,a,th')) box.focus();
+        });
+
+        // ── Cámara ──
+        let qr=null, running=false, lastCode='', lastT=0;
+        $('#btnCam').addEventListener('click', async ()=>{
+            const rd=$('#reader');
+            if(running){ try{await qr.stop();}catch(e){} running=false; rd.style.display='none';
+                $('#btnCam').innerHTML='<i class="fas fa-camera"></i> Cámara'; return; }
+            rd.style.display='block';
+            try{
+                const cams = await Html5Qrcode.getCameras();
+                if(!cams.length){ toast('No se detectó cámara', true); return; }
+                const back = cams.find(c=>/back|rear|tras|environment/i.test(c.label)) || cams[cams.length-1];
+                qr = new Html5Qrcode('reader');
+                await qr.start(back.id, {fps:10, qrbox:{width:240,height:150}}, txt=>{
+                    const now=Date.now(); if(txt===lastCode && now-lastT<1500) return;
+                    lastCode=txt; lastT=now; procesar(txt);
+                }, ()=>{});
+                running=true; $('#btnCam').innerHTML='<i class="fas fa-stop"></i> Detener';
+            }catch(e){ toast('No se pudo abrir la cámara', true); rd.style.display='none'; }
+        });
+
+        function filtrar(){
+            const q=$('#buscar').value.toLowerCase().trim();
+            const dep=$('#fDep').value, est=$('#fEstado').value;
+            rows.forEach(r=>{
+                const txt=(r.dataset.nombre+' '+r.dataset.codigo+' '+r.dataset.ubicacion+' '+r.dataset.dependencia+' '+r.dataset.categoria).toLowerCase();
+                const contado = r.querySelector('.ct').value.trim()!=='';
+                let ok = (!q||txt.includes(q)) && (!dep||r.dataset.dependencia===dep);
+                if(est==='counted') ok = ok && contado;
+                if(est==='pend') ok = ok && !contado;
+                r.style.display = ok?'':'none';
+            });
+        }
+
+        let sortK='', sortDir=1;
+        function ordenar(k){
+            sortDir = (sortK===k)? -sortDir : 1; sortK=k;
+            const num = (k==='esperado');
+            const tb=$('#tbody');
+            rows.sort((a,b)=>{
+                let x=a.dataset[k]||'', y=b.dataset[k]||'';
+                if(num){ x=parseFloat(x)||0; y=parseFloat(y)||0; return (x-y)*sortDir; }
+                return x.localeCompare(y)*sortDir;
+            });
+            rows.forEach(r=>tb.appendChild(r));
+        }
+
+        function limpiarConteo(){
+            if(!confirm('¿Borrar todo el conteo actual?')) return;
+            rows.forEach(r=>{ r.querySelector('.ct').value=''; recalc(r.querySelector('.ct')); });
+            box.focus();
+        }
+
+        // Evitar que Enter en la búsqueda envíe el formulario
+        $('#buscar').addEventListener('keydown', e=>{ if(e.key==='Enter') e.preventDefault(); });
+        totales();
+    </script>
+</body>
+</html>

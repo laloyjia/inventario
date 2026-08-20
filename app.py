@@ -1845,6 +1845,99 @@ def api_buscar_item(codigo):
     })
 
 
+def _items_conteo_scope():
+    """Ítems visibles para el conteo según el rol: Admin/Jefe Técnico ven todo;
+    un pañolero de área solo la suya."""
+    rol = session.get('usuario_rol')
+    esp_id = session.get('usuario_especialidad_id')
+    q = Item.query
+    if rol != 'Admin' and esp_id:
+        q = q.filter_by(especialidad_id=esp_id)
+    return q.order_by(Item.nombre).all()
+
+
+@app.route('/conteo')
+@login_requerido
+def conteo_inventario():
+    """Pantalla de conteo rápido por pistoleo (cámara del celular o lectora de
+    código de barras). Cada escaneo suma +1 al ítem. Al finalizar genera un acta
+    de diferencias (no modifica el stock)."""
+    items = _items_conteo_scope()
+    especialidades = Especialidad.query.order_by(Especialidad.nombre).all()
+    return render_template('conteo.html',
+                           items=items,
+                           especialidades=especialidades,
+                           es_admin=(session.get('usuario_rol') == 'Admin'),
+                           usuario=session.get('usuario_nombre', ''),
+                           hoy=datetime.now().date())
+
+
+@app.route('/conteo/acta', methods=['POST'])
+@login_requerido
+def conteo_acta():
+    """Recibe los conteos y genera el ACTA de diferencias. NO toca el stock."""
+    ids = request.form.getlist('item_id[]')
+    conts = request.form.getlist('contado[]')
+    mapa = {}
+    for iid, c in zip(ids, conts):
+        c = (c or '').strip()
+        if c == '':
+            continue
+        try:
+            n = int(float(c))
+        except Exception:
+            continue
+        if n < 0 or not iid:
+            continue
+        mapa[int(iid)] = n
+
+    filas, faltantes, sobrantes, ok, no_contados = [], [], [], [], []
+    tot_esperado = tot_contado = 0
+    for it in _items_conteo_scope():
+        esperado = it.cantidad_total or 0
+        tot_esperado += esperado
+        contado = mapa.get(it.id)  # None si no se contó
+        fila = {
+            'codigo': it.codigo_barras, 'nombre': it.nombre,
+            'categoria': it.categoria or '', 'dependencia': it.dependencia or 'Sin dependencia',
+            'ubicacion': it.ubicacion or '—', 'esperado': esperado,
+            'contado': contado, 'area': it.especialidad.nombre if it.especialidad else '',
+        }
+        if contado is None:
+            no_contados.append(fila)
+        else:
+            tot_contado += contado
+            fila['diff'] = contado - esperado
+            if contado < esperado:
+                faltantes.append(fila)
+            elif contado > esperado:
+                sobrantes.append(fila)
+            else:
+                ok.append(fila)
+        filas.append(fila)
+
+    resumen = {
+        'total_items': len(filas), 'contados': len(filas) - len(no_contados),
+        'no_contados': len(no_contados), 'faltantes': len(faltantes),
+        'sobrantes': len(sobrantes), 'ok': len(ok),
+        'tot_esperado': tot_esperado, 'tot_contado': tot_contado,
+    }
+    try:
+        registrar_auditoria('conteo_acta', 'Inventario', None,
+                            valores_nuevos={'contados': resumen['contados'],
+                                            'faltantes': resumen['faltantes'],
+                                            'sobrantes': resumen['sobrantes']},
+                            especialidad_id=session.get('usuario_especialidad_id'))
+    except Exception:
+        pass
+    return render_template('conteo_acta.html',
+                           faltantes=faltantes, sobrantes=sobrantes, ok=ok,
+                           no_contados=no_contados, resumen=resumen,
+                           usuario=session.get('usuario_nombre', ''),
+                           area=session.get('usuario_especialidad', '') or 'Todas las áreas',
+                           fecha=datetime.now())
+
+
 @app.route('/movil')
 @login_requerido
 def movil_scan():

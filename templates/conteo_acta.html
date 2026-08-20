@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acta de conteo · PanolERP</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root{--primary:#1e3a8a;--muted:#64748b;--green:#16a34a;--red:#dc2626;--amber:#d97706;}
+        *{box-sizing:border-box;}
+        body{font-family:'Segoe UI',system-ui,sans-serif;background:#f1f5f9;color:#0f172a;margin:0;padding:24px;}
+        .sheet{max-width:1000px;margin:0 auto;background:#fff;border-radius:14px;padding:30px;box-shadow:0 6px 24px rgba(0,0,0,.08);}
+        .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid var(--primary);padding-bottom:14px;margin-bottom:18px;flex-wrap:wrap;gap:12px;}
+        .head h1{margin:0;color:var(--primary);font-size:22px;}
+        .head .meta{font-size:13px;color:var(--muted);line-height:1.7;text-align:right;}
+        .actions{margin-bottom:18px;display:flex;gap:10px;flex-wrap:wrap;}
+        .actions a,.actions button{padding:10px 16px;border:none;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;text-decoration:none;color:#fff;display:inline-flex;align-items:center;gap:8px;}
+        .b-print{background:#7c3aed;} .b-back{background:var(--muted);}
+        .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:22px;}
+        .kpi{border-radius:12px;padding:14px;text-align:center;border:1px solid #e5e7eb;}
+        .kpi b{display:block;font-size:26px;line-height:1;}
+        .kpi span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+        h2{font-size:15px;margin:22px 0 8px;padding:6px 0;border-bottom:1px solid #e5e7eb;}
+        h2 .tag{font-size:12px;font-weight:800;padding:2px 10px;border-radius:999px;margin-left:8px;}
+        table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px;}
+        th{background:#f8fafc;text-align:left;padding:8px 10px;border-bottom:2px solid #e5e7eb;font-size:12px;}
+        td{padding:7px 10px;border-bottom:1px solid #eef2f7;}
+        .num{text-align:center;font-weight:700;}
+        .neg{color:var(--red);} .pos{color:var(--amber);} .ok{color:var(--green);}
+        .cod{font-family:monospace;font-size:11.5px;color:var(--muted);}
+        .empty{color:var(--muted);font-size:13px;padding:8px 0;}
+        .firma{margin-top:40px;display:flex;gap:60px;flex-wrap:wrap;}
+        .firma div{flex:1;min-width:200px;border-top:1px solid #0f172a;padding-top:6px;font-size:12px;color:var(--muted);text-align:center;}
+        @media print{
+            @page{size:A4;margin:12mm;} body{background:#fff;padding:0;}
+            .sheet{box-shadow:none;border-radius:0;max-width:100%;padding:0;}
+            .actions{display:none;} h2,tr{break-inside:avoid;}
+        }
+    </style>
+</head>
+<body>
+    <div class="sheet">
+        <div class="head">
+            <div>
+                <h1><i class="fas fa-clipboard-check"></i> Acta de Conteo de Inventario</h1>
+                <div style="font-size:13px;color:var(--muted);margin-top:4px;">Diferencias entre lo esperado y lo contado físicamente</div>
+            </div>
+            <div class="meta">
+                <strong>{{ area }}</strong><br>
+                Realizado por: {{ usuario }}<br>
+                Fecha: {{ fecha.strftime('%d/%m/%Y %H:%M') }}
+            </div>
+        </div>
+
+        <div class="actions">
+            <button class="b-print" onclick="window.print()"><i class="fas fa-print"></i> Imprimir / PDF</button>
+            <a class="b-back" href="/conteo"><i class="fas fa-arrow-left"></i> Volver al conteo</a>
+        </div>
+
+        <div class="kpis">
+            <div class="kpi"><b>{{ resumen.contados }}</b><span>Ítems contados</span></div>
+            <div class="kpi"><b style="color:var(--red);">{{ resumen.faltantes }}</b><span>Con faltante</span></div>
+            <div class="kpi"><b style="color:var(--amber);">{{ resumen.sobrantes }}</b><span>Con sobrante</span></div>
+            <div class="kpi"><b style="color:var(--green);">{{ resumen.ok }}</b><span>Cuadran</span></div>
+            <div class="kpi"><b style="color:var(--muted);">{{ resumen.no_contados }}</b><span>No contados</span></div>
+            <div class="kpi"><b>{{ resumen.tot_contado }}</b><span>Unidades contadas</span></div>
+        </div>
+
+        {% macro tabla(filas, tipo) %}
+            <table>
+                <thead><tr>
+                    <th>Código</th><th>Nombre</th><th>Dependencia</th><th>Ubicación</th>
+                    <th class="num">Esperado</th><th class="num">Contado</th><th class="num">Diferencia</th>
+                </tr></thead>
+                <tbody>
+                {% for f in filas %}
+                    <tr>
+                        <td class="cod">{{ f.codigo }}</td>
+                        <td><strong>{{ f.nombre }}</strong>{% if f.categoria %} <span style="color:var(--muted);font-size:11px;">· {{ f.categoria }}</span>{% endif %}</td>
+                        <td>{{ f.dependencia }}</td>
+                        <td>{{ f.ubicacion }}</td>
+                        <td class="num">{{ f.esperado }}</td>
+                        <td class="num">{{ f.contado if f.contado is not none else '—' }}</td>
+                        <td class="num {{ 'neg' if tipo=='neg' else ('pos' if tipo=='pos' else 'ok') }}">
+                            {% if f.contado is not none %}{{ ('+' ~ f.diff) if f.diff > 0 else f.diff }}{% else %}—{% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        {% endmacro %}
+
+        <h2><i class="fas fa-triangle-exclamation" style="color:var(--red);"></i> Faltantes
+            <span class="tag" style="background:#fef2f2;color:var(--red);">{{ resumen.faltantes }}</span></h2>
+        {% if faltantes %}{{ tabla(faltantes, 'neg') }}{% else %}<div class="empty">Sin faltantes.</div>{% endif %}
+
+        <h2><i class="fas fa-plus" style="color:var(--amber);"></i> Sobrantes
+            <span class="tag" style="background:#fffbeb;color:var(--amber);">{{ resumen.sobrantes }}</span></h2>
+        {% if sobrantes %}{{ tabla(sobrantes, 'pos') }}{% else %}<div class="empty">Sin sobrantes.</div>{% endif %}
+
+        <h2><i class="fas fa-box-open" style="color:var(--muted);"></i> No contados
+            <span class="tag" style="background:#f1f5f9;color:var(--muted);">{{ resumen.no_contados }}</span></h2>
+        {% if no_contados %}
+            <table>
+                <thead><tr><th>Código</th><th>Nombre</th><th>Dependencia</th><th>Ubicación</th><th class="num">Esperado</th></tr></thead>
+                <tbody>
+                {% for f in no_contados %}
+                    <tr><td class="cod">{{ f.codigo }}</td><td><strong>{{ f.nombre }}</strong></td>
+                        <td>{{ f.dependencia }}</td><td>{{ f.ubicacion }}</td><td class="num">{{ f.esperado }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        {% else %}<div class="empty">Todos los ítems fueron contados.</div>{% endif %}
+
+        <details style="margin-top:16px;">
+            <summary style="cursor:pointer;font-weight:700;color:var(--green);">Ver ítems que cuadran ({{ resumen.ok }})</summary>
+            {% if ok %}{{ tabla(ok, 'ok') }}{% else %}<div class="empty">—</div>{% endif %}
+        </details>
+
+        <div class="firma">
+            <div>Responsable del conteo</div>
+            <div>Visto bueno (Jefe Técnico / Administración)</div>
+        </div>
+    </div>
+</body>
+</html>
