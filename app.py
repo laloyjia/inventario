@@ -120,7 +120,11 @@ if EN_PRODUCCION and os.getenv('FORCE_HTTPS', 'true').lower() != 'false':
                      'style-src': ["'self'", "'unsafe-inline'",
                                    'cdnjs.cloudflare.com', 'fonts.googleapis.com'],
                      'font-src': ["'self'", 'cdnjs.cloudflare.com', 'fonts.gstatic.com'],
-                     'img-src': ["'self'", 'data:', 'https:'],
+                     'img-src': ["'self'", 'data:', 'https:', 'blob:'],
+                     # AJAX/fetch (API interna) y source maps de los CDN de scripts
+                     'connect-src': ["'self'", 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com'],
+                     # Cámara para el escaneo móvil (/movil): MediaStream de la webcam
+                     'media-src': ["'self'", 'blob:', 'mediastream:'],
                  })
         print("[SEC] Talisman activo: HTTPS forzado + CSP")
     except ImportError:
