@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Escaneo rápido · PanolERP</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0B1739">
+    <link rel="apple-touch-icon" href="/pwa-icon.svg">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        :root{
+            --bg:#0B1739; --card:#111f43; --line:rgba(255,255,255,.10);
+            --txt:#E7ECF7; --muted:#94A3C8; --amber:#F59E0B; --green:#22c55e;
+            --red:#ef4444; --blue:#3b82f6;
+        }
+        *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+        body{margin:0; font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--txt); min-height:100vh;}
+        .top{display:flex; align-items:center; gap:12px; padding:16px 18px; background:linear-gradient(135deg,#0B1739,#16255a); position:sticky; top:0; z-index:10; border-bottom:1px solid var(--line);}
+        .top .logo{width:38px; height:38px; border-radius:11px; background:linear-gradient(135deg,var(--amber),#D97706); display:flex; align-items:center; justify-content:center; font-size:18px;}
+        .top h1{font-size:16px; margin:0; font-weight:800;}
+        .top small{display:block; color:var(--muted); font-size:11px; font-weight:600;}
+        .top a.close{margin-left:auto; color:var(--muted); font-size:20px; text-decoration:none;}
+        .wrap{padding:16px; max-width:520px; margin:0 auto;}
+        #reader{width:100%; border-radius:16px; overflow:hidden; border:2px solid var(--line); background:#000; min-height:230px;}
+        #reader video{border-radius:14px;}
+        .scan-hint{text-align:center; color:var(--muted); font-size:12.5px; margin:10px 0 6px;}
+        .manual{display:flex; gap:8px; margin:12px 0;}
+        .manual input{flex:1; padding:14px; border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--txt); font-size:16px;}
+        .manual button{padding:0 18px; border:none; border-radius:12px; background:var(--amber); color:#0B1739; font-weight:800; font-size:15px;}
+        .btns{display:flex; gap:8px; margin-bottom:14px;}
+        .btns button{flex:1; padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--txt); font-weight:600; font-size:13px;}
+        .card{background:var(--card); border:1px solid var(--line); border-radius:18px; padding:18px; margin-bottom:14px; box-shadow:0 10px 30px rgba(0,0,0,.35); animation:pop .25s ease;}
+        @keyframes pop{from{transform:scale(.96); opacity:0;} to{transform:scale(1); opacity:1;}}
+        .card .name{font-size:19px; font-weight:800; margin:0 0 4px;}
+        .card .code{color:var(--muted); font-size:12px; font-family:monospace; margin-bottom:12px;}
+        .big{display:flex; align-items:baseline; gap:8px; margin:6px 0 12px;}
+        .big .n{font-size:44px; font-weight:900; line-height:1;}
+        .big .of{color:var(--muted); font-size:16px;}
+        .badge{display:inline-block; padding:5px 12px; border-radius:999px; font-size:12px; font-weight:800; margin-bottom:12px;}
+        .b-ok{background:rgba(34,197,94,.16); color:var(--green);}
+        .b-low{background:rgba(245,158,11,.16); color:var(--amber);}
+        .b-zero{background:rgba(239,68,68,.16); color:var(--red);}
+        .rows{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+        .rows .r{background:rgba(255,255,255,.04); border-radius:12px; padding:10px 12px;}
+        .rows .r .l{color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px;}
+        .rows .r .v{font-size:14px; font-weight:600; margin-top:2px;}
+        .notfound{background:rgba(239,68,68,.10); border:1px solid rgba(239,68,68,.3); color:#fecaca;}
+        .hist h3{color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:1px; margin:18px 0 8px;}
+        .hist .it{display:flex; align-items:center; gap:10px; padding:10px 12px; background:var(--card); border:1px solid var(--line); border-radius:12px; margin-bottom:7px; font-size:13px;}
+        .hist .it .dot{width:9px; height:9px; border-radius:50%; flex-shrink:0;}
+        .hist .it .q{margin-left:auto; font-weight:800;}
+        .empty{color:var(--muted); text-align:center; font-size:13px; padding:20px;}
+    </style>
+</head>
+<body>
+    <div class="top">
+        <div class="logo"><i class="fas fa-barcode"></i></div>
+        <div>
+            <h1>Escaneo rápido</h1>
+            <small>{{ area }}</small>
+        </div>
+        <a href="/dashboard" class="close" title="Salir"><i class="fas fa-xmark"></i></a>
+    </div>
+
+    <div class="wrap">
+        <div id="reader"></div>
+        <div class="scan-hint"><i class="fas fa-circle-info"></i> Apunta la cámara al código de barras del ítem</div>
+
+        <div class="btns">
+            <button id="btnStart"><i class="fas fa-camera"></i> Iniciar cámara</button>
+            <button id="btnFlip"><i class="fas fa-camera-rotate"></i> Cambiar cámara</button>
+        </div>
+
+        <div class="manual">
+            <input id="manualCode" type="text" inputmode="numeric" placeholder="…o escribe el código">
+            <button id="btnManual">Buscar</button>
+        </div>
+
+        <div id="result"></div>
+
+        <div class="hist">
+            <h3>Últimos escaneos</h3>
+            <div id="histList"><div class="empty">Aún no has escaneado nada.</div></div>
+        </div>
+    </div>
+
+    <script>
+        const $ = s => document.querySelector(s);
+        const clp = n => '$ ' + (Number(n)||0).toLocaleString('es-CL');
+        let qr = null, cams = [], camIdx = 0, running = false, lastCode = '', lastTime = 0;
+        const hist = [];
+
+        function badge(disp, min){
+            if (disp <= 0) return '<span class="badge b-zero"><i class="fas fa-ban"></i> Sin stock</span>';
+            if (min && disp <= min) return '<span class="badge b-low"><i class="fas fa-triangle-exclamation"></i> Stock bajo</span>';
+            return '<span class="badge b-ok"><i class="fas fa-check"></i> Disponible</span>';
+        }
+        function dotColor(disp, min){
+            if (disp <= 0) return 'var(--red)';
+            if (min && disp <= min) return 'var(--amber)';
+            return 'var(--green)';
+        }
+
+        async function lookup(code){
+            code = (code||'').trim();
+            if (!code) return;
+            const now = Date.now();
+            if (code === lastCode && (now - lastTime) < 2500) return; // anti-rebote
+            lastCode = code; lastTime = now;
+            if (navigator.vibrate) navigator.vibrate(40);
+            $('#result').innerHTML = '<div class="card"><div class="empty"><i class="fas fa-spinner fa-spin"></i> Buscando…</div></div>';
+            try{
+                const r = await fetch('/api/item/' + encodeURIComponent(code));
+                const d = await r.json();
+                if (!d.found){
+                    $('#result').innerHTML = '<div class="card notfound"><div class="name"><i class="fas fa-circle-question"></i> No encontrado</div>'
+                        + '<div class="code">Código: ' + code + '</div>'
+                        + '<div style="font-size:13px;color:#fecaca;">No existe un ítem con ese código en tu área.</div></div>';
+                    return;
+                }
+                render(d, code);
+                pushHist(d, code);
+            }catch(e){
+                $('#result').innerHTML = '<div class="card notfound"><div class="name">Error de conexión</div><div class="code">'+code+'</div></div>';
+            }
+        }
+
+        function render(d, code){
+            const disp = d.cantidad_disponible||0, tot = d.cantidad_total||0;
+            $('#result').innerHTML =
+              '<div class="card">'
+              + '<div class="name">'+d.nombre+'</div>'
+              + '<div class="code">'+code+(d.categoria?(' · '+d.categoria):'')+'</div>'
+              + badge(disp, d.cantidad_minima)
+              + '<div class="big"><span class="n" style="color:'+dotColor(disp,d.cantidad_minima)+'">'+disp+'</span><span class="of">/ '+tot+' disponibles</span></div>'
+              + '<div class="rows">'
+              +   '<div class="r"><div class="l">Ubicación</div><div class="v">'+(d.ubicacion||'—')+'</div></div>'
+              +   '<div class="r"><div class="l">Estado</div><div class="v">'+(d.estado||'—')+'</div></div>'
+              +   '<div class="r"><div class="l">Marca</div><div class="v">'+(d.marca||'—')+'</div></div>'
+              +   '<div class="r"><div class="l">Valor unit.</div><div class="v">'+clp(d.precio_unitario)+'</div></div>'
+              + '</div>'
+              + '</div>';
+        }
+
+        function pushHist(d, code){
+            hist.unshift({n:d.nombre, disp:d.cantidad_disponible||0, min:d.cantidad_minima||0});
+            if (hist.length > 12) hist.pop();
+            $('#histList').innerHTML = hist.map(h =>
+                '<div class="it"><span class="dot" style="background:'+dotColor(h.disp,h.min)+'"></span>'
+                + '<span>'+h.n+'</span><span class="q">'+h.disp+'</span></div>').join('');
+        }
+
+        // ── Cámara ──
+        async function startCam(){
+            if (running) return;
+            try{
+                if (!cams.length) cams = await Html5Qrcode.getCameras();
+                if (!cams.length){ alert('No se detectó cámara.'); return; }
+                qr = new Html5Qrcode('reader');
+                const back = cams.findIndex(c => /back|rear|trás|tras|environment/i.test(c.label));
+                camIdx = back >= 0 ? back : 0;
+                await qr.start(cams[camIdx].id, {fps:10, qrbox:{width:250,height:160}},
+                    txt => lookup(txt), ()=>{});
+                running = true;
+                $('#btnStart').innerHTML = '<i class="fas fa-stop"></i> Detener';
+            }catch(e){ alert('No se pudo abrir la cámara: '+e); }
+        }
+        async function stopCam(){
+            if (qr && running){ try{ await qr.stop(); }catch(e){} running=false;
+                $('#btnStart').innerHTML = '<i class="fas fa-camera"></i> Iniciar cámara'; }
+        }
+        async function flipCam(){
+            if (!running || cams.length < 2) return;
+            await stopCam();
+            camIdx = (camIdx+1) % cams.length;
+            qr = new Html5Qrcode('reader');
+            await qr.start(cams[camIdx].id, {fps:10, qrbox:{width:250,height:160}}, txt=>lookup(txt), ()=>{});
+            running = true; $('#btnStart').innerHTML = '<i class="fas fa-stop"></i> Detener';
+        }
+
+        $('#btnStart').addEventListener('click', ()=> running ? stopCam() : startCam());
+        $('#btnFlip').addEventListener('click', flipCam);
+        $('#btnManual').addEventListener('click', ()=> lookup($('#manualCode').value));
+        $('#manualCode').addEventListener('keydown', e=>{ if(e.key==='Enter') lookup(e.target.value); });
+    </script>
+</body>
+</html>

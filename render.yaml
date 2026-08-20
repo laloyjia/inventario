@@ -12,7 +12,7 @@ services:
     branch: main
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --workers 2 --threads 2 --timeout 120 --bind 0.0.0.0:$PORT
-    healthCheckPath: /login
+    healthCheckPath: /health
     envVars:
       # Conexión a la base de datos: se enlaza automáticamente a la DB de abajo
       - key: DATABASE_URL
@@ -35,6 +35,29 @@ services:
         value: production
       - key: PYTHON_VERSION
         value: "3.11.10"
+      # Respaldo automático interno + correo. Ajusta estos valores en el panel
+      # de Render (Environment). sync:false = no se sobreescriben en cada deploy.
+      - key: TZ
+        value: "America/Santiago"
+      - key: BACKUP_AUTO
+        value: "1"
+      - key: BACKUP_HORA
+        value: "7"
+      - key: BACKUP_DIAS
+        value: "mon-sun"
+      # Correo saliente (SMTP). Rellena estos en Render, NO aquí (son secretos):
+      - key: SMTP_HOST
+        sync: false          # ej. smtp.gmail.com
+      - key: SMTP_PORT
+        sync: false          # ej. 587
+      - key: SMTP_USER
+        sync: false          # tu correo emisor
+      - key: SMTP_PASS
+        sync: false          # contraseña de aplicación (16 caracteres)
+      - key: SMTP_FROM
+        sync: false          # opcional; por defecto usa SMTP_USER
+      - key: ALERT_EMAIL
+        sync: false          # destino de respaldos y avisos
 
 databases:
   - name: panolerp-db

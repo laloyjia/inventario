@@ -1837,7 +1837,18 @@ def api_buscar_item(codigo):
         'estado': item.estado or '',
         'cantidad_total': item.cantidad_total or 0,
         'cantidad_disponible': item.cantidad_disponible or 0,
+        'cantidad_minima': item.cantidad_minima or 0,
     })
+
+
+@app.route('/movil')
+@login_requerido
+def movil_scan():
+    """Consola móvil: escaneo rápido con la cámara del celular para consultar
+    al instante el estado de un ítem (disponible/total, ubicación, estado)."""
+    return render_template('movil_scan.html',
+                           usuario=session.get('usuario_nombre', ''),
+                           area=session.get('usuario_especialidad', '') or 'Todas las áreas')
 
 
 @app.route('/eliminar_estudiante/<int:est_id>', methods=['POST'])
@@ -5226,6 +5237,127 @@ registrar_dashboard_moderno(
     app, db, Item, Especialidad, Prestamo, PrestamoExterno,
     Estudiante, Usuario, OrdenTrabajo, Auditoria,
     login_requerido, _JT_DECORATOR)
+
+# ════════════════════════════════════════════════════════════════════
+#  HEALTHCHECK — verifica que la app y la base de datos respondan.
+#  Sirve como healthCheckPath y como destino de un "keep-alive" externo
+#  (UptimeRobot / cron-job.org) para que el plan free no se duerma y el
+#  programador interno alcance a ejecutarse.
+# ════════════════════════════════════════════════════════════════════
+@app.route('/health')
+def health():
+    from sqlalchemy import text
+    try:
+        db.session.execute(text('SELECT 1'))
+        return jsonify({'ok': True, 'db': 'ok',
+                        'hora': datetime.now().isoformat(timespec='seconds')}), 200
+    except Exception as e:
+        print(f"[HEALTH] BD no responde: {e}")
+        return jsonify({'ok': False, 'db': 'error', 'detalle': str(e)[:120]}), 503
+
+
+# ════════════════════════════════════════════════════════════════════
+#  PROGRAMADOR INTERNO — respaldo automático por correo (robustez)
+#  Corre dentro de la propia app, sin depender de un cron externo.
+#  Un solo worker de gunicorn lo ejecuta (bloqueo de archivo), evitando
+#  correos duplicados. Configurable por variables de entorno:
+#    BACKUP_AUTO=1|0        activar/desactivar (por defecto 1)
+#    BACKUP_HORA=7          hora local del respaldo diario (0-23)
+#    BACKUP_DIAS=mon-sun    días (ej. mon-fri para solo hábiles)
+#    TZ=America/Santiago    zona horaria
+#  Requiere SMTP_* y ALERT_EMAIL para poder enviar el correo.
+# ════════════════════════════════════════════════════════════════════
+def _job_respaldo_automatico():
+    try:
+        with app.app_context():
+            destino = os.getenv('ALERT_EMAIL', '').strip()
+            if not destino or not os.getenv('SMTP_HOST', '').strip():
+                print('[SCHED] Respaldo automático omitido: falta SMTP_HOST o ALERT_EMAIL')
+                return
+            buf = _respaldo_bytes()
+            fname = f"respaldo_panolerp_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+            ok = _enviar_correo_adjunto(
+                destino,
+                f"PanolERP · Respaldo automático {datetime.now().strftime('%d/%m/%Y')}",
+                "Adjunto el respaldo automático programado de PanolERP.\n\n"
+                "Este correo se genera solo desde el sistema.",
+                buf.getvalue(), fname)
+            print(f"[SCHED] Respaldo automático {'ENVIADO' if ok else 'NO enviado'} a {destino}")
+    except Exception as e:
+        print(f"[SCHED] Error en respaldo automático: {e}")
+
+
+def _job_aviso_stock_auto():
+    try:
+        with app.app_context():
+            destino = os.getenv('ALERT_EMAIL', '').strip()
+            if not destino or not os.getenv('SMTP_HOST', '').strip():
+                return
+            bajos = [i for i in Item.query.all() if _stock_bajo(i)]
+            if not bajos:
+                return
+            lineas = "\n".join(
+                f"- {i.nombre} ({i.especialidad.nombre if i.especialidad else 'sin área'}): "
+                f"{i.cantidad_disponible}/{i.cantidad_minima}" for i in bajos[:100])
+            _enviar_correo(destino,
+                           f"PanolERP · {len(bajos)} ítem(s) bajo el mínimo",
+                           "Ítems con stock bajo el mínimo:\n\n" + lineas)
+            print(f"[SCHED] Aviso de stock enviado ({len(bajos)} ítems)")
+    except Exception as e:
+        print(f"[SCHED] Error en aviso de stock: {e}")
+
+
+def _iniciar_scheduler():
+    if os.getenv('BACKUP_AUTO', '1').lower() not in ('1', 'true', 'yes', 'si', 'sí'):
+        print('[SCHED] Programador desactivado (BACKUP_AUTO=0)')
+        return
+    # Instancia única entre workers de gunicorn mediante bloqueo de archivo.
+    try:
+        import fcntl
+        lock_path = os.getenv('SCHED_LOCK', '/tmp/panolerp_sched.lock')
+        _fh = open(lock_path, 'w')
+        try:
+            fcntl.flock(_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (IOError, OSError):
+            return  # otro worker ya tiene el programador
+        globals()['_SCHED_LOCK_FH'] = _fh  # mantener vivo el descriptor
+    except ImportError:
+        pass  # Windows local (ejecutable): sin fcntl, arranca igual
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from apscheduler.triggers.cron import CronTrigger
+    except Exception as e:
+        print(f"[SCHED] APScheduler no disponible: {e}")
+        return
+    tz_nombre = os.getenv('TZ', 'America/Santiago')
+    try:
+        from zoneinfo import ZoneInfo
+        tzinfo = ZoneInfo(tz_nombre)
+    except Exception:
+        tzinfo = None
+    sched = BackgroundScheduler(timezone=tzinfo) if tzinfo else BackgroundScheduler()
+    try:
+        hora = max(0, min(23, int(os.getenv('BACKUP_HORA', '7'))))
+    except ValueError:
+        hora = 7
+    dias = os.getenv('BACKUP_DIAS', 'mon-sun')
+    sched.add_job(_job_respaldo_automatico,
+                  CronTrigger(day_of_week=dias, hour=hora, minute=0),
+                  id='respaldo_auto', replace_existing=True, misfire_grace_time=3600)
+    sched.add_job(_job_aviso_stock_auto,
+                  CronTrigger(day_of_week='mon-fri', hour=8, minute=0),
+                  id='aviso_stock_auto', replace_existing=True, misfire_grace_time=3600)
+    sched.start()
+    import atexit
+    atexit.register(lambda: sched.shutdown(wait=False))
+    print(f"[SCHED] Programador iniciado — respaldo {dias} {hora:02d}:00 ({tz_nombre})")
+
+
+try:
+    _iniciar_scheduler()
+except Exception as _e:
+    print(f"[SCHED] No se pudo iniciar el programador: {_e}")
+
 
 if __name__ == '__main__':
     import threading, webbrowser, sys

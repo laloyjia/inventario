@@ -26,3 +26,7 @@ requests>=2.31
 # Seguridad
 Flask-Limiter>=3.5          # Rate limiting en /login
 Flask-Talisman>=1.1         # HTTPS forzado, headers de seguridad
+
+# Programador interno (respaldo automático por correo, robustez)
+APScheduler>=3.10
+tzdata>=2024.1             # zonas horarias con nombre (America/Santiago)
