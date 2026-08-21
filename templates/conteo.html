@@ -134,7 +134,15 @@
             <div><strong id="fItems">0</strong> ítems contados · <span class="muted"><span id="fPend">{{ items|length }}</span> pendientes</span></div>
             <div class="muted">El acta muestra faltantes y sobrantes. No modifica el stock.</div>
         </div>
-        <button type="submit" class="go"><i class="fas fa-file-lines"></i> Generar acta de diferencias</button>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button type="submit" formaction="/conteo/acta" class="go" style="background:#7c3aed;"><i class="fas fa-file-lines"></i> Generar acta</button>
+            {% if puede_aplicar %}
+            <button type="submit" formaction="/conteo/aplicar" class="go"
+                    onclick="return confirm('¿Aplicar el conteo al stock real? Se corregirá el inventario del sistema para que coincida con lo contado. Esta acción queda registrada en auditoría.');">
+                <i class="fas fa-database"></i> Aplicar al stock
+            </button>
+            {% endif %}
+        </div>
     </div>
     </form>
 

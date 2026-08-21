@@ -52,6 +52,11 @@
             </div>
         </div>
 
+        {% if aplicado %}
+        <div style="background:#f0fdf4;border:1px solid #86efac;color:#166534;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-weight:600;">
+            <i class="fas fa-circle-check"></i> Stock actualizado: {{ ajustados }} ítem(s) ajustado(s) según el conteo físico. El cambio quedó registrado en auditoría.
+        </div>
+        {% endif %}
         <div class="actions">
             <button class="b-print" onclick="window.print()"><i class="fas fa-print"></i> Imprimir / PDF</button>
             <a class="b-back" href="/conteo"><i class="fas fa-arrow-left"></i> Volver al conteo</a>

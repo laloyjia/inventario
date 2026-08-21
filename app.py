@@ -1868,29 +1868,32 @@ def conteo_inventario():
                            items=items,
                            especialidades=especialidades,
                            es_admin=(session.get('usuario_rol') == 'Admin'),
+                           puede_aplicar=(session.get('usuario_rol') in ('Admin', 'JefeTecnico', 'Pañolero')),
                            usuario=session.get('usuario_nombre', ''),
                            hoy=datetime.now().date())
 
 
-@app.route('/conteo/acta', methods=['POST'])
-@login_requerido
-def conteo_acta():
-    """Recibe los conteos y genera el ACTA de diferencias. NO toca el stock."""
+def _leer_conteo_form():
+    """Convierte item_id[]/contado[] del formulario en {item_id: cantidad}."""
     ids = request.form.getlist('item_id[]')
     conts = request.form.getlist('contado[]')
     mapa = {}
     for iid, c in zip(ids, conts):
         c = (c or '').strip()
-        if c == '':
+        if c == '' or not iid:
             continue
         try:
             n = int(float(c))
         except Exception:
             continue
-        if n < 0 or not iid:
+        if n < 0:
             continue
         mapa[int(iid)] = n
+    return mapa
 
+
+def _calcular_acta(mapa):
+    """Calcula el acta de diferencias a partir del conteo. No modifica nada."""
     filas, faltantes, sobrantes, ok, no_contados = [], [], [], [], []
     tot_esperado = tot_contado = 0
     for it in _items_conteo_scope():
@@ -1908,34 +1911,80 @@ def conteo_acta():
         else:
             tot_contado += contado
             fila['diff'] = contado - esperado
-            if contado < esperado:
-                faltantes.append(fila)
-            elif contado > esperado:
-                sobrantes.append(fila)
-            else:
-                ok.append(fila)
+            (faltantes if contado < esperado else
+             sobrantes if contado > esperado else ok).append(fila)
         filas.append(fila)
-
     resumen = {
         'total_items': len(filas), 'contados': len(filas) - len(no_contados),
         'no_contados': len(no_contados), 'faltantes': len(faltantes),
         'sobrantes': len(sobrantes), 'ok': len(ok),
         'tot_esperado': tot_esperado, 'tot_contado': tot_contado,
     }
+    return {'faltantes': faltantes, 'sobrantes': sobrantes, 'ok': ok,
+            'no_contados': no_contados, 'resumen': resumen}
+
+
+def _render_acta(datos, aplicado=False, ajustados=0):
+    return render_template('conteo_acta.html', aplicado=aplicado, ajustados=ajustados,
+                           usuario=session.get('usuario_nombre', ''),
+                           area=session.get('usuario_especialidad', '') or 'Todas las áreas',
+                           fecha=datetime.now(), **datos)
+
+
+@app.route('/conteo/acta', methods=['POST'])
+@login_requerido
+def conteo_acta():
+    """Recibe los conteos y genera el ACTA de diferencias. NO toca el stock."""
+    datos = _calcular_acta(_leer_conteo_form())
     try:
         registrar_auditoria('conteo_acta', 'Inventario', None,
-                            valores_nuevos={'contados': resumen['contados'],
-                                            'faltantes': resumen['faltantes'],
-                                            'sobrantes': resumen['sobrantes']},
+                            valores_nuevos={'contados': datos['resumen']['contados'],
+                                            'faltantes': datos['resumen']['faltantes'],
+                                            'sobrantes': datos['resumen']['sobrantes']},
                             especialidad_id=session.get('usuario_especialidad_id'))
     except Exception:
         pass
-    return render_template('conteo_acta.html',
-                           faltantes=faltantes, sobrantes=sobrantes, ok=ok,
-                           no_contados=no_contados, resumen=resumen,
-                           usuario=session.get('usuario_nombre', ''),
-                           area=session.get('usuario_especialidad', '') or 'Todas las áreas',
-                           fecha=datetime.now())
+    return _render_acta(datos, aplicado=False)
+
+
+@app.route('/conteo/aplicar', methods=['POST'])
+@login_requerido
+def conteo_aplicar():
+    """Aplica el conteo al stock real (reconciliación) y muestra el acta de lo
+    ajustado. Permitido a Admin, Jefe Técnico y Pañolero (este último solo su área)."""
+    rol = session.get('usuario_rol')
+    if rol not in ('Admin', 'JefeTecnico', 'Pañolero'):
+        flash("❌ No tienes permiso para ajustar el stock.")
+        return redirect(url_for('conteo_inventario'))
+    mapa = _leer_conteo_form()
+    # El acta se calcula ANTES de aplicar (para reflejar las diferencias corregidas).
+    datos = _calcular_acta(mapa)
+    esp_id = session.get('usuario_especialidad_id')
+    ajustados = 0
+    for it in _items_conteo_scope():
+        if it.id not in mapa:
+            continue
+        if rol != 'Admin' and esp_id and it.especialidad_id != esp_id:
+            continue
+        nuevo = mapa[it.id]
+        viejo = it.cantidad_total or 0
+        if nuevo == viejo:
+            continue
+        diff = nuevo - viejo
+        it.cantidad_total = nuevo
+        it.cantidad_disponible = max(0, (it.cantidad_disponible or 0) + diff)
+        registrar_auditoria('ajuste_inventario', 'Item', it.id,
+                            valores_anteriores={'total': viejo},
+                            valores_nuevos={'total': nuevo, 'diferencia': diff,
+                                            'origen': 'conteo por escaneo'},
+                            especialidad_id=it.especialidad_id)
+        try:
+            registrar_cambio_sync('item', it.id, 'actualizar', it)
+        except Exception:
+            pass
+        ajustados += 1
+    db.session.commit()
+    return _render_acta(datos, aplicado=True, ajustados=ajustados)
 
 
 @app.route('/movil')
