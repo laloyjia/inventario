@@ -1901,6 +1901,7 @@ def _calcular_acta(mapa):
         tot_esperado += esperado
         contado = mapa.get(it.id)  # None si no se contó
         fila = {
+            'id': it.id,
             'codigo': it.codigo_barras, 'nombre': it.nombre,
             'categoria': it.categoria or '', 'dependencia': it.dependencia or 'Sin dependencia',
             'ubicacion': it.ubicacion or '—', 'esperado': esperado,
@@ -1945,6 +1946,88 @@ def conteo_acta():
     except Exception:
         pass
     return _render_acta(datos, aplicado=False)
+
+
+@app.route('/conteo/excel', methods=['POST'])
+@login_requerido
+def conteo_excel():
+    """Descarga el conteo/acta de diferencias como Excel con estilo."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    datos = _calcular_acta(_leer_conteo_form())
+    r = datos['resumen']
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Conteo de inventario"
+    ws.sheet_view.showGridLines = False
+    accent = "1E3A8A"
+    # Título
+    ws.merge_cells('A1:H1')
+    ws['A1'] = "PanolERP · Acta de Conteo de Inventario"
+    ws['A1'].font = Font(size=16, bold=True, color="FFFFFF")
+    ws['A1'].fill = PatternFill('solid', fgColor=accent)
+    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[1].height = 26
+    area = session.get('usuario_especialidad', '') or 'Todas las áreas'
+    ws.merge_cells('A2:H2')
+    ws['A2'] = (f"{area} · Realizado por: {session.get('usuario_nombre','')} · "
+                f"{datetime.now().strftime('%d/%m/%Y %H:%M')} · "
+                f"Contados: {r['contados']} | Faltantes: {r['faltantes']} | "
+                f"Sobrantes: {r['sobrantes']} | Cuadran: {r['ok']} | No contados: {r['no_contados']}")
+    ws['A2'].font = Font(size=9, italic=True, color="475569")
+    ws['A2'].alignment = Alignment(horizontal='center')
+    ws.row_dimensions[2].height = 20
+    # Encabezados
+    headers = ["Código", "Nombre", "Categoría", "Dependencia", "Ubicación",
+               "Esperado", "Contado", "Diferencia"]
+    hrow = 4
+    thin = Side(style='thin', color="D1D5DB")
+    for c, h in enumerate(headers, 1):
+        cell = ws.cell(row=hrow, column=c, value=h)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill('solid', fgColor="334155")
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = Border(bottom=thin)
+
+    verde = PatternFill('solid', fgColor="DCFCE7")
+    rojo = PatternFill('solid', fgColor="FEE2E2")
+    ambar = PatternFill('solid', fgColor="FEF3C7")
+    gris = PatternFill('solid', fgColor="F1F5F9")
+    row = hrow + 1
+    # Orden: faltantes, sobrantes, cuadran, no contados
+    orden = ([('neg', f) for f in datos['faltantes']] +
+             [('pos', f) for f in datos['sobrantes']] +
+             [('ok', f) for f in datos['ok']] +
+             [('non', f) for f in datos['no_contados']])
+    for tipo, f in orden:
+        vals = [f['codigo'], f['nombre'], f['categoria'], f['dependencia'],
+                f['ubicacion'], f['esperado'],
+                (f['contado'] if f['contado'] is not None else '—'),
+                (('+' + str(f['diff'])) if f.get('diff', 0) > 0 else
+                 (f['diff'] if f['contado'] is not None else '—'))]
+        fill = {'neg': rojo, 'pos': ambar, 'ok': verde, 'non': gris}[tipo]
+        for c, v in enumerate(vals, 1):
+            cell = ws.cell(row=row, column=c, value=v)
+            cell.border = Border(bottom=thin)
+            if c >= 6:
+                cell.alignment = Alignment(horizontal='center')
+            if c == 8:
+                cell.fill = fill
+                cell.font = Font(bold=True)
+        row += 1
+    # Anchos
+    for c, w in enumerate([16, 34, 18, 20, 16, 10, 10, 12], 1):
+        ws.column_dimensions[get_column_letter(c)].width = w
+    ws.freeze_panes = f"A{hrow+1}"
+    ws.auto_filter.ref = f"A{hrow}:H{max(hrow, row-1)}"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    fname = f"conteo_inventario_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
 @app.route('/conteo/aplicar', methods=['POST'])

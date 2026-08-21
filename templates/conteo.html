@@ -136,6 +136,7 @@
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
             <button type="submit" formaction="/conteo/acta" class="go" style="background:#7c3aed;"><i class="fas fa-file-lines"></i> Generar acta</button>
+            <button type="submit" formaction="/conteo/excel" class="go" style="background:#065f46;"><i class="fas fa-file-excel"></i> Descargar Excel</button>
             {% if puede_aplicar %}
             <button type="submit" formaction="/conteo/aplicar" class="go"
                     onclick="return confirm('¿Aplicar el conteo al stock real? Se corregirá el inventario del sistema para que coincida con lo contado. Esta acción queda registrada en auditoría.');">

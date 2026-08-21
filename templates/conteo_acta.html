@@ -59,6 +59,13 @@
         {% endif %}
         <div class="actions">
             <button class="b-print" onclick="window.print()"><i class="fas fa-print"></i> Imprimir / PDF</button>
+            <form action="/conteo/excel" method="POST" style="display:inline;">
+                {% for f in (faltantes + sobrantes + ok) %}
+                <input type="hidden" name="item_id[]" value="{{ f.id }}">
+                <input type="hidden" name="contado[]" value="{{ f.contado }}">
+                {% endfor %}
+                <button type="submit" style="background:#065f46;color:#fff;border:none;padding:10px 16px;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;"><i class="fas fa-file-excel"></i> Descargar Excel</button>
+            </form>
             <a class="b-back" href="/conteo"><i class="fas fa-arrow-left"></i> Volver al conteo</a>
         </div>
 
