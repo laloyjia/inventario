@@ -63,7 +63,8 @@ def registrar_rol_jefe_tecnico(app, db, Usuario, Especialidad, Item,
         # así que en una BD nueva la tabla no se crearía al arranque. create_all
         # es idempotente: solo crea lo que falta.
         db.create_all()
-        if not Usuario.query.filter_by(username='jefe_tecnico').first():
+        jt = Usuario.query.filter_by(username='jefe_tecnico').first()
+        if not jt:
             db.session.add(Usuario(
                 nombre="Jefe Técnico UTP",
                 username="jefe_tecnico",
@@ -71,8 +72,19 @@ def registrar_rol_jefe_tecnico(app, db, Usuario, Especialidad, Item,
                 rol="JefeTecnico",
                 email="jefe.tecnico@colegio.local",
                 especialidad_id=None,
-                must_change_password=True,
+                must_change_password=False,   # cuenta demo: acceso directo
             ))
+            db.session.commit()
+        else:
+            # Auto-sanado en cada arranque: acceso directo y SIEMPRE desbloqueada,
+            # con la clave demo fija (jefe123). Útil para presentaciones.
+            jt.must_change_password = False
+            jt.activo = True
+            if hasattr(jt, 'failed_attempts'):
+                jt.failed_attempts = 0
+            if hasattr(jt, 'locked_until'):
+                jt.locked_until = None
+            jt.password_hash = generate_password_hash("jefe123")
             db.session.commit()
 
     # Creacion perezosa del usuario JT: se hace en el primer request
