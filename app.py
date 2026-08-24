@@ -4386,51 +4386,86 @@ def enviar_aviso_stock():
 
 
 def _respaldo_bytes():
-    """Genera el respaldo (Excel multi-hoja, sin contraseñas) y devuelve un BytesIO."""
+    """Genera el respaldo (Excel multi-hoja, sin contraseñas) y devuelve un BytesIO.
+    Construido con openpyxl directo y cada hoja protegida: un error en una hoja no
+    tumba el respaldo completo, y siempre queda al menos una hoja visible."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+    accent = "475569"
+    wb = Workbook()
+    wb.remove(wb.active)  # partimos sin hojas y las vamos creando
+
+    def _agregar_hoja(titulo, headers, generar_filas):
+        ws = wb.create_sheet(titulo[:31])
+        ws.sheet_view.showGridLines = False
+        ws.append(headers)
+        try:
+            for fila in generar_filas():
+                ws.append(fila)
+        except Exception as e:
+            ws.append([f"Error al exportar: {e}"])
+        # Estilo de encabezado
+        for c in range(1, len(headers) + 1):
+            cell = ws.cell(1, c)
+            cell.font = Font(bold=True, color="FFFFFF", size=10)
+            cell.fill = PatternFill('solid', fgColor=accent)
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        # Anchos
+        for c in range(1, len(headers) + 1):
+            largos = [len(str(headers[c - 1]))] + [
+                len(str(ws.cell(r, c).value or '')) for r in range(2, min(ws.max_row, 150) + 1)]
+            ws.column_dimensions[get_column_letter(c)].width = min(42, max(11, max(largos) + 2))
+        ws.freeze_panes = 'A2'
+        if ws.max_row > 1:
+            ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{ws.max_row}"
+
+    _agregar_hoja('Items',
+        ['id', 'codigo', 'nombre', 'categoria', 'area', 'dependencia', 'total',
+         'disponible', 'mermada', 'minima', 'precio', 'ubicacion', 'estado',
+         'serie', 'dec240', 'cest', 'caducidad'],
+        lambda: ([i.id, i.codigo_barras, i.nombre, i.categoria,
+                  i.especialidad.nombre if i.especialidad else '', i.dependencia or '',
+                  i.cantidad_total, i.cantidad_disponible, i.cantidad_mermada,
+                  i.cantidad_minima, i.precio_unitario or 0, i.ubicacion or '',
+                  i.estado or '', i.numero_serie or '', 'SI' if i.decreto_240 else 'NO',
+                  'SI' if i.es_cest else 'NO',
+                  i.fecha_caducidad.isoformat() if i.fecha_caducidad else '']
+                 for i in Item.query.all()))
+
+    _agregar_hoja('Estudiantes',
+        ['id', 'rut', 'nombre', 'curso', 'area', 'activo'],
+        lambda: ([e.id, e.rut_matricula, e.nombre, e.curso_display,
+                  e.especialidad.nombre if e.especialidad else '', e.activo]
+                 for e in Estudiante.query.all()))
+
+    _agregar_hoja('Usuarios (sin claves)',
+        ['id', 'usuario', 'nombre', 'rol', 'area', 'activo'],
+        lambda: ([u.id, u.username, u.nombre, u.rol,
+                  u.especialidad_asignada.nombre if u.especialidad_asignada else '', u.activo]
+                 for u in Usuario.query.all()))
+
+    _agregar_hoja('Prestamos',
+        ['id', 'item', 'estudiante', 'practica', 'cantidad', 'mermada', 'estado', 'fecha'],
+        lambda: ([p.id, p.item.nombre if p.item else '',
+                  p.estudiante.nombre if p.estudiante else '', p.nombre_practica or '',
+                  p.cantidad, p.cantidad_mermada or 0, p.estado,
+                  p.fecha_prestamo.isoformat() if p.fecha_prestamo else '']
+                 for p in Prestamo.query.all()))
+
+    _agregar_hoja('Bajas y Mermas',
+        ['fecha', 'item', 'cantidad', 'motivo', 'origen', 'area'],
+        lambda: ([r.fecha.isoformat() if r.fecha else '', r.item_nombre, r.cantidad,
+                  r.motivo, r.origen, r.especialidad.nombre if r.especialidad else '']
+                 for r in RegistroBaja.query.all()))
+
+    if not wb.sheetnames:  # garantía: nunca guardar un libro sin hojas
+        ws = wb.create_sheet('Respaldo')
+        ws.append(['Aviso'])
+        ws.append(['No se pudo generar contenido.'])
+
     buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine='openpyxl') as w:
-        pd.DataFrame([{
-            'id': i.id, 'codigo': i.codigo_barras, 'nombre': i.nombre,
-            'categoria': i.categoria, 'area': i.especialidad.nombre if i.especialidad else '',
-            'dependencia': i.dependencia or '', 'total': i.cantidad_total,
-            'disponible': i.cantidad_disponible, 'mermada': i.cantidad_mermada,
-            'minima': i.cantidad_minima, 'precio': i.precio_unitario or 0,
-            'ubicacion': i.ubicacion or '', 'estado': i.estado or '',
-            'serie': i.numero_serie or '', 'dec240': 'SI' if i.decreto_240 else 'NO',
-            'cest': 'SI' if i.es_cest else 'NO',
-            'caducidad': i.fecha_caducidad.isoformat() if i.fecha_caducidad else '',
-        } for i in Item.query.all()] or [{'Aviso': 'sin ítems'}]).to_excel(w, 'Items', index=False)
-
-        pd.DataFrame([{
-            'id': e.id, 'rut': e.rut_matricula, 'nombre': e.nombre,
-            'curso': e.curso_display, 'area': e.especialidad.nombre if e.especialidad else '',
-            'activo': e.activo,
-        } for e in Estudiante.query.all()] or [{'Aviso': 'sin estudiantes'}]).to_excel(w, 'Estudiantes', index=False)
-
-        pd.DataFrame([{
-            'id': u.id, 'usuario': u.username, 'nombre': u.nombre, 'rol': u.rol,
-            'area': u.especialidad_asignada.nombre if u.especialidad_asignada else '',
-            'activo': u.activo,
-        } for u in Usuario.query.all()]).to_excel(w, 'Usuarios (sin claves)', index=False)
-
-        pd.DataFrame([{
-            'id': p.id, 'item': p.item.nombre if p.item else '',
-            'estudiante': p.estudiante.nombre if p.estudiante else '',
-            'practica': p.nombre_practica or '', 'cantidad': p.cantidad,
-            'mermada': p.cantidad_mermada or 0, 'estado': p.estado,
-            'fecha': p.fecha_prestamo.isoformat() if p.fecha_prestamo else '',
-        } for p in Prestamo.query.all()] or [{'Aviso': 'sin préstamos'}]).to_excel(w, 'Prestamos', index=False)
-
-        pd.DataFrame([{
-            'fecha': r.fecha.isoformat() if r.fecha else '', 'item': r.item_nombre,
-            'cantidad': r.cantidad, 'motivo': r.motivo, 'origen': r.origen,
-            'area': r.especialidad.nombre if r.especialidad else '',
-        } for r in RegistroBaja.query.all()] or [{'Aviso': 'sin registros'}]).to_excel(w, 'Bajas y Mermas', index=False)
-        for _hoja in ('Items', 'Estudiantes', 'Usuarios (sin claves)', 'Prestamos', 'Bajas y Mermas'):
-            try:
-                _estilo_pandas_ws(w.book[_hoja], accent='475569')
-            except Exception:
-                pass
+    wb.save(buf)
     buf.seek(0)
     return buf
 
