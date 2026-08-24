@@ -64,9 +64,10 @@
     </div>
 
     <form id="actaForm" action="/conteo/acta" method="POST">
+    <input type="hidden" name="especialidad_id" value="{{ sel_esp or '' }}">
     <div class="scanbar">
         <input id="scanBox" type="text" autocomplete="off" autofocus
-               placeholder="🔫 Pistolea aquí o escribe el código y presiona Enter…">
+               placeholder="📇 Escanea con la lectora o escribe el código y presiona Enter…">
         <button type="button" class="cam" id="btnCam"><i class="fas fa-camera"></i> Cámara</button>
         <div class="stat"><b id="stUnid" class="bignum">0</b><span>Unidades</span></div>
         <div class="stat"><b id="stItems" class="bignum">0</b><span>Ítems tocados</span></div>
@@ -75,6 +76,14 @@
     <div id="reader"></div>
 
     <div class="tools">
+        {% if puede_elegir_area %}
+        <select id="selArea" onchange="cambiarArea(this)" style="font-weight:700;border-color:#1e3a8a;">
+            <option value="">📂 Todas las áreas</option>
+            {% for e in especialidades %}
+            <option value="{{ e.id }}" {{ 'selected' if sel_esp == e.id else '' }}>{{ e.nombre }}</option>
+            {% endfor %}
+        </select>
+        {% endif %}
         <input class="search" id="buscar" type="text" placeholder="🔎 Filtrar por nombre, código, ubicación…" oninput="filtrar()">
         <select id="fDep" onchange="filtrar()"><option value="">Todas las dependencias</option></select>
         <select id="fEstado" onchange="filtrar()">
@@ -269,6 +278,15 @@
             if(!confirm('¿Borrar todo el conteo actual?')) return;
             rows.forEach(r=>{ r.querySelector('.ct').value=''; recalc(r.querySelector('.ct')); });
             box.focus();
+        }
+
+        function cambiarArea(sel){
+            const hayConteo = rows.some(r => r.querySelector('.ct').value.trim() !== '');
+            if(hayConteo && !confirm('Cambiar de área recargará la lista y se perderá el conteo actual sin guardar. ¿Continuar?')){
+                sel.value = '{{ sel_esp or '' }}'; return;
+            }
+            const v = sel.value;
+            window.location.href = '/conteo' + (v ? ('?especialidad_id='+v) : '');
         }
 
         // Evitar que Enter en la búsqueda envíe el formulario

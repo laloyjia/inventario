@@ -1845,14 +1845,17 @@ def api_buscar_item(codigo):
     })
 
 
-def _items_conteo_scope():
-    """Ítems visibles para el conteo según el rol: Admin/Jefe Técnico ven todo;
-    un pañolero de área solo la suya."""
+def _items_conteo_scope(esp_override=None):
+    """Ítems visibles para el conteo según el rol: un pañolero de área solo ve la
+    suya; Admin/Jefe Técnico ven todo, pero pueden acotar a una especialidad
+    concreta con esp_override (selector de área en la pantalla de conteo)."""
     rol = session.get('usuario_rol')
     esp_id = session.get('usuario_especialidad_id')
     q = Item.query
     if rol != 'Admin' and esp_id:
-        q = q.filter_by(especialidad_id=esp_id)
+        q = q.filter_by(especialidad_id=esp_id)   # pañolero: fijo a su área
+    elif esp_override:
+        q = q.filter_by(especialidad_id=esp_override)  # admin/JT: área elegida
     return q.order_by(Item.nombre).all()
 
 
@@ -1862,12 +1865,15 @@ def conteo_inventario():
     """Pantalla de conteo rápido por pistoleo (cámara del celular o lectora de
     código de barras). Cada escaneo suma +1 al ítem. Al finalizar genera un acta
     de diferencias (no modifica el stock)."""
-    items = _items_conteo_scope()
+    sel_esp = request.args.get('especialidad_id', type=int)
+    items = _items_conteo_scope(sel_esp)
     especialidades = Especialidad.query.order_by(Especialidad.nombre).all()
     return render_template('conteo.html',
                            items=items,
                            especialidades=especialidades,
+                           sel_esp=sel_esp,
                            es_admin=(session.get('usuario_rol') == 'Admin'),
+                           puede_elegir_area=(session.get('usuario_rol') in ('Admin', 'JefeTecnico')),
                            puede_aplicar=(session.get('usuario_rol') in ('Admin', 'JefeTecnico', 'Pañolero')),
                            usuario=session.get('usuario_nombre', ''),
                            hoy=datetime.now().date())
@@ -1892,11 +1898,11 @@ def _leer_conteo_form():
     return mapa
 
 
-def _calcular_acta(mapa):
+def _calcular_acta(mapa, esp_override=None):
     """Calcula el acta de diferencias a partir del conteo. No modifica nada."""
     filas, faltantes, sobrantes, ok, no_contados = [], [], [], [], []
     tot_esperado = tot_contado = 0
-    for it in _items_conteo_scope():
+    for it in _items_conteo_scope(esp_override):
         esperado = it.cantidad_total or 0
         tot_esperado += esperado
         contado = mapa.get(it.id)  # None si no se contó
@@ -1936,7 +1942,8 @@ def _render_acta(datos, aplicado=False, ajustados=0):
 @login_requerido
 def conteo_acta():
     """Recibe los conteos y genera el ACTA de diferencias. NO toca el stock."""
-    datos = _calcular_acta(_leer_conteo_form())
+    esp_sel = request.form.get('especialidad_id', type=int)
+    datos = _calcular_acta(_leer_conteo_form(), esp_sel)
     try:
         registrar_auditoria('conteo_acta', 'Inventario', None,
                             valores_nuevos={'contados': datos['resumen']['contados'],
@@ -1955,7 +1962,8 @@ def conteo_excel():
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
-    datos = _calcular_acta(_leer_conteo_form())
+    esp_sel = request.form.get('especialidad_id', type=int)
+    datos = _calcular_acta(_leer_conteo_form(), esp_sel)
     r = datos['resumen']
     wb = Workbook()
     ws = wb.active
@@ -2039,12 +2047,13 @@ def conteo_aplicar():
     if rol not in ('Admin', 'JefeTecnico', 'Pañolero'):
         flash("❌ No tienes permiso para ajustar el stock.")
         return redirect(url_for('conteo_inventario'))
+    esp_sel = request.form.get('especialidad_id', type=int)
     mapa = _leer_conteo_form()
     # El acta se calcula ANTES de aplicar (para reflejar las diferencias corregidas).
-    datos = _calcular_acta(mapa)
+    datos = _calcular_acta(mapa, esp_sel)
     esp_id = session.get('usuario_especialidad_id')
     ajustados = 0
-    for it in _items_conteo_scope():
+    for it in _items_conteo_scope(esp_sel):
         if it.id not in mapa:
             continue
         if rol != 'Admin' and esp_id and it.especialidad_id != esp_id:
