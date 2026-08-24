@@ -4385,8 +4385,9 @@ def enviar_aviso_stock():
     return redirect(url_for('panel_gerencial'))
 
 
-def _respaldo_bytes():
+def _respaldo_bytes(esp_id=None):
     """Genera el respaldo (Excel multi-hoja, sin contraseñas) y devuelve un BytesIO.
+    Si se pasa esp_id, el respaldo es SOLO de esa especialidad (área); si no, de todo.
     Construido con openpyxl directo y cada hoja protegida: un error en una hoja no
     tumba el respaldo completo, y siempre queda al menos una hoja visible."""
     from openpyxl import Workbook
@@ -4395,6 +4396,14 @@ def _respaldo_bytes():
     accent = "475569"
     wb = Workbook()
     wb.remove(wb.active)  # partimos sin hojas y las vamos creando
+
+    # Consultas base, acotadas por área si corresponde
+    q_items = Item.query.filter_by(especialidad_id=esp_id) if esp_id else Item.query
+    q_estud = Estudiante.query.filter_by(especialidad_id=esp_id) if esp_id else Estudiante.query
+    q_prest = (Prestamo.query.join(Item, Prestamo.item_id == Item.id)
+               .filter(Item.especialidad_id == esp_id)) if esp_id else Prestamo.query
+    q_bajas = RegistroBaja.query.filter_by(especialidad_id=esp_id) if esp_id else RegistroBaja.query
+    q_usuarios = (Usuario.query.filter_by(especialidad_id=esp_id) if esp_id else Usuario.query)
 
     def _agregar_hoja(titulo, headers, generar_filas):
         ws = wb.create_sheet(titulo[:31])
@@ -4431,19 +4440,19 @@ def _respaldo_bytes():
                   i.estado or '', i.numero_serie or '', 'SI' if i.decreto_240 else 'NO',
                   'SI' if i.es_cest else 'NO',
                   i.fecha_caducidad.isoformat() if i.fecha_caducidad else '']
-                 for i in Item.query.all()))
+                 for i in q_items.all()))
 
     _agregar_hoja('Estudiantes',
         ['id', 'rut', 'nombre', 'curso', 'area', 'activo'],
         lambda: ([e.id, e.rut_matricula, e.nombre, e.curso_display,
                   e.especialidad.nombre if e.especialidad else '', e.activo]
-                 for e in Estudiante.query.all()))
+                 for e in q_estud.all()))
 
     _agregar_hoja('Usuarios (sin claves)',
         ['id', 'usuario', 'nombre', 'rol', 'area', 'activo'],
         lambda: ([u.id, u.username, u.nombre, u.rol,
                   u.especialidad_asignada.nombre if u.especialidad_asignada else '', u.activo]
-                 for u in Usuario.query.all()))
+                 for u in q_usuarios.all()))
 
     _agregar_hoja('Prestamos',
         ['id', 'item', 'estudiante', 'practica', 'cantidad', 'mermada', 'estado', 'fecha'],
@@ -4451,13 +4460,13 @@ def _respaldo_bytes():
                   p.estudiante.nombre if p.estudiante else '', p.nombre_practica or '',
                   p.cantidad, p.cantidad_mermada or 0, p.estado,
                   p.fecha_prestamo.isoformat() if p.fecha_prestamo else '']
-                 for p in Prestamo.query.all()))
+                 for p in q_prest.all()))
 
     _agregar_hoja('Bajas y Mermas',
         ['fecha', 'item', 'cantidad', 'motivo', 'origen', 'area'],
         lambda: ([r.fecha.isoformat() if r.fecha else '', r.item_nombre, r.cantidad,
                   r.motivo, r.origen, r.especialidad.nombre if r.especialidad else '']
-                 for r in RegistroBaja.query.all()))
+                 for r in q_bajas.all()))
 
     if not wb.sheetnames:  # garantía: nunca guardar un libro sin hojas
         ws = wb.create_sheet('Respaldo')
@@ -4474,9 +4483,16 @@ def _respaldo_bytes():
 @login_requerido
 @admin_requerido
 def descargar_respaldo():
-    """Descarga manual del respaldo de la base (Excel multi-hoja, sin contraseñas)."""
-    fname = f"respaldo_panolerp_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
-    return send_file(_respaldo_bytes(), as_attachment=True, download_name=fname,
+    """Descarga manual del respaldo (Excel multi-hoja, sin contraseñas).
+    Con ?especialidad_id=N descarga SOLO esa área; sin él, todas juntas."""
+    esp_id = request.args.get('especialidad_id', type=int)
+    etiqueta = 'todas'
+    if esp_id:
+        esp = Especialidad.query.get(esp_id)
+        if esp:
+            etiqueta = ''.join(c for c in esp.nombre if c.isalnum() or c in ' _-').strip().replace(' ', '_')[:40]
+    fname = f"respaldo_{etiqueta}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(_respaldo_bytes(esp_id), as_attachment=True, download_name=fname,
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
@@ -5088,6 +5104,7 @@ def panel_gerencial():
         top_data=[x[1] for x in top_insumos],
         meses_labels=meses_labels, meses_data=meses_data,
         cat_labels=list(cat_group.keys()), cat_data=list(cat_group.values()),
+        especialidades=Especialidad.query.order_by(Especialidad.nombre).all(),
     )
 
 

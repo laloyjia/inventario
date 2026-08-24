@@ -46,7 +46,14 @@
                 <a href="/reporte_sin_movimiento" class="btn" style="background:#6b21a8;"><i class="fas fa-box-open"></i> Sin movimiento</a>
                 <a href="/reporte_valorizacion" class="btn" style="background:#0891b2;"><i class="fas fa-coins"></i> Valorización + Dec. 240</a>
                 <a href="/exportar_inventario" class="btn" style="background:#065f46;"><i class="fas fa-file-invoice-dollar"></i> Reporte contable</a>
-                <a href="/admin/respaldo" class="btn" style="background:#475569;"><i class="fas fa-database"></i> Respaldo</a>
+                <select onchange="if(this.value){window.location=this.value; this.selectedIndex=0;}"
+                        class="btn" style="background:#475569; color:white; border:none; cursor:pointer; -webkit-appearance:none; appearance:none;">
+                    <option value=""><i class="fas fa-database"></i>&nbsp;⬇ Respaldo por área…</option>
+                    <option value="/admin/respaldo">Todas las áreas (completo)</option>
+                    {% for e in (especialidades or []) %}
+                    <option value="/admin/respaldo?especialidad_id={{ e.id }}">{{ e.nombre }}</option>
+                    {% endfor %}
+                </select>
                 <a href="/" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Volver</a>
             </div>
         </div>
