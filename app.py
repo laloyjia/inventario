@@ -1194,6 +1194,20 @@ def ver_inventario():
         session['admin_viendo_especialidad'] = esp_obj.nombre
         session['usuario_especialidad_id'] = esp_query
         session['usuario_especialidad'] = esp_obj.nombre
+    elif rol == 'JefeTecnico':
+        # El Jefe Técnico puede VER el inventario de cualquier área (solo lectura:
+        # los POST de editar/prestar/baja ya están bloqueados por el decorador).
+        # No se persiste usuario_especialidad_id para no romper su conteo global.
+        esp_query = request.args.get('especialidad_id', type=int)
+        if not esp_query:
+            return redirect(url_for('dashboard_moderno'))
+        esp_obj = Especialidad.query.get(esp_query)
+        if not esp_obj:
+            flash("❌ Especialidad no encontrada.")
+            return redirect(url_for('dashboard_moderno'))
+        especialidad_id = esp_query
+        # Solo el NOMBRE para el encabezado; NO el id (mantiene el conteo global del JT)
+        session['usuario_especialidad'] = esp_obj.nombre
     else:
         especialidad_id = session.get('usuario_especialidad_id')
     items = Item.query.filter_by(especialidad_id=especialidad_id) \
