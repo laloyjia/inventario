@@ -1280,7 +1280,7 @@ def ver_inventario():
                            tipo_area=tipo_area,
                            es_grafica=es_grafica,
                            clasificaciones=CLASIFICACIONES_D240,
-                           categorias=CLASIFICACIONES_D240,
+                           categorias=_categorias_para_tipo(tipo_area),
                            hoy=datetime.utcnow().date(),
                            n_stock_bajo=n_stock_bajo,
                            n_por_vencer=n_por_vencer,
@@ -2464,6 +2464,48 @@ CLASIFICACIONES_D240 = [
     'Softwares',
     'Mobiliario',
 ]
+
+# Categorías propias por tipo de área (Biblioteca e Informática no usan las de taller)
+CATEGORIAS_BIBLIOTECA = [
+    'Literatura / Narrativa',
+    'Texto escolar',
+    'Referencia / Consulta',
+    'Material CRA',
+    'Revista / Publicación',
+    'Material audiovisual',
+    'Recurso didáctico',
+    'Mobiliario',
+]
+CATEGORIAS_INFORMATICA = [
+    'Computador / Notebook',
+    'Tablet / Chromebook',
+    'Monitor / Pantalla',
+    'Periférico (teclado, mouse…)',
+    'Red y conectividad',
+    'Proyector / Audiovisual',
+    'Impresora / Escáner',
+    'Software / Licencia',
+    'Componente / Repuesto',
+    'Accesorio / Cable',
+    'Mobiliario',
+]
+CATEGORIAS_DEPORTIVO = [
+    'Balones',
+    'Implementos de entrenamiento',
+    'Material de gimnasio',
+    'Vestuario / Equipamiento',
+    'Protección / Seguridad',
+    'Material didáctico deportivo',
+]
+
+
+def _categorias_para_tipo(tipo_area):
+    """Lista de categorías del formulario según el tipo de área."""
+    return {
+        'BIBLIOTECA': CATEGORIAS_BIBLIOTECA,
+        'INFORMATICA': CATEGORIAS_INFORMATICA,
+        'DEPORTIVO': CATEGORIAS_DEPORTIVO,
+    }.get(tipo_area, CLASIFICACIONES_D240)
 
 
 def _es_consumible(item):
