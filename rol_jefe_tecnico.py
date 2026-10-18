@@ -133,7 +133,17 @@ def registrar_rol_jefe_tecnico(app, db, Usuario, Especialidad, Item,
         # Especialidades visibles según rol
         q_esp = Especialidad.query
         if rol == 'JefeTecnico':
-            q_esp = q_esp.filter(Especialidad.tipo_area == 'PANOL_TP')
+            _perm = (session.get('especialidades_permitidas') or '').strip()
+            _ids = None
+            if _perm and _perm.upper() != 'ALL':
+                try:
+                    _ids = [int(x) for x in _perm.split(',') if x.strip()] or None
+                except ValueError:
+                    _ids = None
+            if _ids:
+                q_esp = q_esp.filter(Especialidad.id.in_(_ids))  # áreas asignadas por super admin
+            else:
+                q_esp = q_esp.filter(Especialidad.tipo_area == 'PANOL_TP')
         especialidades = q_esp.order_by(Especialidad.nombre).all()
         ids_visibles = [e.id for e in especialidades]
 

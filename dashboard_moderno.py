@@ -11,10 +11,24 @@ def registrar_dashboard_moderno(app, db, Item, Especialidad, Prestamo,
                                  OrdenTrabajo, Auditoria, login_requerido,
                                  jt_o_admin):
 
+    def _perm_ids():
+        perm = (session.get('especialidades_permitidas') or '').strip()
+        if perm and perm.upper() != 'ALL':
+            try:
+                ids = [int(x) for x in perm.split(',') if x.strip()]
+                return ids or None
+            except ValueError:
+                return None
+        return None
+
     def _especialidades_visibles(rol):
         q = Especialidad.query
         if rol == 'JefeTecnico':
-            q = q.filter(Especialidad.tipo_area.in_(TIPOS_AREA_JT))
+            ids = None if session.get('es_superadmin') else _perm_ids()
+            if ids:
+                q = q.filter(Especialidad.id.in_(ids))  # áreas asignadas por el super admin
+            else:
+                q = q.filter(Especialidad.tipo_area.in_(TIPOS_AREA_JT))  # alcance JT por defecto
         elif rol == 'Admin' and not session.get('es_superadmin'):
             # Admin restringido: solo las áreas que le asignó el super admin.
             perm = (session.get('especialidades_permitidas') or '').strip()

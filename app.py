@@ -1051,10 +1051,10 @@ def pañolero_o_admin(f):
 
 
 def _ids_admin_permitidos():
-    """Para un Administrador restringido, devuelve el set de especialidad_ids a los
-    que tiene acceso. None = sin restricción (ve todas). Solo aplica a Admin que NO
-    es super admin; el super admin y los admin sin restricción ven todo."""
-    if session.get('usuario_rol') != 'Admin':
+    """Para un Administrador o Jefe Técnico restringido, devuelve el set de
+    especialidad_ids a los que tiene acceso. None = sin restricción explícita.
+    El super admin ve todo; un admin/JT sin restricción mantiene su alcance normal."""
+    if session.get('usuario_rol') not in ('Admin', 'JefeTecnico'):
         return None
     if session.get('es_superadmin'):
         return None
@@ -1097,8 +1097,8 @@ def _form_areas_a_perm(areas):
 @login_requerido
 @superadmin_requerido
 def superadmin_panel():
-    admins = Usuario.query.filter_by(rol='Admin').order_by(Usuario.es_superadmin.desc(),
-                                                            Usuario.nombre).all()
+    admins = Usuario.query.filter(Usuario.rol.in_(['Admin', 'JefeTecnico'])).order_by(
+        Usuario.es_superadmin.desc(), Usuario.rol, Usuario.nombre).all()
     especialidades = Especialidad.query.order_by(Especialidad.nombre).all()
     permisos = {}
     for a in admins:
@@ -1147,8 +1147,8 @@ def superadmin_crear():
 @superadmin_requerido
 def superadmin_guardar(uid):
     u = Usuario.query.get_or_404(uid)
-    if u.rol != 'Admin' or u.es_superadmin:
-        flash("❌ Solo se pueden editar los accesos de administradores normales.")
+    if u.rol not in ('Admin', 'JefeTecnico') or u.es_superadmin:
+        flash("❌ Solo se pueden editar administradores o el jefe técnico.")
         return redirect(url_for('superadmin_panel'))
     u.especialidades_permitidas = _form_areas_a_perm(request.form.getlist('areas[]'))
     u.activo = bool(request.form.get('activo'))
@@ -1356,6 +1356,10 @@ def ver_inventario():
         esp_obj = Especialidad.query.get(esp_query)
         if not esp_obj:
             flash("❌ Especialidad no encontrada.")
+            return redirect(url_for('dashboard_moderno'))
+        permitidos = _ids_admin_permitidos()
+        if permitidos is not None and esp_query not in permitidos:
+            flash("❌ No tienes acceso al inventario de esa área.")
             return redirect(url_for('dashboard_moderno'))
         especialidad_id = esp_query
         # Solo el NOMBRE para el encabezado; NO el id (mantiene el conteo global del JT)

@@ -78,6 +78,7 @@
                 <div class="admin-head">
                     <span class="n">{{ a.nombre }}</span>
                     <span class="u">@{{ a.username }}{% if a.email %} · {{ a.email }}{% endif %}</span>
+                    {% if a.rol == 'JefeTecnico' %}<span class="badge" style="background:#ede9fe;color:#6d28d9;"><i class="fas fa-clipboard-check"></i> Jefe Técnico</span>{% endif %}
                     {% if a.es_superadmin %}<span class="badge b-super"><i class="fas fa-crown"></i> Super Admin</span>
                     {% elif permisos[a.id] is none %}<span class="badge b-all">Acceso total</span>
                     {% else %}<span class="badge b-restr">{{ permisos[a.id]|length }} área(s)</span>{% endif %}
