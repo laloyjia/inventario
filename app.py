@@ -191,6 +191,10 @@ class Usuario(db.Model):
     failed_attempts = db.Column(db.Integer, default=0, nullable=False, server_default='0')
     locked_until = db.Column(db.DateTime, nullable=True)
     must_change_password = db.Column(db.Boolean, default=False, nullable=False, server_default='false')
+    # Super admin: gestiona administradores y les asigna a qué áreas acceden.
+    es_superadmin = db.Column(db.Boolean, default=False, nullable=False, server_default='false')
+    # Áreas permitidas para un Admin restringido: None/'ALL' = todas; "1,3,5" = solo esas.
+    especialidades_permitidas = db.Column(db.Text, nullable=True)
     alertas_stock = db.relationship('AlertaStock', backref='usuario', lazy=True)
 
 class Curso(db.Model):
@@ -625,6 +629,25 @@ def crear_admin_central():
             must_change_password=True,  # forzado a cambiar en primer login
         ))
         db.session.commit()
+
+
+def crear_superadmin():
+    """Crea la cuenta Super Administrador (gestiona administradores y sus accesos).
+    Es un Admin con el flag es_superadmin=True, por lo que ve todo y además
+    administra a los demás administradores."""
+    u = Usuario.query.filter_by(username='superadmin').first()
+    if not u:
+        db.session.add(Usuario(
+            nombre="Super Administrador", username="superadmin",
+            password_hash=generate_password_hash("super123"),
+            rol="Admin", email="soporte.learn0@gmail.com",
+            especialidad_id=None, es_superadmin=True,
+            must_change_password=True,  # define tu propia clave al primer ingreso
+        ))
+        db.session.commit()
+    elif not u.es_superadmin:
+        u.es_superadmin = True
+        db.session.commit()
         return
 
     # Reset de emergencia si la variable de entorno está presente
@@ -713,6 +736,12 @@ def _migrar_columnas_seguridad():
                 statements.append(
                     f"ALTER TABLE usuario ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT {bool_default}"
                 )
+            if 'es_superadmin' not in cols:
+                statements.append(
+                    f"ALTER TABLE usuario ADD COLUMN es_superadmin BOOLEAN NOT NULL DEFAULT {bool_default}"
+                )
+            if 'especialidades_permitidas' not in cols:
+                statements.append("ALTER TABLE usuario ADD COLUMN especialidades_permitidas TEXT NULL")
 
         # === especialidad: tipo_area ===
         if 'especialidad' in tablas:
@@ -873,6 +902,7 @@ with app.app_context():
     crear_especialidades_por_defecto()
     _asignar_tipo_area()
     crear_admin_central()
+    crear_superadmin()
     crear_pañoleros_por_especialidad()
     _flag_passwords_default()
     print("✅ BD inicializada correctamente")
@@ -1013,6 +1043,116 @@ def pañolero_o_admin(f):
         return f(*a, **kw)
     return w
 
+
+def _ids_admin_permitidos():
+    """Para un Administrador restringido, devuelve el set de especialidad_ids a los
+    que tiene acceso. None = sin restricción (ve todas). Solo aplica a Admin que NO
+    es super admin; el super admin y los admin sin restricción ven todo."""
+    if session.get('usuario_rol') != 'Admin':
+        return None
+    if session.get('es_superadmin'):
+        return None
+    perm = (session.get('especialidades_permitidas') or '').strip()
+    if not perm or perm.upper() == 'ALL':
+        return None
+    try:
+        ids = {int(x) for x in perm.split(',') if x.strip()}
+        return ids or None
+    except ValueError:
+        return None
+
+
+def superadmin_requerido(f):
+    @wraps(f)
+    def w(*a, **kw):
+        if not session.get('es_superadmin'):
+            flash("❌ Acceso exclusivo del Super Administrador.")
+            return redirect(url_for('index'))
+        return f(*a, **kw)
+    return w
+
+
+def _form_areas_a_perm(areas):
+    """Convierte la selección del formulario en el valor de especialidades_permitidas:
+    'ALL' o vacío -> None (todas las áreas); lista de ids -> 'id,id,...'."""
+    areas = [a for a in (areas or []) if a]
+    if not areas or 'ALL' in areas:
+        return None
+    ids = []
+    for a in areas:
+        try:
+            ids.append(str(int(a)))
+        except ValueError:
+            pass
+    return ','.join(ids) if ids else None
+
+
+@app.route('/superadmin')
+@login_requerido
+@superadmin_requerido
+def superadmin_panel():
+    admins = Usuario.query.filter_by(rol='Admin').order_by(Usuario.es_superadmin.desc(),
+                                                            Usuario.nombre).all()
+    especialidades = Especialidad.query.order_by(Especialidad.nombre).all()
+    permisos = {}
+    for a in admins:
+        perm = (a.especialidades_permitidas or '').strip()
+        if not perm or perm.upper() == 'ALL':
+            permisos[a.id] = None  # todas
+        else:
+            try:
+                permisos[a.id] = {int(x) for x in perm.split(',') if x.strip()}
+            except ValueError:
+                permisos[a.id] = None
+    return render_template('superadmin.html', admins=admins,
+                           especialidades=especialidades, permisos=permisos)
+
+
+@app.route('/superadmin/crear', methods=['POST'])
+@login_requerido
+@superadmin_requerido
+def superadmin_crear():
+    nombre = (request.form.get('nombre') or '').strip()
+    username = (request.form.get('username') or '').strip().lower()
+    email = (request.form.get('email') or '').strip() or None
+    password = (request.form.get('password') or '').strip()
+    areas = request.form.getlist('areas[]')
+    if not nombre or not username or not password:
+        flash("❌ Nombre, usuario y contraseña son obligatorios.")
+        return redirect(url_for('superadmin_panel'))
+    if Usuario.query.filter_by(username=username).first():
+        flash(f"❌ El usuario '{username}' ya existe.")
+        return redirect(url_for('superadmin_panel'))
+    perm = _form_areas_a_perm(areas)
+    u = Usuario(nombre=nombre, username=username, email=email,
+                password_hash=generate_password_hash(password),
+                rol='Admin', es_superadmin=False,
+                especialidades_permitidas=perm, must_change_password=True, activo=True)
+    db.session.add(u)
+    db.session.commit()
+    registrar_auditoria('crear', 'Usuario', u.id,
+                        valores_nuevos={'rol': 'Admin', 'areas': perm or 'TODAS'})
+    flash(f"✅ Administrador '{nombre}' creado. Deberá cambiar la clave inicial al ingresar.")
+    return redirect(url_for('superadmin_panel'))
+
+
+@app.route('/superadmin/guardar/<int:uid>', methods=['POST'])
+@login_requerido
+@superadmin_requerido
+def superadmin_guardar(uid):
+    u = Usuario.query.get_or_404(uid)
+    if u.rol != 'Admin' or u.es_superadmin:
+        flash("❌ Solo se pueden editar los accesos de administradores normales.")
+        return redirect(url_for('superadmin_panel'))
+    u.especialidades_permitidas = _form_areas_a_perm(request.form.getlist('areas[]'))
+    u.activo = bool(request.form.get('activo'))
+    db.session.commit()
+    registrar_auditoria('actualizar', 'Usuario', u.id,
+                        valores_nuevos={'areas': u.especialidades_permitidas or 'TODAS',
+                                        'activo': u.activo})
+    flash(f"✅ Accesos de '{u.nombre}' actualizados.")
+    return redirect(url_for('superadmin_panel'))
+
 # ========== RUTAS BASICAS ==========
 
 @app.route('/')
@@ -1052,6 +1192,8 @@ def login():
             session['usuario_nombre'] = usuario.nombre
             session['usuario_rol'] = usuario.rol
             session['usuario_email'] = usuario.email
+            session['es_superadmin'] = bool(getattr(usuario, 'es_superadmin', False))
+            session['especialidades_permitidas'] = usuario.especialidades_permitidas or ''
             if usuario.especialidad_id:
                 session['usuario_especialidad_id'] = usuario.especialidad_id
                 session['usuario_especialidad'] = usuario.especialidad_asignada.nombre
@@ -1188,6 +1330,10 @@ def ver_inventario():
         esp_obj = Especialidad.query.get(esp_query)
         if not esp_obj:
             flash("❌ Especialidad no encontrada.")
+            return redirect(url_for('dashboard_moderno'))
+        permitidos = _ids_admin_permitidos()
+        if permitidos is not None and esp_query not in permitidos:
+            flash("❌ No tienes acceso al inventario de esa área.")
             return redirect(url_for('dashboard_moderno'))
         especialidad_id = esp_query
         # Setear sesión temporal para que los POSTs (agregar, prestar, etc.) sepan el área
@@ -1867,9 +2013,14 @@ def _items_conteo_scope(esp_override=None):
     esp_id = session.get('usuario_especialidad_id')
     q = Item.query
     if rol != 'Admin' and esp_id:
-        q = q.filter_by(especialidad_id=esp_id)   # pañolero: fijo a su área
-    elif esp_override:
+        return q.filter_by(especialidad_id=esp_id).order_by(Item.nombre).all()  # pañolero
+    permitidos = _ids_admin_permitidos()  # None salvo admin restringido
+    if esp_override:
+        if permitidos is not None and esp_override not in permitidos:
+            return []  # el admin no tiene acceso a esa área
         q = q.filter_by(especialidad_id=esp_override)  # admin/JT: área elegida
+    elif permitidos is not None:
+        q = q.filter(Item.especialidad_id.in_(permitidos))
     return q.order_by(Item.nombre).all()
 
 
@@ -1881,7 +2032,11 @@ def conteo_inventario():
     de diferencias (no modifica el stock)."""
     sel_esp = request.args.get('especialidad_id', type=int)
     items = _items_conteo_scope(sel_esp)
-    especialidades = Especialidad.query.order_by(Especialidad.nombre).all()
+    _perm_esp = _ids_admin_permitidos()
+    _q_esp = Especialidad.query
+    if _perm_esp is not None:
+        _q_esp = _q_esp.filter(Especialidad.id.in_(_perm_esp))
+    especialidades = _q_esp.order_by(Especialidad.nombre).all()
     return render_template('conteo.html',
                            items=items,
                            especialidades=especialidades,
@@ -5096,7 +5251,9 @@ def panel_gerencial():
         return redirect(url_for('ver_inventario'))
 
     from collections import defaultdict
-    items = Item.query.all()
+    _perm = _ids_admin_permitidos()
+    items = (Item.query.all() if _perm is None
+             else Item.query.filter(Item.especialidad_id.in_(_perm)).all())
     total_items = len(items)
     total_stock = sum(i.cantidad_total or 0 for i in items)
     valor_total = sum((i.precio_unitario or 0) * (i.cantidad_total or 0) for i in items)
@@ -5106,6 +5263,8 @@ def panel_gerencial():
 
     # Valor del inventario por área (top 12)
     areas = Especialidad.query.filter_by(activa=True).all()
+    if _perm is not None:
+        areas = [a for a in areas if a.id in _perm]
     valor_area = []
     for a in areas:
         v = sum((i.precio_unitario or 0) * (i.cantidad_total or 0)
@@ -5160,7 +5319,8 @@ def panel_gerencial():
         top_data=[x[1] for x in top_insumos],
         meses_labels=meses_labels, meses_data=meses_data,
         cat_labels=list(cat_group.keys()), cat_data=list(cat_group.values()),
-        especialidades=Especialidad.query.order_by(Especialidad.nombre).all(),
+        especialidades=(Especialidad.query.order_by(Especialidad.nombre).all() if _perm is None
+                        else Especialidad.query.filter(Especialidad.id.in_(_perm)).order_by(Especialidad.nombre).all()),
     )
 
 

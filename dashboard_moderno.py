@@ -15,6 +15,16 @@ def registrar_dashboard_moderno(app, db, Item, Especialidad, Prestamo,
         q = Especialidad.query
         if rol == 'JefeTecnico':
             q = q.filter(Especialidad.tipo_area.in_(TIPOS_AREA_JT))
+        elif rol == 'Admin' and not session.get('es_superadmin'):
+            # Admin restringido: solo las áreas que le asignó el super admin.
+            perm = (session.get('especialidades_permitidas') or '').strip()
+            if perm and perm.upper() != 'ALL':
+                try:
+                    ids = [int(x) for x in perm.split(',') if x.strip()]
+                    if ids:
+                        q = q.filter(Especialidad.id.in_(ids))
+                except ValueError:
+                    pass
         return q.order_by(Especialidad.nombre).all()
 
     @app.route('/dashboard')

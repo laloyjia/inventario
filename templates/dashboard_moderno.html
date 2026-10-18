@@ -609,6 +609,11 @@ body {
         {% if not es_jt %}
         <div class="nav-label">Administración</div>
         <div class="nav">
+            {% if session.get('es_superadmin') %}
+            <a href="/superadmin">
+                <i class="fas fa-user-shield"></i> Administradores
+            </a>
+            {% endif %}
             <a href="/admin/panoleros">
                 <i class="fas fa-user-gear"></i> Instructores
             </a>

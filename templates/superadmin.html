@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Administradores · PanolERP</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root{--primary:#1e3a8a;--primary2:#2563eb;--muted:#64748b;--line:#e5e7eb;--bg:#f1f5f9;--green:#16a34a;}
+        *{box-sizing:border-box;}
+        body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:#0f172a;margin:0;}
+        .top{display:flex;align-items:center;gap:12px;padding:14px 28px;background:linear-gradient(135deg,#0B1739,#16255a);color:#fff;}
+        .top .logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#F59E0B,#D97706);display:flex;align-items:center;justify-content:center;font-size:18px;}
+        .top h1{font-size:17px;margin:0;font-weight:800;}
+        .top h1 small{display:block;color:#94a3c8;font-size:11px;font-weight:600;}
+        .top a.back{margin-left:auto;background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);padding:9px 14px;border-radius:9px;text-decoration:none;font-weight:700;font-size:13px;}
+        .wrap{max-width:100%;margin:0 auto;padding:22px 28px;box-sizing:border-box;}
+        .flash{background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3;padding:11px 14px;border-radius:10px;margin-bottom:14px;font-size:.9rem;}
+        .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 3px 10px rgba(0,0,0,.05);}
+        .card h2{margin:0 0 14px;font-size:1.05rem;color:var(--primary);display:flex;align-items:center;gap:8px;}
+        label{font-size:.82rem;font-weight:600;color:#334155;display:block;margin-bottom:5px;}
+        input[type=text],input[type=email],input[type=password]{width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:9px;font-size:.92rem;}
+        .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:14px;}
+        .areas{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:6px 16px;margin:8px 0 4px;padding:12px;background:#f8fafc;border:1px solid var(--line);border-radius:10px;}
+        .areas label{display:flex;align-items:center;gap:8px;font-weight:500;font-size:.85rem;margin:0;cursor:pointer;}
+        .areas .todas{grid-column:1/-1;font-weight:800;color:var(--primary);border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:4px;}
+        .btn{background:var(--primary2);color:#fff;border:none;padding:11px 18px;border-radius:9px;font-weight:700;font-size:.9rem;cursor:pointer;}
+        .btn-green{background:var(--green);}
+        table{width:100%;border-collapse:collapse;}
+        .admin-row{border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px;}
+        .admin-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;}
+        .admin-head .n{font-weight:800;font-size:1rem;}
+        .admin-head .u{color:var(--muted);font-size:.85rem;font-family:monospace;}
+        .badge{font-size:.72rem;font-weight:800;padding:3px 10px;border-radius:999px;}
+        .b-super{background:#fef3c7;color:#b45309;}
+        .b-all{background:#dcfce7;color:#166534;}
+        .b-restr{background:#dbeafe;color:#1e40af;}
+        .b-off{background:#fee2e2;color:#b91c1c;}
+        .chk-activo{display:flex;align-items:center;gap:7px;font-size:.85rem;font-weight:600;color:#334155;margin:6px 0;}
+    </style>
+</head>
+<body>
+    <div class="top">
+        <div class="logo"><i class="fas fa-user-shield"></i></div>
+        <div><h1>Gestión de Administradores <small>Super Administrador</small></h1></div>
+        <a href="/dashboard" class="back"><i class="fas fa-arrow-left"></i> Volver</a>
+    </div>
+
+    <div class="wrap">
+        {% with messages = get_flashed_messages() %}
+          {% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}
+        {% endwith %}
+
+        <div class="card">
+            <h2><i class="fas fa-user-plus"></i> Crear nuevo administrador</h2>
+            <form action="/superadmin/crear" method="POST">
+                <div class="grid">
+                    <div><label>Nombre completo</label><input type="text" name="nombre" required></div>
+                    <div><label>Usuario</label><input type="text" name="username" required placeholder="ej: admin_biblioteca"></div>
+                    <div><label>Correo (opcional)</label><input type="email" name="email"></div>
+                    <div><label>Contraseña inicial</label><input type="password" name="password" required></div>
+                </div>
+                <label><i class="fas fa-sitemap"></i> Áreas / inventarios a los que tendrá acceso:</label>
+                <div class="areas">
+                    <label class="todas"><input type="checkbox" name="areas[]" value="ALL" checked onchange="toggleTodas(this)"> Todas las áreas</label>
+                    {% for e in especialidades %}
+                    <label><input type="checkbox" class="area-chk" name="areas[]" value="{{ e.id }}"> {{ e.nombre }}</label>
+                    {% endfor %}
+                </div>
+                <button type="submit" class="btn" style="margin-top:12px;"><i class="fas fa-save"></i> Crear administrador</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2><i class="fas fa-users-cog"></i> Administradores existentes</h2>
+            {% for a in admins %}
+            <div class="admin-row">
+                <div class="admin-head">
+                    <span class="n">{{ a.nombre }}</span>
+                    <span class="u">@{{ a.username }}{% if a.email %} · {{ a.email }}{% endif %}</span>
+                    {% if a.es_superadmin %}<span class="badge b-super"><i class="fas fa-crown"></i> Super Admin</span>
+                    {% elif permisos[a.id] is none %}<span class="badge b-all">Acceso total</span>
+                    {% else %}<span class="badge b-restr">{{ permisos[a.id]|length }} área(s)</span>{% endif %}
+                    {% if not a.activo %}<span class="badge b-off">Inactivo</span>{% endif %}
+                </div>
+                {% if a.es_superadmin %}
+                    <p style="color:var(--muted);font-size:.85rem;margin:4px 0 0;">El super administrador tiene acceso total y gestiona a los demás. No se edita desde aquí.</p>
+                {% else %}
+                <form action="/superadmin/guardar/{{ a.id }}" method="POST">
+                    <div class="areas">
+                        <label class="todas"><input type="checkbox" name="areas[]" value="ALL" {{ 'checked' if permisos[a.id] is none else '' }} onchange="toggleTodas(this)"> Todas las áreas</label>
+                        {% for e in especialidades %}
+                        <label><input type="checkbox" class="area-chk" name="areas[]" value="{{ e.id }}" {{ 'checked' if (permisos[a.id] and e.id in permisos[a.id]) else '' }}> {{ e.nombre }}</label>
+                        {% endfor %}
+                    </div>
+                    <label class="chk-activo"><input type="checkbox" name="activo" {{ 'checked' if a.activo else '' }}> Cuenta activa</label>
+                    <button type="submit" class="btn btn-green"><i class="fas fa-save"></i> Guardar accesos</button>
+                </form>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <script>
+        // Si marca "Todas las áreas", desmarca las individuales (y viceversa)
+        function toggleTodas(chk){
+            var cont = chk.closest('.areas');
+            var inds = cont.querySelectorAll('.area-chk');
+            if(chk.checked){ inds.forEach(function(i){ i.checked=false; }); }
+        }
+        document.querySelectorAll('.area-chk').forEach(function(i){
+            i.addEventListener('change', function(){
+                if(i.checked){
+                    var todas = i.closest('.areas').querySelector('input[value="ALL"]');
+                    if(todas) todas.checked=false;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
