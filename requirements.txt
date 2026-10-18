@@ -11,6 +11,7 @@ gunicorn>=21.2
 
 # Base de datos
 psycopg2-binary>=2.9        # PostgreSQL para cloud (Render/Railway)
+psycopg[binary]>=3.1        # Respaldo del driver (por si la URL usa psycopg v3)
 
 # Excel
 pandas>=2.0

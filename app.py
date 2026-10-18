@@ -81,7 +81,13 @@ DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
 if DATABASE_URL:
     # Render entrega URLs como "postgres://..." pero SQLAlchemy 2.x exige "postgresql://"
     if DATABASE_URL.startswith('postgres://'):
-        DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+        DATABASE_URL = 'postgresql://' + DATABASE_URL[len('postgres://'):]
+    # Forzar el driver psycopg2 (el instalado). Evita que SQLAlchemy intente usar
+    # psycopg (v3) si la URL viene como postgresql+psycopg:// o sin driver.
+    for _pref in ('postgresql+psycopg://', 'postgresql+psycopg2://', 'postgresql://'):
+        if DATABASE_URL.startswith(_pref):
+            DATABASE_URL = 'postgresql+psycopg2://' + DATABASE_URL[len(_pref):]
+            break
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
     USANDO_POSTGRES = DATABASE_URL.startswith('postgresql')
     print(f"[DB] Usando {'PostgreSQL' if USANDO_POSTGRES else 'externa'}: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL}")
